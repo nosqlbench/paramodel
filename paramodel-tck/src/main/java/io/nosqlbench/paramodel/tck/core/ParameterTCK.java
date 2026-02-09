@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
 import java.util.List;
-import java.util.Random;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
@@ -61,12 +60,11 @@ public abstract class ParameterTCK {
     }
 
     @Test
-    public void testParameterGeneratesWithRandom() {
+    public void testParameterGeneratesFromDomain() {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of("x", "y", "z"));
         Parameter<String> param = getProvider().createParameter("letters", domain);
 
-        Random rng = new Random(42);
-        String value = param.generate(rng);
+        String value = param.generate();
 
         assertThat(value).isIn("x", "y", "z");
     }
@@ -76,8 +74,7 @@ public abstract class ParameterTCK {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of("valid", "also-valid"));
         Parameter<String> param = getProvider().createParameter("test", domain);
 
-        Value<String> value = getProvider().createValue("valid", "test");
-        assertThat(param.validate(value).isValid()).isTrue();
+        assertThat(param.validate("valid").isPassed()).isTrue();
     }
 
     @Test
@@ -85,8 +82,7 @@ public abstract class ParameterTCK {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of("valid", "also-valid"));
         Parameter<String> param = getProvider().createParameter("test", domain);
 
-        Value<String> value = getProvider().createValue("invalid", "test");
-        assertThat(param.validate(value).isValid()).isFalse();
+        assertThat(param.validate("invalid").isPassed()).isFalse();
     }
 
     @Test
@@ -100,16 +96,14 @@ public abstract class ParameterTCK {
     }
 
     @Test
-    public void testParameterGeneratesConsistentlyWithSameSeed() {
+    public void testParameterGeneratesConsistently() {
         Domain<Integer> domain = getProvider().createDiscreteDomain(List.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
         Parameter<Integer> param = getProvider().createParameter("test", domain);
 
-        Random rng1 = new Random(12345);
-        Random rng2 = new Random(12345);
-
-        Integer value1 = param.generate(rng1);
-        Integer value2 = param.generate(rng2);
-
-        assertThat(value1).isEqualTo(value2);
+        // Generate should always produce values within domain
+        for (int i = 0; i < 50; i++) {
+            Integer value = param.generate();
+            assertThat(value).isBetween(1, 10);
+        }
     }
 }

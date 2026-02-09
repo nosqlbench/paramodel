@@ -212,8 +212,7 @@ import java.util.Optional;
 ///
 /// @see Trial
 /// @see TrialStatus
-/// @see com.paramodel.api.execution.TrialExecutor
-/// @see ResultStore
+/// @see io.nosqlbench.paramodel.persistence.ResultStore
 /// @since 0.1.0
 ///
 public interface TrialResult {
@@ -389,7 +388,6 @@ public interface TrialResult {
     ///
     /// @return provenance information, never null
     /// @see ProvenanceInfo
-    /// @see com.paramodel.api.versioning.ProvenanceService
     ///
     ProvenanceInfo provenance();
 

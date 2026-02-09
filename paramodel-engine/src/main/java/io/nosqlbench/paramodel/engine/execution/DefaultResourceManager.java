@@ -5,6 +5,7 @@ import io.nosqlbench.paramodel.execution.Runtime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -26,7 +27,7 @@ public class DefaultResourceManager implements ResourceManager {
 
     @Override
     public Runtime.ResourceAllocation allocate(ResourceRequest request)
-            throws ResourceExhaustedException {
+            throws Runtime.InsufficientResourcesException {
         log.info("Allocating resources for request: {}", request.owner());
 
         // Stub implementation
@@ -58,7 +59,7 @@ public class DefaultResourceManager implements ResourceManager {
 
     @Override
     public Runtime.ResourceAvailability available() {
-        return new StubResourceAvailability();
+        return new Runtime.ResourceAvailability(0.0, 0.0, 0.0, 0.0);
     }
 
     @Override
@@ -69,7 +70,7 @@ public class DefaultResourceManager implements ResourceManager {
     @Override
     public ResourcePool createPool(String name, Runtime.Resources capacity, PoolPriority priority) {
         log.info("Creating resource pool: {}", name);
-        return new StubResourcePool(name);
+        return new StubResourcePool(name, priority);
     }
 
     @Override
@@ -118,8 +119,9 @@ public class DefaultResourceManager implements ResourceManager {
         }
 
         @Override
-        public Runtime.Resources allocated() {
-            return new StubResources();
+        public Runtime.Resources resources() {
+            return Runtime.Resources.of(
+                request.cpu(), request.memoryGb(), request.storageGb());
         }
 
         @Override
@@ -128,92 +130,80 @@ public class DefaultResourceManager implements ResourceManager {
         }
 
         @Override
-        public String owner() {
-            return request.owner();
-        }
-
-        @Override
-        public Optional<String> pool() {
-            return Optional.empty();
-        }
-    }
-
-    private static class StubResources implements Runtime.Resources {
-        @Override
-        public double cpu() {
-            return 0.0;
-        }
-
-        @Override
-        public double memoryGb() {
-            return 0.0;
-        }
-
-        @Override
-        public double storageGb() {
-            return 0.0;
-        }
-
-        @Override
-        public Optional<Double> networkGbps() {
-            return Optional.empty();
-        }
-
-        @Override
-        public Map<String, Double> custom() {
-            return Map.of();
-        }
-    }
-
-    private static class StubResourceAvailability implements Runtime.ResourceAvailability {
-        @Override
-        public Runtime.Resources total() {
-            return new StubResources();
-        }
-
-        @Override
-        public Runtime.Resources available() {
-            return new StubResources();
-        }
-
-        @Override
-        public Runtime.Resources allocated() {
-            return new StubResources();
-        }
-
-        @Override
-        public double utilizationPercentage() {
-            return 0.0;
+        public void release() {
+            // Stub - no-op
         }
     }
 
     private static class StubResourceUsage implements ResourceUsage {
         @Override
-        public double cpuUsagePercentage() {
+        public double cpuTotal() {
             return 0.0;
         }
 
         @Override
-        public double memoryUsagePercentage() {
+        public double cpuUsed() {
             return 0.0;
         }
 
         @Override
-        public double storageUsagePercentage() {
+        public double cpuAvailable() {
             return 0.0;
         }
 
         @Override
-        public Map<String, Double> customUsage() {
-            return Map.of();
+        public double cpuUtilization() {
+            return 0.0;
+        }
+
+        @Override
+        public double memoryGbTotal() {
+            return 0.0;
+        }
+
+        @Override
+        public double memoryGbUsed() {
+            return 0.0;
+        }
+
+        @Override
+        public double memoryGbAvailable() {
+            return 0.0;
+        }
+
+        @Override
+        public double memoryUtilization() {
+            return 0.0;
+        }
+
+        @Override
+        public double storageGbTotal() {
+            return 0.0;
+        }
+
+        @Override
+        public double storageGbUsed() {
+            return 0.0;
+        }
+
+        @Override
+        public double storageGbAvailable() {
+            return 0.0;
+        }
+
+        @Override
+        public Instant timestamp() {
+            return Instant.now();
         }
     }
 
     private static class StubResourcePool implements ResourcePool {
         private final String name;
+        private final PoolPriority priority;
 
-        StubResourcePool(String name) {
+        StubResourcePool(String name, PoolPriority priority) {
             this.name = name;
+            this.priority = priority;
         }
 
         @Override
@@ -223,22 +213,22 @@ public class DefaultResourceManager implements ResourceManager {
 
         @Override
         public Runtime.Resources capacity() {
-            return new StubResources();
-        }
-
-        @Override
-        public Runtime.Resources available() {
-            return new StubResources();
+            return Runtime.Resources.of(0.0, 0.0, 0.0);
         }
 
         @Override
         public PoolPriority priority() {
-            return PoolPriority.NORMAL;
+            return priority;
         }
 
         @Override
         public List<Runtime.ResourceAllocation> allocations() {
             return List.of();
+        }
+
+        @Override
+        public ResourceUsage usage() {
+            return new StubResourceUsage();
         }
     }
 
@@ -255,22 +245,32 @@ public class DefaultResourceManager implements ResourceManager {
         }
 
         @Override
-        public Runtime.Resources used() {
-            return new StubResources();
+        public double cpuUsed() {
+            return 0.0;
         }
 
         @Override
-        public Runtime.Resources limit() {
-            return new StubResources();
+        public double memoryGbUsed() {
+            return 0.0;
         }
 
         @Override
-        public Runtime.Resources remaining() {
-            return new StubResources();
+        public double storageGbUsed() {
+            return 0.0;
         }
 
         @Override
-        public boolean isOverQuota() {
+        public Duration durationUsedToday() {
+            return Duration.ZERO;
+        }
+
+        @Override
+        public Duration remainingDuration() {
+            return Duration.ofHours(24);
+        }
+
+        @Override
+        public boolean isExceeded() {
             return false;
         }
     }

@@ -364,7 +364,7 @@ import java.util.Random;
 ///
 /// @see ExecutionPlan
 /// @see TestPlan
-/// @see ExecutionPolicies
+/// @see io.nosqlbench.paramodel.plan.policies.ExecutionPolicies
 /// @see Trial
 ///
 public interface TrialOrdering {

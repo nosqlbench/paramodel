@@ -20,7 +20,7 @@ public class MockTestPlan implements TestPlan {
     private final ExecutionPolicies policies;
     private final OptimizationStrategy optimizationStrategy;
     private final TestPlan.TestPlanMetadata metadata;
-    private final boolean committed;
+    private boolean committed;
 
     public MockTestPlan(String name,
                        List<Axis<?>> axes,
@@ -92,12 +92,8 @@ public class MockTestPlan implements TestPlan {
 
     @Override
     public ValidationResult validate() {
-        // Basic validation
         if (name == null || name.isEmpty()) {
             return MockValidationResult.failed("TestPlan must have a name");
-        }
-        if (axes.isEmpty()) {
-            return MockValidationResult.failed("TestPlan must have at least one axis");
         }
         return MockValidationResult.passed();
     }
@@ -123,8 +119,11 @@ public class MockTestPlan implements TestPlan {
         if (committed) {
             throw new IllegalStateException("TestPlan already committed");
         }
-        // Return a basic execution plan
-        return new MockExecutionPlan(this);
+        committed = true;
+        return new MockExecutionPlan(
+            UUID.randomUUID().toString(),
+            UUID.randomUUID().toString()
+        );
     }
 
     @Override
@@ -137,7 +136,7 @@ public class MockTestPlan implements TestPlan {
     }
 
     public static class Builder {
-        private String name;
+        private String name = "unnamed-plan";
         private final List<Axis<?>> axes = new ArrayList<>();
         private final List<Element> elements = new ArrayList<>();
         private ExecutionPolicies policies;

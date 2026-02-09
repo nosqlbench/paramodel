@@ -11,10 +11,11 @@ import static org.assertj.core.api.Assertions.*;
  * Technology Compatibility Kit tests for AtomicStep contract.
  *
  * Validates that implementations correctly:
- * - Store trial references
  * - Provide unique identifiers
- * - Track execution context
- * - Support metadata
+ * - Have a step type
+ * - Support descriptions
+ * - Track dependencies
+ * - Provide metadata
  */
 public abstract class AtomicStepTCK {
 
@@ -29,28 +30,28 @@ public abstract class AtomicStepTCK {
     }
 
     @Test
-    public void testAtomicStepHasTrial() {
+    public void testAtomicStepHasType() {
         Trial trial = getProvider().createTrial("t1");
         AtomicStep step = getProvider().createAtomicStep("step-1", trial);
 
-        assertThat(step.trial()).isEqualTo(trial);
+        assertThat(step.type()).isNotNull();
     }
 
     @Test
-    public void testAtomicStepHasExecutionContext() {
+    public void testAtomicStepHasDescription() {
         Trial trial = getProvider().createTrial("t1");
         AtomicStep step = getProvider().createAtomicStep("step-1", trial);
 
-        assertThat(step.executionContext()).isNotNull();
+        assertThat(step.description()).isNotNull();
     }
 
     @Test
-    public void testAtomicStepExecutionContextIsMap() {
+    public void testAtomicStepHasMetadata() {
         Trial trial = getProvider().createTrial("t1");
         AtomicStep step = getProvider().createAtomicStep("step-1", trial);
 
-        // Execution context should be accessible as a map
-        assertThat(step.executionContext()).isInstanceOf(java.util.Map.class);
+        assertThat(step.metadata()).isNotNull();
+        assertThat(step.metadata()).isInstanceOf(java.util.Map.class);
     }
 
     @Test
@@ -63,21 +64,20 @@ public abstract class AtomicStepTCK {
     }
 
     @Test
-    public void testAtomicStepWithSameTrial() {
-        Trial trial = getProvider().createTrial("shared-trial");
-        AtomicStep step1 = getProvider().createAtomicStep("step-1", trial);
-        AtomicStep step2 = getProvider().createAtomicStep("step-2", trial);
-
-        assertThat(step1.trial()).isEqualTo(step2.trial());
-    }
-
-    @Test
-    public void testAtomicStepImmutability() {
+    public void testAtomicStepHasDependencies() {
         Trial trial = getProvider().createTrial("t1");
         AtomicStep step = getProvider().createAtomicStep("step-1", trial);
 
-        // Execution context should be unmodifiable or defensive copy
-        assertThatThrownBy(() -> step.executionContext().put("key", "value"))
+        assertThat(step.dependencies()).isNotNull();
+    }
+
+    @Test
+    public void testAtomicStepMetadataImmutability() {
+        Trial trial = getProvider().createTrial("t1");
+        AtomicStep step = getProvider().createAtomicStep("step-1", trial);
+
+        // Metadata should be unmodifiable
+        assertThatThrownBy(() -> step.metadata().put("key", "value"))
             .isInstanceOf(UnsupportedOperationException.class);
     }
 }

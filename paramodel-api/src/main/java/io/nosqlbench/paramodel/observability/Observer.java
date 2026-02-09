@@ -354,7 +354,7 @@ import java.util.Optional;
 /// - Observer MUST preserve event timestamps
 /// - Observer MUST maintain event causality
 ///
-/// @see Executor
+/// @see io.nosqlbench.paramodel.execution.Executor
 /// @see Event
 /// @see MetricsCollector
 ///

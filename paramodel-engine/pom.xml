@@ -48,6 +48,14 @@
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Mock implementations for testing -->
+        <dependency>
+            <groupId>io.nosqlbench</groupId>
+            <artifactId>paramodel-mock</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

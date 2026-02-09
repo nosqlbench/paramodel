@@ -1,85 +1,102 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.core.Value;
 import io.nosqlbench.paramodel.plan.AtomicStep;
-import io.nosqlbench.paramodel.sequence.Trial;
 
+import java.time.Duration;
 import java.util.*;
 
 /**
- * Simple atomic step implementation.
+ * Factory for creating {@link AtomicStep} instances for testing.
+ *
+ * Since {@link AtomicStep} is a sealed interface permitting only specific record types,
+ * this class provides convenient factory methods rather than implementing the interface directly.
  */
-public class MockAtomicStep implements AtomicStep {
-    private final String id;
-    private final Trial trial;
-    private final Map<String, Object> executionContext;
+public final class MockAtomicStep {
 
-    public MockAtomicStep(String id, Trial trial, Map<String, Object> executionContext) {
-        this.id = Objects.requireNonNull(id);
-        this.trial = Objects.requireNonNull(trial);
-        this.executionContext = new HashMap<>(executionContext);
+    private MockAtomicStep() {}
+
+    /// Creates an {@link AtomicStep.ExecuteTrial} with minimal defaults.
+    public static AtomicStep.ExecuteTrial executeTrial(String id, String trialId) {
+        return new AtomicStep.ExecuteTrial(
+            id,
+            trialId,
+            Map.of(),
+            List.of(),
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.minimal(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 
-    public MockAtomicStep(String id, Trial trial) {
-        this(id, trial, Map.of());
+    /// Creates an {@link AtomicStep.ExecuteTrial} with dependencies.
+    public static AtomicStep.ExecuteTrial executeTrial(String id, String trialId,
+                                                       List<String> dependencies) {
+        return new AtomicStep.ExecuteTrial(
+            id,
+            trialId,
+            Map.of(),
+            dependencies,
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.minimal(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 
-    @Override
-    public String id() {
-        return id;
+    /// Creates an {@link AtomicStep.DeployElement} with minimal defaults.
+    public static AtomicStep.DeployElement deployElement(String id, String elementId) {
+        return new AtomicStep.DeployElement(
+            id,
+            elementId,
+            Map.of(),
+            List.of(),
+            List.of(),
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.minimal(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 
-    @Override
-    public Trial trial() {
-        return trial;
+    /// Creates an {@link AtomicStep.TeardownElement} with minimal defaults.
+    public static AtomicStep.TeardownElement teardownElement(String id, String elementId) {
+        return new AtomicStep.TeardownElement(
+            id,
+            elementId,
+            false,
+            List.of(),
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.none(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 
-    @Override
-    public Map<String, Object> executionContext() {
-        return Collections.unmodifiableMap(executionContext);
+    /// Creates an {@link AtomicStep.BarrierSync} with minimal defaults.
+    public static AtomicStep.BarrierSync barrierSync(String id, String barrierId,
+                                                      List<String> dependencies) {
+        return new AtomicStep.BarrierSync(
+            id,
+            barrierId,
+            dependencies,
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.none(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 
-    public static MockAtomicStep of(String id, Trial trial) {
-        return new MockAtomicStep(id, trial);
-    }
-
-    public static MockAtomicStep of(Trial trial) {
-        return new MockAtomicStep(trial.id(), trial);
-    }
-
-    public static Builder builder() {
-        return new Builder();
-    }
-
-    public static class Builder {
-        private String id;
-        private Trial trial;
-        private final Map<String, Object> executionContext = new HashMap<>();
-
-        public Builder id(String id) {
-            this.id = id;
-            return this;
-        }
-
-        public Builder trial(Trial trial) {
-            this.trial = trial;
-            if (this.id == null) {
-                this.id = trial.id();
-            }
-            return this;
-        }
-
-        public Builder context(String key, Object value) {
-            this.executionContext.put(key, value);
-            return this;
-        }
-
-        public MockAtomicStep build() {
-            if (id == null) {
-                id = UUID.randomUUID().toString();
-            }
-            Objects.requireNonNull(trial, "trial cannot be null");
-            return new MockAtomicStep(id, trial, executionContext);
-        }
+    /// Creates an {@link AtomicStep.CheckpointState} with minimal defaults.
+    public static AtomicStep.CheckpointState checkpointState(String id, String checkpointId) {
+        return new AtomicStep.CheckpointState(
+            id,
+            checkpointId,
+            List.of(),
+            Optional.empty(),
+            AtomicStep.ResourceRequirements.none(),
+            Optional.empty(),
+            Map.of()
+        );
     }
 }

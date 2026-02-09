@@ -74,28 +74,23 @@ public abstract class SequenceTCK {
     }
 
     @Test
-    public void testSequenceBuilderAddsTrials() {
+    public void testSequenceCreatedFromTrials() {
         Trial t1 = getProvider().createTrial("t1");
         Trial t2 = getProvider().createTrial("t2");
 
-        Sequence sequence = getProvider().createSequenceBuilder()
-            .addTrial(t1)
-            .addTrial(t2)
-            .build();
+        Sequence sequence = getProvider().createSequence(List.of(t1, t2));
 
         assertThat(sequence.trials()).hasSize(2);
         assertThat(sequence.trials()).containsExactly(t1, t2);
     }
 
     @Test
-    public void testSequenceBuilderAddMultipleTrials() {
+    public void testSequenceFromMultipleTrials() {
         Trial t1 = getProvider().createTrial("t1");
         Trial t2 = getProvider().createTrial("t2");
         Trial t3 = getProvider().createTrial("t3");
 
-        Sequence sequence = getProvider().createSequenceBuilder()
-            .addTrials(List.of(t1, t2, t3))
-            .build();
+        Sequence sequence = getProvider().createSequence(List.of(t1, t2, t3));
 
         assertThat(sequence.trials()).hasSize(3);
     }

@@ -55,14 +55,15 @@ public abstract class DomainTCK {
     public void testDomainCardinalityForDiscrete() {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of("x", "y", "z", "w"));
 
-        assertThat(domain.cardinality()).isEqualTo(4);
+        assertThat(domain.cardinality()).isPresent();
+        assertThat(domain.cardinality().orElseThrow()).isEqualTo(4L);
     }
 
     @Test
     public void testDomainIsFinite() {
         Domain<Integer> domain = getProvider().createDiscreteDomain(List.of(1, 2, 3));
 
-        assertThat(domain.isFinite()).isTrue();
+        assertThat(domain.cardinality()).isPresent();
     }
 
     @Test
@@ -82,15 +83,16 @@ public abstract class DomainTCK {
     public void testEmptyDomainHasZeroCardinality() {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of());
 
-        assertThat(domain.cardinality()).isEqualTo(0);
-        assertThat(domain.isFinite()).isTrue();
+        assertThat(domain.cardinality()).isPresent();
+        assertThat(domain.cardinality().orElseThrow()).isEqualTo(0L);
     }
 
     @Test
     public void testSingleElementDomain() {
         Domain<String> domain = getProvider().createDiscreteDomain(List.of("only"));
 
-        assertThat(domain.cardinality()).isEqualTo(1);
+        assertThat(domain.cardinality()).isPresent();
+        assertThat(domain.cardinality().orElseThrow()).isEqualTo(1L);
         assertThat(domain.contains("only")).isTrue();
 
         Random rng = new Random();

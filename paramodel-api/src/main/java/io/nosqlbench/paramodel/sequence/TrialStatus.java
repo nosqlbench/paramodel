@@ -106,7 +106,6 @@ package io.nosqlbench.paramodel.sequence;
 /// ```
 ///
 /// @see TrialResult
-/// @see com.paramodel.api.execution.TrialExecutor
 /// @since 0.1.0
 ///
 public enum TrialStatus {

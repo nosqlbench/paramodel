@@ -2,6 +2,7 @@ package io.nosqlbench.paramodel.mock.plan;
 
 import io.nosqlbench.paramodel.plan.*;
 
+import java.time.Duration;
 import java.util.*;
 
 /**
@@ -33,14 +34,25 @@ public class MockExecutionGraph implements ExecutionGraph {
     public List<Edge> edges() {
         List<Edge> result = new ArrayList<>();
         for (Map.Entry<String, Set<String>> entry : dependencies.entrySet()) {
-            String fromId = entry.getKey();
-            for (String toId : entry.getValue()) {
-                result.add(new StubEdge(fromId, toId));
+            String targetId = entry.getKey();
+            AtomicStep target = steps.get(targetId);
+            if (target == null) continue;
+            for (String sourceId : entry.getValue()) {
+                AtomicStep source = steps.get(sourceId);
+                if (source != null) {
+                    result.add(new Edge(source, target, Duration.ZERO));
+                }
             }
         }
         return result;
     }
 
+    @Override
+    public Optional<AtomicStep> findStep(String stepId) {
+        return Optional.ofNullable(steps.get(stepId));
+    }
+
+    @Override
     public Set<AtomicStep> dependencies(AtomicStep step) {
         Set<String> depIds = dependencies.getOrDefault(step.id(), Set.of());
         Set<AtomicStep> result = new HashSet<>();
@@ -54,32 +66,84 @@ public class MockExecutionGraph implements ExecutionGraph {
     }
 
     @Override
+    public Set<AtomicStep> transitiveDependencies(AtomicStep step) {
+        Set<AtomicStep> result = new HashSet<>();
+        Set<String> visited = new HashSet<>();
+        collectTransitiveDeps(step.id(), visited, result);
+        return result;
+    }
+
+    private void collectTransitiveDeps(String stepId, Set<String> visited, Set<AtomicStep> result) {
+        Set<String> depIds = dependencies.getOrDefault(stepId, Set.of());
+        for (String depId : depIds) {
+            if (visited.add(depId)) {
+                AtomicStep dep = steps.get(depId);
+                if (dep != null) {
+                    result.add(dep);
+                    collectTransitiveDeps(depId, visited, result);
+                }
+            }
+        }
+    }
+
+    @Override
+    public Set<AtomicStep> dependents(AtomicStep step) {
+        Set<AtomicStep> result = new HashSet<>();
+        for (Map.Entry<String, Set<String>> entry : dependencies.entrySet()) {
+            if (entry.getValue().contains(step.id())) {
+                AtomicStep dependent = steps.get(entry.getKey());
+                if (dependent != null) {
+                    result.add(dependent);
+                }
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public Set<AtomicStep> transitiveDependents(AtomicStep step) {
+        Set<AtomicStep> result = new HashSet<>();
+        Set<String> visited = new HashSet<>();
+        collectTransitiveDependents(step.id(), visited, result);
+        return result;
+    }
+
+    private void collectTransitiveDependents(String stepId, Set<String> visited, Set<AtomicStep> result) {
+        for (Map.Entry<String, Set<String>> entry : dependencies.entrySet()) {
+            if (entry.getValue().contains(stepId) && visited.add(entry.getKey())) {
+                AtomicStep dependent = steps.get(entry.getKey());
+                if (dependent != null) {
+                    result.add(dependent);
+                    collectTransitiveDependents(entry.getKey(), visited, result);
+                }
+            }
+        }
+    }
+
+    @Override
     public List<AtomicStep> criticalPath() {
         return new ArrayList<>(steps.values());
     }
 
     @Override
-    public java.time.Duration criticalPathDuration() {
-        return java.time.Duration.ZERO;
+    public Duration criticalPathDuration() {
+        return Duration.ZERO;
     }
 
     @Override
-    public java.time.Duration totalDuration() {
-        return java.time.Duration.ZERO;
+    public Duration totalDuration() {
+        return Duration.ZERO;
     }
 
     @Override
     public List<AtomicStep> topologicalSort() {
-        // Simple topological sort
         List<AtomicStep> result = new ArrayList<>();
         Set<String> visited = new HashSet<>();
-
         for (AtomicStep step : steps.values()) {
             if (!visited.contains(step.id())) {
                 topologicalSortUtil(step.id(), visited, result);
             }
         }
-
         return result;
     }
 
@@ -99,87 +163,76 @@ public class MockExecutionGraph implements ExecutionGraph {
     }
 
     @Override
+    public boolean canExecuteConcurrently(AtomicStep step1, AtomicStep step2) {
+        return !transitiveDependencies(step1).contains(step2)
+            && !transitiveDependencies(step2).contains(step1);
+    }
+
+    @Override
+    public Schedule computeSchedule(ResourceLimits limits) {
+        throw new UnsupportedOperationException("MockExecutionGraph does not support schedule computation");
+    }
+
+    @Override
+    public ExecutionGraph subgraph(Set<String> stepIds) {
+        Map<String, AtomicStep> subSteps = new HashMap<>();
+        Map<String, Set<String>> subDeps = new HashMap<>();
+        for (String id : stepIds) {
+            AtomicStep step = steps.get(id);
+            if (step != null) {
+                subSteps.put(id, step);
+                Set<String> deps = dependencies.getOrDefault(id, Set.of());
+                Set<String> filteredDeps = new HashSet<>(deps);
+                filteredDeps.retainAll(stepIds);
+                if (!filteredDeps.isEmpty()) {
+                    subDeps.put(id, filteredDeps);
+                }
+            }
+        }
+        return new MockExecutionGraph(subSteps, subDeps, List.of());
+    }
+
+    @Override
+    public ExecutionGraph subgraphForElement(String elementId) {
+        return new MockExecutionGraph();
+    }
+
+    @Override
+    public ExecutionGraph subgraphForTrials(List<String> trialIds) {
+        return new MockExecutionGraph();
+    }
+
+    @Override
     public boolean isAcyclic() {
         return true;
     }
 
     @Override
     public GraphStatistics statistics() {
-        return new StubGraphStatistics();
-    }
-
-    private static class StubEdge implements Edge {
-        private final String fromId;
-        private final String toId;
-
-        public StubEdge(String fromId, String toId) {
-            this.fromId = fromId;
-            this.toId = toId;
-        }
-
-        @Override
-        public String from() {
-            return fromId;
-        }
-
-        @Override
-        public String to() {
-            return toId;
-        }
-
-        @Override
-        public EdgeType type() {
-            return EdgeType.SEQUENTIAL;
-        }
-
-        @Override
-        public Optional<String> label() {
-            return Optional.empty();
-        }
-    }
-
-    private static class StubGraphStatistics implements GraphStatistics {
-        @Override
-        public int totalSteps() {
-            return 0;
-        }
-
-        @Override
-        public int totalEdges() {
-            return 0;
-        }
-
-        @Override
-        public java.time.Duration criticalPathDuration() {
-            return java.time.Duration.ZERO;
-        }
-
-        @Override
-        public int maximumParallelism() {
-            return 1;
-        }
-
-        @Override
-        public double averageParallelism() {
-            return 1.0;
-        }
-
-        @Override
-        public Map<String, Object> additionalMetrics() {
-            return Map.of();
-        }
+        int nodeCount = steps.size();
+        int edgeCount = dependencies.values().stream().mapToInt(Set::size).sum();
+        return new GraphStatistics(
+            nodeCount,
+            edgeCount,
+            0,
+            0,
+            0,
+            nodeCount > 0 ? (double) edgeCount / nodeCount : 0.0,
+            Duration.ZERO,
+            Duration.ZERO,
+            maximumParallelism(),
+            averageParallelism()
+        );
     }
 
     private void topologicalSortUtil(String stepId, Set<String> visited, List<AtomicStep> result) {
         visited.add(stepId);
-
         Set<String> deps = dependencies.getOrDefault(stepId, Set.of());
         for (String depId : deps) {
             if (!visited.contains(depId)) {
                 topologicalSortUtil(depId, visited, result);
             }
         }
-
         AtomicStep step = steps.get(stepId);
         if (step != null) {
             result.add(step);

@@ -196,8 +196,6 @@ package io.nosqlbench.paramodel.plan;
 ///
 /// @see Element
 /// @see TestPlan
-/// @see com.paramodel.api.compilation.PlanCompiler
-/// @see com.paramodel.api.execution.Barrier
 /// @since 0.1.0
 ///
 public enum RelationshipType {

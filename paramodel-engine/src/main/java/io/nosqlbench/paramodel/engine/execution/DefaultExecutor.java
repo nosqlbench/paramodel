@@ -117,7 +117,7 @@ public class DefaultExecutor implements Executor {
 
         @Override
         public ExecutionStatus finalStatus() {
-            return ExecutionStatus.COMPLETED;
+            return new StubExecutionStatus(ExecutionPhase.COMPLETED);
         }
 
         @Override
@@ -199,7 +199,9 @@ public class DefaultExecutor implements Executor {
 
         @Override
         public ExecutionStatus status() {
-            return future.isDone() ? ExecutionStatus.COMPLETED : ExecutionStatus.EXECUTING;
+            return future.isDone()
+                ? new StubExecutionStatus(ExecutionPhase.COMPLETED)
+                : new StubExecutionStatus(ExecutionPhase.EXECUTING);
         }
 
         @Override
@@ -268,6 +270,54 @@ public class DefaultExecutor implements Executor {
         @Override
         public void onStepComplete(StepCompleteListener listener) {
             // Stub
+        }
+    }
+
+    private static class StubExecutionStatus implements ExecutionStatus {
+        private final ExecutionPhase phase;
+
+        StubExecutionStatus(ExecutionPhase phase) {
+            this.phase = phase;
+        }
+
+        @Override
+        public ExecutionPhase phase() {
+            return phase;
+        }
+
+        @Override
+        public int completedTrials() {
+            return 0;
+        }
+
+        @Override
+        public int totalTrials() {
+            return 0;
+        }
+
+        @Override
+        public int completedSteps() {
+            return 0;
+        }
+
+        @Override
+        public int totalSteps() {
+            return 0;
+        }
+
+        @Override
+        public double progressPercentage() {
+            return phase == ExecutionPhase.COMPLETED ? 100.0 : 0.0;
+        }
+
+        @Override
+        public Optional<Duration> estimatedTimeRemaining() {
+            return Optional.empty();
+        }
+
+        @Override
+        public Map<String, Object> currentMetrics() {
+            return Map.of();
         }
     }
 

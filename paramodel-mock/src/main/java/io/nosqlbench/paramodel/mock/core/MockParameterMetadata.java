@@ -2,6 +2,7 @@ package io.nosqlbench.paramodel.mock.core;
 
 import io.nosqlbench.paramodel.core.metadata.ParameterMetadata;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
@@ -9,16 +10,19 @@ import java.util.Optional;
  * Simple parameter metadata implementation.
  */
 public record MockParameterMetadata(
-    String name,
+    Instant createdAt,
+    Optional<String> createdBy,
     Optional<String> description,
-    Map<String, String> tags
+    Map<String, String> tags,
+    String generationStrategy,
+    Optional<String> version
 ) implements ParameterMetadata {
 
     public MockParameterMetadata(String name) {
-        this(name, Optional.empty(), Map.of());
+        this(Instant.now(), Optional.empty(), Optional.empty(), Map.of(), "random", Optional.empty());
     }
 
     public MockParameterMetadata(String name, String description) {
-        this(name, Optional.of(description), Map.of());
+        this(Instant.now(), Optional.empty(), Optional.of(description), Map.of(), "random", Optional.empty());
     }
 }

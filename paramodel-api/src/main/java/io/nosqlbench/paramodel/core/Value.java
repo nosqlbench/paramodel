@@ -115,7 +115,6 @@ import java.util.Optional;
 /// @param <T> the type of the wrapped value
 /// @see Parameter
 /// @see Trial
-/// @see com.paramodel.api.versioning.ProvenanceService
 /// @since 0.1.0
 ///
 public interface Value<T> {
@@ -286,7 +285,6 @@ public interface Value<T> {
     /// Result format: hex string (64 characters for SHA-256).
     ///
     /// @return hex-encoded fingerprint, never null
-    /// @see com.paramodel.api.versioning.ProvenanceService
     ///
     String fingerprint();
 }

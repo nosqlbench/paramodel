@@ -18,17 +18,17 @@ import static org.assertj.core.api.Assertions.*;
  * - Represent directed acyclic graphs (DAGs)
  * - Track dependencies between steps
  * - Compute topological orderings
- * - Handle barriers and synchronization
+ * - Provide graph statistics
  */
 public abstract class ExecutionGraphTCK {
 
     protected abstract ImplementationProvider getProvider();
 
     @Test
-    public void testExecutionGraphHasNodes() {
+    public void testExecutionGraphHasSteps() {
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        assertThat(graph.nodes()).isNotNull();
+        assertThat(graph.steps()).isNotNull();
     }
 
     @Test
@@ -38,8 +38,8 @@ public abstract class ExecutionGraphTCK {
 
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        // Graph nodes should be queryable
-        assertThat(graph.nodes()).isNotNull();
+        // Graph steps should be queryable
+        assertThat(graph.steps()).isNotNull();
     }
 
     @Test
@@ -56,16 +56,16 @@ public abstract class ExecutionGraphTCK {
     }
 
     @Test
-    public void testExecutionGraphTopologicalOrder() {
+    public void testExecutionGraphTopologicalSort() {
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        List<AtomicStep> ordered = graph.topologicalOrder();
+        List<AtomicStep> ordered = graph.topologicalSort();
 
         assertThat(ordered).isNotNull();
     }
 
     @Test
-    public void testExecutionGraphTopologicalOrderRespectsDependencies() {
+    public void testExecutionGraphTopologicalSortRespectsDependencies() {
         Trial t1 = getProvider().createTrial("t1");
         Trial t2 = getProvider().createTrial("t2");
         Trial t3 = getProvider().createTrial("t3");
@@ -76,26 +76,26 @@ public abstract class ExecutionGraphTCK {
 
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        List<AtomicStep> ordered = graph.topologicalOrder();
+        List<AtomicStep> ordered = graph.topologicalSort();
 
         // In a valid topological order, dependencies come before dependents
         assertThat(ordered).isNotNull();
     }
 
     @Test
-    public void testExecutionGraphBarriers() {
+    public void testExecutionGraphEdges() {
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        assertThat(graph.barriers()).isNotNull();
+        assertThat(graph.edges()).isNotNull();
     }
 
     @Test
     public void testEmptyExecutionGraph() {
         ExecutionGraph graph = getProvider().createExecutionGraph();
 
-        assertThat(graph.nodes()).isNotNull();
-        assertThat(graph.barriers()).isNotNull();
-        assertThat(graph.topologicalOrder()).isEmpty();
+        assertThat(graph.steps()).isNotNull();
+        assertThat(graph.edges()).isNotNull();
+        assertThat(graph.topologicalSort()).isEmpty();
     }
 
     @Test

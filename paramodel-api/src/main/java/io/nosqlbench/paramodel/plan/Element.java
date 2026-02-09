@@ -276,8 +276,6 @@ import java.util.Optional;
 ///
 /// @see TestPlan
 /// @see RelationshipType
-/// @see com.paramodel.api.execution.ResourceOrchestrator
-/// @see com.paramodel.api.observability.HealthMonitor
 /// @since 0.1.0
 ///
 public interface Element {

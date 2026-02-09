@@ -410,7 +410,7 @@ public interface ResourceManager {
     ///
     /// @param request Resource request
     /// @return Resource allocation
-    /// @throws InsufficientResourcesException if resources unavailable
+    /// @throws Runtime.InsufficientResourcesException if resources unavailable
     ///
     Runtime.ResourceAllocation allocate(ResourceRequest request)
         throws Runtime.InsufficientResourcesException;

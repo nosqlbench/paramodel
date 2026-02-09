@@ -214,7 +214,6 @@
 /// @see Axis
 /// @see Element
 /// @see RelationshipType
-/// @see com.paramodel.api.compilation.PlanCompiler
 /// @since 0.1.0
 ///
 package io.nosqlbench.paramodel.plan;

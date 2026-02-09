@@ -1,6 +1,5 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.execution.ResourceRequirements;
 import io.nosqlbench.paramodel.plan.*;
 import io.nosqlbench.paramodel.sequence.TrialResult;
 
@@ -73,27 +72,7 @@ public class MockExecutionPlan implements ExecutionPlan {
 
     @Override
     public ResourceRequirements resourceRequirements() {
-        return new ResourceRequirements() {
-            @Override
-            public int minCpuCores() {
-                return 1;
-            }
-
-            @Override
-            public long minMemoryMb() {
-                return 512;
-            }
-
-            @Override
-            public Optional<Integer> maxCpuCores() {
-                return Optional.empty();
-            }
-
-            @Override
-            public Optional<Long> maxMemoryMb() {
-                return Optional.empty();
-            }
-        };
+        return new ResourceRequirements(1.0, 512, 1, 0.1, Map.of());
     }
 
     @Override
@@ -114,6 +93,26 @@ public class MockExecutionPlan implements ExecutionPlan {
     @Override
     public ExecutionResults execute() throws ExecutionException {
         return new StubExecutionResults();
+    }
+
+    @Override
+    public ExecutionResults execute(ExecutionObserver observer) throws ExecutionException {
+        return new StubExecutionResults();
+    }
+
+    @Override
+    public ExecutionResults executeWithCheckpoints(Duration checkpointInterval) throws ExecutionException {
+        return new StubExecutionResults();
+    }
+
+    @Override
+    public ExecutionPlan resumeFrom(Checkpoint checkpoint) {
+        return this;
+    }
+
+    @Override
+    public ExecutionPlan withMaxConcurrency(int maxConcurrency) {
+        return this;
     }
 
     @Override

@@ -13,8 +13,8 @@ import static org.assertj.core.api.Assertions.*;
  * Validates that implementations correctly:
  * - Store parameter assignments
  * - Provide unique identifiers
- * - Compute fingerprints
  * - Track metadata
+ * - Validate constraints
  */
 public abstract class TrialTCK {
 
@@ -54,15 +54,15 @@ public abstract class TrialTCK {
     }
 
     @Test
-    public void testTrialHasFingerprint() {
+    public void testTrialIdIsStable() {
         Trial trial = getProvider().createTrial("trial-1");
 
-        assertThat(trial.fingerprint()).isNotNull();
-        assertThat(trial.fingerprint()).isNotEmpty();
+        assertThat(trial.id()).isNotNull();
+        assertThat(trial.id()).isNotEmpty();
     }
 
     @Test
-    public void testTrialFingerprintStability() {
+    public void testTrialIdConsistency() {
         Value<String> value = getProvider().createValue("test", "param");
 
         Trial trial1 = getProvider().createTrialBuilder()
@@ -75,8 +75,8 @@ public abstract class TrialTCK {
             .assignment("param", value)
             .build();
 
-        // Same assignments should produce consistent fingerprints
-        assertThat(trial1.fingerprint()).isEqualTo(trial2.fingerprint());
+        // Same id should produce same id
+        assertThat(trial1.id()).isEqualTo(trial2.id());
     }
 
     @Test
@@ -92,7 +92,7 @@ public abstract class TrialTCK {
             })
             .build();
 
-        assertThat(trial.validate().isValid()).isTrue();
+        assertThat(trial.validate().isPassed()).isTrue();
     }
 
     @Test
@@ -123,6 +123,6 @@ public abstract class TrialTCK {
             .constraint(a -> ((Integer) a.get("threads").value()) <= 64)
             .build();
 
-        assertThat(trial.validate().isValid()).isTrue();
+        assertThat(trial.validate().isPassed()).isTrue();
     }
 }

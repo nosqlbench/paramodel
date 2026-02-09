@@ -11,14 +11,22 @@ public class MockElement implements Element {
     private final String name;
     private final ElementType type;
     private final Map<String, Object> configuration;
+    private final List<Element> dependencies;
     private final HealthCheckSpec healthCheck;
     private final InstancingScope instancingScope;
 
     public MockElement(String name, ElementType type, Map<String, Object> configuration,
                        HealthCheckSpec healthCheck, InstancingScope instancingScope) {
+        this(name, type, configuration, List.of(), healthCheck, instancingScope);
+    }
+
+    public MockElement(String name, ElementType type, Map<String, Object> configuration,
+                       List<Element> dependencies, HealthCheckSpec healthCheck,
+                       InstancingScope instancingScope) {
         this.name = Objects.requireNonNull(name);
         this.type = Objects.requireNonNull(type);
         this.configuration = configuration != null ? Map.copyOf(configuration) : Map.of();
+        this.dependencies = dependencies != null ? List.copyOf(dependencies) : List.of();
         this.healthCheck = healthCheck;
         this.instancingScope = instancingScope;
     }
@@ -36,6 +44,11 @@ public class MockElement implements Element {
     @Override
     public Map<String, Object> configuration() {
         return configuration;
+    }
+
+    @Override
+    public List<Element> dependencies() {
+        return dependencies;
     }
 
     @Override
@@ -76,6 +89,7 @@ public class MockElement implements Element {
         private final String name;
         private ElementType type = ElementType.SERVICE;
         private Map<String, Object> configuration = Map.of();
+        private List<Element> dependencies = new ArrayList<>();
         private HealthCheckSpec healthCheck;
         private InstancingScope instancingScope;
 
@@ -93,6 +107,11 @@ public class MockElement implements Element {
             return this;
         }
 
+        public Builder dependency(Element dependency) {
+            this.dependencies.add(dependency);
+            return this;
+        }
+
         public Builder healthCheck(HealthCheckSpec healthCheck) {
             this.healthCheck = healthCheck;
             return this;
@@ -104,7 +123,7 @@ public class MockElement implements Element {
         }
 
         public MockElement build() {
-            return new MockElement(name, type, configuration, healthCheck, instancingScope);
+            return new MockElement(name, type, configuration, dependencies, healthCheck, instancingScope);
         }
     }
 }

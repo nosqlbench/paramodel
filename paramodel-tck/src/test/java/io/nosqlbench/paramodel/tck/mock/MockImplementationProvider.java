@@ -84,17 +84,19 @@ public class MockImplementationProvider implements ImplementationProvider {
 
     @Override
     public Element createElement(String parameterName) {
-        return MockElement.exhaustive(parameterName);
+        return MockElement.service(parameterName);
     }
 
     @Override
     public ExecutionPlan createExecutionPlan(TestPlan testPlan) {
-        return new MockExecutionPlan(testPlan);
+        return new MockExecutionPlan(
+            java.util.UUID.randomUUID().toString(),
+            java.util.UUID.randomUUID().toString());
     }
 
     @Override
     public AtomicStep createAtomicStep(String id, Trial trial) {
-        return MockAtomicStep.of(id, trial);
+        return MockAtomicStep.executeTrial(id, trial.id());
     }
 
     @Override
@@ -136,23 +138,65 @@ public class MockImplementationProvider implements ImplementationProvider {
      * Mock TestPlanBuilder implementation.
      */
     private static class MockTestPlanBuilder implements TestPlanBuilder {
-        private final MockTestPlan.Builder delegate = MockTestPlan.builder();
+        private MockTestPlan.Builder delegate = MockTestPlan.builder();
 
         @Override
-        public TestPlanBuilder parameter(Parameter<?> parameter) {
-            delegate.parameter(parameter);
+        public TestPlanBuilder name(String name) {
+            delegate.name(name);
             return this;
         }
 
         @Override
-        public TestPlanBuilder axis(Axis axis) {
+        public <T> TestPlanBuilder withAxis(Axis<T> axis) {
             delegate.axis(axis);
             return this;
         }
 
         @Override
-        public TestPlanBuilder constraint(Constraint<java.util.Map<String, Value<?>>> constraint) {
-            delegate.constraint(constraint);
+        public <T> TestPlanBuilder withAxisFromParameter(Parameter<T> parameter, int sampleSize) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder withAxes(List<Axis<?>> axes) {
+            for (Axis<?> axis : axes) {
+                delegate.axis(axis);
+            }
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder withElement(Element element) {
+            delegate.element(element);
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder withElements(List<Element> elements) {
+            for (Element element : elements) {
+                delegate.element(element);
+            }
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder relationship(String element1, String element2, RelationshipType type) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder relationship(Element element1, Element element2, RelationshipType type) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder policies(io.nosqlbench.paramodel.plan.policies.ExecutionPolicies policies) {
+            delegate.policies(policies);
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder policies(java.util.function.Consumer<io.nosqlbench.paramodel.plan.policies.ExecutionPolicies.Builder> configurator) {
             return this;
         }
 
@@ -163,8 +207,64 @@ public class MockImplementationProvider implements ImplementationProvider {
         }
 
         @Override
+        public TestPlanBuilder basedOn(TestPlan source) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder axisOrder(List<String> axisNames) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder metadata(String key, Object value) {
+            return this;
+        }
+
+        @Override
+        public TestPlanBuilder metadata(java.util.Map<String, Object> metadata) {
+            return this;
+        }
+
+        @Override
+        public io.nosqlbench.paramodel.core.ValidationResult validate() {
+            return io.nosqlbench.paramodel.mock.core.MockValidationResult.passed();
+        }
+
+        @Override
+        public long estimateTrialSpaceSize() {
+            return 0;
+        }
+
+        @Override
+        public List<Axis<?>> currentAxes() {
+            return List.of();
+        }
+
+        @Override
+        public List<Element> currentElements() {
+            return List.of();
+        }
+
+        @Override
+        public java.util.Map<TestPlan.ElementPair, RelationshipType> currentRelationships() {
+            return java.util.Map.of();
+        }
+
+        @Override
+        public java.util.Optional<io.nosqlbench.paramodel.plan.policies.ExecutionPolicies> currentPolicies() {
+            return java.util.Optional.empty();
+        }
+
+        @Override
         public TestPlan build() {
             return delegate.build();
+        }
+
+        @Override
+        public TestPlanBuilder reset() {
+            delegate = MockTestPlan.builder();
+            return this;
         }
     }
 }

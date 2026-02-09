@@ -4,23 +4,22 @@ import io.nosqlbench.paramodel.core.*;
 import io.nosqlbench.paramodel.sequence.*;
 import io.nosqlbench.paramodel.plan.*;
 
-/**
- * Provider interface for supplying implementation instances to TCK tests.
- *
- * Implementations under test must provide a concrete implementation of this
- * interface to enable TCK validation.
- *
- * Example:
- * ```java
- * public class MockImplementationProvider implements ImplementationProvider {
- *     @Override
- *     public <T> Parameter<T> createParameter(String name, Domain<T> domain) {
- *         return new MockParameter<>(name, domain);
- *     }
- *     // ... implement remaining methods
- * }
- * ```
- */
+///
+/// Provider interface for supplying implementation instances to TCK tests.
+///
+/// Implementations under test must provide a concrete implementation of this
+/// interface to enable TCK validation.
+///
+/// ```java
+/// public class MockImplementationProvider implements ImplementationProvider {
+///     @Override
+///     public <T> Parameter<T> createParameter(String name, Domain<T> domain) {
+///         return new MockParameter<>(name, domain);
+///     }
+///     // ... implement remaining methods
+/// }
+/// ```
+///
 public interface ImplementationProvider {
 
     // Core contracts

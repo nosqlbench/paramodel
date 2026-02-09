@@ -173,7 +173,7 @@ public sealed interface Domain<T>
     ///
     /// @param rng random number generator for sampling
     /// @return a sampled value from the domain
-    /// @throws ValueGenerationException if unable to sample after retries (for Custom domains)
+    /// @throws RuntimeException if unable to sample after retries (for Custom domains)
     ///
     T sample(Random rng);
 

@@ -186,7 +186,7 @@ public interface Parameter<T> {
     /// - MUST be thread-safe
     ///
     /// @return a generated value, never null
-    /// @throws ValueGenerationException if unable to generate valid value after retries
+    /// @throws RuntimeException if unable to generate valid value after retries
     ///
     T generate();
 
