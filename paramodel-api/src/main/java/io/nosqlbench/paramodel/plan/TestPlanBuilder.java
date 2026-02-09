@@ -1,6 +1,8 @@
 package io.nosqlbench.paramodel.plan;
 
 import io.nosqlbench.paramodel.core.Parameter;
+import io.nosqlbench.paramodel.core.ValidationResult;
+import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
 import java.util.List;
 import java.util.Map;
@@ -391,6 +393,14 @@ public interface TestPlanBuilder {
     /// @return This builder for method chaining
     ///
     TestPlanBuilder policies(Consumer<ExecutionPolicies.Builder> configurator);
+
+    ///
+    /// Sets the optimization strategy for the test plan.
+    ///
+    /// @param strategy optimization strategy to use
+    /// @return This builder for method chaining
+    ///
+    TestPlanBuilder optimizationStrategy(OptimizationStrategy strategy);
 
     ///
     /// Creates a new builder based on an existing test plan.

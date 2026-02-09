@@ -179,9 +179,9 @@ import java.util.Optional;
 ///   └── ...
 /// ```
 ///
-/// @see TestPlan
+/// @see io.nosqlbench.paramodel.plan.TestPlan
 /// @see RetryPolicy
-/// @see ExecutionPlan
+/// @see io.nosqlbench.paramodel.plan.ExecutionPlan
 /// @since 0.1.0
 ///
 public interface ExecutionPolicies {
@@ -461,5 +461,31 @@ public interface ExecutionPolicies {
 
         /// Discard all results, mark run FAILED, must re-run all trials
         FAIL_RUN
+    }
+
+    ///
+    /// Builder for creating ExecutionPolicies instances.
+    ///
+    interface Builder {
+        /// Sets the trial retry policy
+        Builder trialRetryPolicy(RetryPolicy policy);
+
+        /// Sets the element deployment retry policy
+        Builder elementDeploymentRetryPolicy(RetryPolicy policy);
+
+        /// Sets the trial timeout
+        Builder trialTimeout(Duration timeout);
+
+        /// Sets the element start timeout
+        Builder elementStartTimeout(Duration timeout);
+
+        /// Sets the intervention mode
+        Builder interventionMode(InterventionMode mode);
+
+        /// Sets the partial run behavior
+        Builder partialRunBehavior(PartialRunBehavior behavior);
+
+        /// Builds the ExecutionPolicies instance
+        ExecutionPolicies build();
     }
 }

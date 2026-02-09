@@ -1,33 +1,44 @@
 package io.nosqlbench.paramodel.mock.plan;
 
+import io.nosqlbench.paramodel.execution.ResourceRequirements;
 import io.nosqlbench.paramodel.plan.*;
+import io.nosqlbench.paramodel.sequence.TrialResult;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 /**
  * Simple execution plan implementation.
  */
 public class MockExecutionPlan implements ExecutionPlan {
-    private final TestPlan testPlan;
+    private final String id;
+    private final String testPlanFingerprint;
     private final List<AtomicStep> steps;
     private final ExecutionGraph graph;
     private final ExecutionPlanMetadata metadata;
 
-    public MockExecutionPlan(TestPlan testPlan) {
-        this(testPlan, List.of(), new MockExecutionGraph(), MockExecutionPlanMetadata.empty());
+    public MockExecutionPlan(String id, String testPlanFingerprint) {
+        this(id, testPlanFingerprint, List.of(), new MockExecutionGraph(), MockExecutionPlanMetadata.empty());
     }
 
-    public MockExecutionPlan(TestPlan testPlan, List<AtomicStep> steps,
+    public MockExecutionPlan(String id, String testPlanFingerprint, List<AtomicStep> steps,
                            ExecutionGraph graph, ExecutionPlanMetadata metadata) {
-        this.testPlan = Objects.requireNonNull(testPlan);
+        this.id = Objects.requireNonNull(id);
+        this.testPlanFingerprint = Objects.requireNonNull(testPlanFingerprint);
         this.steps = new ArrayList<>(steps);
         this.graph = Objects.requireNonNull(graph);
         this.metadata = Objects.requireNonNull(metadata);
     }
 
     @Override
-    public TestPlan testPlan() {
-        return testPlan;
+    public String id() {
+        return id;
+    }
+
+    @Override
+    public String testPlanFingerprint() {
+        return testPlanFingerprint;
     }
 
     @Override
@@ -36,8 +47,73 @@ public class MockExecutionPlan implements ExecutionPlan {
     }
 
     @Override
-    public ExecutionGraph graph() {
+    public List<Barrier> barriers() {
+        return List.of();
+    }
+
+    @Override
+    public ExecutionGraph executionGraph() {
         return graph;
+    }
+
+    @Override
+    public TrialOrdering trialOrdering() {
+        return TrialOrdering.SEQUENTIAL;
+    }
+
+    @Override
+    public Optional<Duration> estimatedDuration() {
+        return Optional.empty();
+    }
+
+    @Override
+    public int estimatedMaxParallelism() {
+        return 1;
+    }
+
+    @Override
+    public ResourceRequirements resourceRequirements() {
+        return new ResourceRequirements() {
+            @Override
+            public int minCpuCores() {
+                return 1;
+            }
+
+            @Override
+            public long minMemoryMb() {
+                return 512;
+            }
+
+            @Override
+            public Optional<Integer> maxCpuCores() {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<Long> maxMemoryMb() {
+                return Optional.empty();
+            }
+        };
+    }
+
+    @Override
+    public Optional<CheckpointStrategy> checkpointStrategy() {
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<Checkpoint> latestCheckpoint() {
+        return Optional.empty();
+    }
+
+    @Override
+    public List<Checkpoint> checkpoints() {
+        return List.of();
+    }
+
+    @Override
+    public ExecutionResults execute() throws ExecutionException {
+        return new StubExecutionResults();
     }
 
     @Override
@@ -45,23 +121,52 @@ public class MockExecutionPlan implements ExecutionPlan {
         return metadata;
     }
 
-    @Override
-    public long estimatedTrialCount() {
-        return steps.size();
+    private static class StubExecutionResults implements ExecutionResults {
+        @Override
+        public String executionPlanId() {
+            return "stub-execution";
+        }
+
+        @Override
+        public Duration totalDuration() {
+            return Duration.ZERO;
+        }
+
+        @Override
+        public List<TrialResult> trialResults() {
+            return List.of();
+        }
+
+        @Override
+        public Map<String, Object> aggregateMetrics() {
+            return Map.of();
+        }
+
+        @Override
+        public boolean isSuccess() {
+            return true;
+        }
+
+        @Override
+        public Optional<Throwable> error() {
+            return Optional.empty();
+        }
     }
 
-    public static Builder builder(TestPlan testPlan) {
-        return new Builder(testPlan);
+    public static Builder builder(String id, String testPlanFingerprint) {
+        return new Builder(id, testPlanFingerprint);
     }
 
     public static class Builder {
-        private final TestPlan testPlan;
+        private final String id;
+        private final String testPlanFingerprint;
         private final List<AtomicStep> steps = new ArrayList<>();
         private ExecutionGraph graph = new MockExecutionGraph();
         private ExecutionPlanMetadata metadata = MockExecutionPlanMetadata.empty();
 
-        public Builder(TestPlan testPlan) {
-            this.testPlan = testPlan;
+        public Builder(String id, String testPlanFingerprint) {
+            this.id = id;
+            this.testPlanFingerprint = testPlanFingerprint;
         }
 
         public Builder step(AtomicStep step) {
@@ -80,7 +185,7 @@ public class MockExecutionPlan implements ExecutionPlan {
         }
 
         public MockExecutionPlan build() {
-            return new MockExecutionPlan(testPlan, steps, graph, metadata);
+            return new MockExecutionPlan(id, testPlanFingerprint, steps, graph, metadata);
         }
     }
 }

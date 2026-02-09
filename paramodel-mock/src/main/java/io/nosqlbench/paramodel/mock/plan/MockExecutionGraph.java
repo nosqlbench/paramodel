@@ -25,11 +25,22 @@ public class MockExecutionGraph implements ExecutionGraph {
     }
 
     @Override
-    public Set<AtomicStep> nodes() {
-        return new HashSet<>(steps.values());
+    public List<AtomicStep> steps() {
+        return new ArrayList<>(steps.values());
     }
 
     @Override
+    public List<Edge> edges() {
+        List<Edge> result = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> entry : dependencies.entrySet()) {
+            String fromId = entry.getKey();
+            for (String toId : entry.getValue()) {
+                result.add(new StubEdge(fromId, toId));
+            }
+        }
+        return result;
+    }
+
     public Set<AtomicStep> dependencies(AtomicStep step) {
         Set<String> depIds = dependencies.getOrDefault(step.id(), Set.of());
         Set<AtomicStep> result = new HashSet<>();
@@ -43,12 +54,22 @@ public class MockExecutionGraph implements ExecutionGraph {
     }
 
     @Override
-    public List<Barrier> barriers() {
-        return Collections.unmodifiableList(barriers);
+    public List<AtomicStep> criticalPath() {
+        return new ArrayList<>(steps.values());
     }
 
     @Override
-    public List<AtomicStep> topologicalOrder() {
+    public java.time.Duration criticalPathDuration() {
+        return java.time.Duration.ZERO;
+    }
+
+    @Override
+    public java.time.Duration totalDuration() {
+        return java.time.Duration.ZERO;
+    }
+
+    @Override
+    public List<AtomicStep> topologicalSort() {
         // Simple topological sort
         List<AtomicStep> result = new ArrayList<>();
         Set<String> visited = new HashSet<>();
@@ -60,6 +81,93 @@ public class MockExecutionGraph implements ExecutionGraph {
         }
 
         return result;
+    }
+
+    @Override
+    public Map<Integer, List<AtomicStep>> parallelWaves() {
+        return Map.of(0, new ArrayList<>(steps.values()));
+    }
+
+    @Override
+    public int maximumParallelism() {
+        return steps.size();
+    }
+
+    @Override
+    public double averageParallelism() {
+        return steps.isEmpty() ? 0.0 : 1.0;
+    }
+
+    @Override
+    public boolean isAcyclic() {
+        return true;
+    }
+
+    @Override
+    public GraphStatistics statistics() {
+        return new StubGraphStatistics();
+    }
+
+    private static class StubEdge implements Edge {
+        private final String fromId;
+        private final String toId;
+
+        public StubEdge(String fromId, String toId) {
+            this.fromId = fromId;
+            this.toId = toId;
+        }
+
+        @Override
+        public String from() {
+            return fromId;
+        }
+
+        @Override
+        public String to() {
+            return toId;
+        }
+
+        @Override
+        public EdgeType type() {
+            return EdgeType.SEQUENTIAL;
+        }
+
+        @Override
+        public Optional<String> label() {
+            return Optional.empty();
+        }
+    }
+
+    private static class StubGraphStatistics implements GraphStatistics {
+        @Override
+        public int totalSteps() {
+            return 0;
+        }
+
+        @Override
+        public int totalEdges() {
+            return 0;
+        }
+
+        @Override
+        public java.time.Duration criticalPathDuration() {
+            return java.time.Duration.ZERO;
+        }
+
+        @Override
+        public int maximumParallelism() {
+            return 1;
+        }
+
+        @Override
+        public double averageParallelism() {
+            return 1.0;
+        }
+
+        @Override
+        public Map<String, Object> additionalMetrics() {
+            return Map.of();
+        }
     }
 
     private void topologicalSortUtil(String stepId, Set<String> visited, List<AtomicStep> result) {

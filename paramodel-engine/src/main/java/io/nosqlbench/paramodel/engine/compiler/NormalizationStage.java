@@ -21,12 +21,12 @@ public class NormalizationStage implements CompilationStage {
     }
 
     @Override
-    public CompilationContext execute(CompilationContext context) {
+    public void execute(CompilationContext context) {
         TestPlan plan = context.testPlan();
 
         // For now, normalization is a no-op
         // In a full implementation, this would canonicalize the plan structure
         // Store normalized plan as artifact
-        return context.withArtifact("normalized_plan", plan);
+        context.put("normalized_plan", plan);
     }
 }

@@ -268,12 +268,12 @@ public sealed interface ValidationResult
     /// assert result.violations().contains("positive constraint failed");
     /// ```
     ///
-    /// @param message high-level failure summary
+    /// @param msg high-level failure summary
     /// @param violations specific constraint failures
     ///
-    record Failed(String message, List<String> violations) implements ValidationResult {
+    record Failed(String msg, List<String> violations) implements ValidationResult {
         public Failed {
-            if (message == null) {
+            if (msg == null) {
                 throw new IllegalArgumentException("message must not be null");
             }
             if (violations == null) {
@@ -293,7 +293,7 @@ public sealed interface ValidationResult
 
         @Override
         public Optional<String> message() {
-            return Optional.of(message);
+            return Optional.of(msg);
         }
 
         @Override
@@ -362,12 +362,12 @@ public sealed interface ValidationResult
     ///       └─ No → Passed
     /// ```
     ///
-    /// @param message warning description
+    /// @param msg warning description
     /// @param underlying the actual validation result
     ///
-    record Warning(String message, ValidationResult underlying) implements ValidationResult {
+    record Warning(String msg, ValidationResult underlying) implements ValidationResult {
         public Warning {
-            if (message == null) {
+            if (msg == null) {
                 throw new IllegalArgumentException("message must not be null");
             }
             if (underlying == null) {
@@ -391,7 +391,7 @@ public sealed interface ValidationResult
 
         @Override
         public Optional<String> message() {
-            return Optional.of(message);
+            return Optional.of(msg);
         }
 
         @Override

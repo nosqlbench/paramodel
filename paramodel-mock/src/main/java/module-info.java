@@ -9,7 +9,6 @@
 module io.nosqlbench.paramodel.mock {
     requires io.nosqlbench.paramodel;
 
-    exports io.nosqlbench.paramodel.mock;
     exports io.nosqlbench.paramodel.mock.core;
     exports io.nosqlbench.paramodel.mock.sequence;
     exports io.nosqlbench.paramodel.mock.plan;

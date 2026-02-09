@@ -25,23 +25,10 @@ public abstract class TestPlanTCK {
     protected abstract ImplementationProvider getProvider();
 
     @Test
-    public void testTestPlanHasParameters() {
+    public void testTestPlanHasName() {
         TestPlan plan = getProvider().createTestPlan();
 
-        assertThat(plan.parameters()).isNotNull();
-    }
-
-    @Test
-    public void testTestPlanBuilderAddsParameters() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("a", "b"));
-        Parameter<String> param = getProvider().createParameter("param1", domain);
-
-        TestPlan plan = getProvider().createTestPlanBuilder()
-            .parameter(param)
-            .build();
-
-        assertThat(plan.parameters()).containsKey("param1");
-        assertThat(plan.parameters().get("param1")).isEqualTo(param);
+        assertThat(plan.name()).isNotNull();
     }
 
     @Test
@@ -52,23 +39,29 @@ public abstract class TestPlanTCK {
     }
 
     @Test
-    public void testTestPlanBuilderAddsAxes() {
-        Element element = getProvider().createElement("param1");
-        Axis axis = getProvider().createAxis("axis1", List.of(element));
+    public void testTestPlanBuilderAddsElements() {
+        Element element = getProvider().createElement("elem1");
 
         TestPlan plan = getProvider().createTestPlanBuilder()
-            .axis(axis)
+            .withElement(element)
             .build();
 
-        assertThat(plan.axes()).hasSize(1);
-        assertThat(plan.axes().get(0).name()).isEqualTo("axis1");
+        assertThat(plan.elements()).hasSize(1);
+        assertThat(plan.elements().get(0).name()).isEqualTo("elem1");
     }
 
     @Test
-    public void testTestPlanHasConstraints() {
+    public void testTestPlanHasElements() {
         TestPlan plan = getProvider().createTestPlan();
 
-        assertThat(plan.constraints()).isNotNull();
+        assertThat(plan.elements()).isNotNull();
+    }
+
+    @Test
+    public void testTestPlanHasRelationships() {
+        TestPlan plan = getProvider().createTestPlan();
+
+        assertThat(plan.relationships()).isNotNull();
     }
 
     @Test
@@ -80,29 +73,26 @@ public abstract class TestPlanTCK {
 
     @Test
     public void testTestPlanValidation() {
-        Domain<Integer> domain = getProvider().createDiscreteDomain(List.of(1, 2, 3));
-        Parameter<Integer> param = getProvider().createParameter("numbers", domain);
+        Element element = getProvider().createElement("elem");
 
         TestPlan plan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
-        assertThat(plan.validate().isValid()).isTrue();
+        assertThat(plan.validate().isPassed()).isTrue();
     }
 
     @Test
     public void testTestPlanCommitCreatesExecutionPlan() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("x", "y"));
-        Parameter<String> param = getProvider().createParameter("letters", domain);
+        Element element = getProvider().createElement("elem");
 
         TestPlan plan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
         ExecutionPlan execPlan = plan.commit();
 
         assertThat(execPlan).isNotNull();
-        assertThat(execPlan.testPlan()).isEqualTo(plan);
     }
 
     @Test
@@ -114,11 +104,10 @@ public abstract class TestPlanTCK {
 
     @Test
     public void testTestPlanIsCommittedAfterCommit() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("a"));
-        Parameter<String> param = getProvider().createParameter("p", domain);
+        Element element = getProvider().createElement("elem");
 
         TestPlan plan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
         plan.commit();
@@ -128,11 +117,10 @@ public abstract class TestPlanTCK {
 
     @Test
     public void testTestPlanCannotCommitTwice() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("a"));
-        Parameter<String> param = getProvider().createParameter("p", domain);
+        Element element = getProvider().createElement("elem");
 
         TestPlan plan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
         plan.commit();

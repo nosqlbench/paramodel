@@ -23,22 +23,22 @@ public abstract class ValidationResultTCK {
     public void testValidResult() {
         ValidationResult result = getProvider().createValidationResult(true, "All checks passed");
 
-        assertThat(result.isValid()).isTrue();
+        assertThat(result.isPassed()).isTrue();
     }
 
     @Test
     public void testInvalidResult() {
         ValidationResult result = getProvider().createValidationResult(false, "Validation failed");
 
-        assertThat(result.isValid()).isFalse();
+        assertThat(result.isFailed()).isTrue();
     }
 
     @Test
     public void testResultHasMessage() {
         ValidationResult result = getProvider().createValidationResult(false, "Missing required field");
 
-        assertThat(result.message()).isNotNull();
-        assertThat(result.message()).contains("Missing");
+        assertThat(result.message()).isPresent();
+        assertThat(result.message().get()).contains("Missing");
     }
 
     @Test
@@ -53,7 +53,7 @@ public abstract class ValidationResultTCK {
     public void testValidResultMayHaveEmptyViolations() {
         ValidationResult result = getProvider().createValidationResult(true, "OK");
 
-        assertThat(result.isValid()).isTrue();
+        assertThat(result.isPassed()).isTrue();
         assertThat(result.violations()).isEmpty();
     }
 
@@ -62,6 +62,7 @@ public abstract class ValidationResultTCK {
         String message = "Parameter 'threads' must be positive";
         ValidationResult result = getProvider().createValidationResult(false, message);
 
-        assertThat(result.message()).isEqualTo(message);
+        assertThat(result.message()).isPresent();
+        assertThat(result.message().get()).isEqualTo(message);
     }
 }

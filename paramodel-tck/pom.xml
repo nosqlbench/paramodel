@@ -7,7 +7,7 @@
     <parent>
         <groupId>io.nosqlbench</groupId>
         <artifactId>paramodel-parent</artifactId>
-        <version>1.0-SNAPSHOT</version>
+        <version>0.1.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>paramodel-tck</artifactId>

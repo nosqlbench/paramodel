@@ -6,9 +6,9 @@ import io.nosqlbench.paramodel.plan.TestPlan;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
 /**
  * Default compiler implementation using the 8-stage compilation pipeline.
@@ -25,54 +25,94 @@ import java.util.Objects;
  */
 public class DefaultCompiler implements Compiler {
     private static final Logger log = LoggerFactory.getLogger(DefaultCompiler.class);
+    private static final String VERSION = "0.1.0";
 
     private final List<CompilationStage> stages;
-    private final CompilationContext.Factory contextFactory;
+    private final CompilerOptions compilerOptions;
 
-    public DefaultCompiler(List<CompilationStage> stages, CompilationContext.Factory contextFactory) {
+    public DefaultCompiler(List<CompilationStage> stages, CompilerOptions options) {
         this.stages = new ArrayList<>(Objects.requireNonNull(stages));
-        this.contextFactory = Objects.requireNonNull(contextFactory);
+        this.compilerOptions = Objects.requireNonNull(options);
     }
 
     @Override
-    public ExecutionPlan compile(TestPlan testPlan) {
-        log.info("Starting compilation of TestPlan: {}", testPlan.metadata().fingerprint());
+    public ValidationResult validate(TestPlan testPlan) {
+        io.nosqlbench.paramodel.core.ValidationResult planValidation = testPlan.validate();
 
-        CompilationContext context = contextFactory.create(testPlan);
+        List<CompilationError> errors = new ArrayList<>();
+        List<CompilationWarning> warnings = new ArrayList<>();
+
+        if (planValidation.isFailed()) {
+            for (String violation : planValidation.violations()) {
+                errors.add(new DefaultCompilationError(ErrorSeverity.ERROR, violation, null, null));
+            }
+        }
+
+        return new DefaultValidationResult(errors.isEmpty(), errors, warnings);
+    }
+
+    @Override
+    public CompilationResult compile(TestPlan testPlan) {
+        Instant startTime = Instant.now();
+
+        CompilationContext context = new DefaultCompilationContext(testPlan, compilerOptions);
+        context.startTimer("total");
 
         for (CompilationStage stage : stages) {
             log.debug("Executing stage: {}", stage.name());
 
-            long startTime = System.nanoTime();
-            context = stage.execute(context);
-            long duration = System.nanoTime() - startTime;
+            context.startTimer(stage.name());
+            stage.execute(context);
+            context.stopTimer(stage.name());
 
-            log.debug("Stage {} completed in {}ms", stage.name(), duration / 1_000_000);
-
-            if (!context.isValid()) {
-                log.error("Compilation failed at stage {}: {}", stage.name(), context.errors());
-                throw new CompilationException("Compilation failed at stage: " + stage.name(), context.errors());
+            if (context.hasErrors()) {
+                log.error("Compilation failed at stage {}", stage.name());
+                Duration duration = Duration.between(startTime, Instant.now());
+                return new DefaultCompilationResult(
+                    false,
+                    Optional.empty(),
+                    context.errors(),
+                    context.warnings(),
+                    duration,
+                    context
+                );
             }
         }
 
-        ExecutionPlan plan = context.getExecutionPlan();
-        log.info("Compilation completed. Estimated trials: {}", plan.estimatedTrialCount());
+        context.stopTimer("total");
+        Duration duration = Duration.between(startTime, Instant.now());
 
-        return plan;
+        // Create ExecutionPlan from context
+        ExecutionPlan plan = testPlan.commit();
+
+        log.info("Compilation completed in {}ms", duration.toMillis());
+
+        return new DefaultCompilationResult(
+            true,
+            Optional.of(plan),
+            context.errors(),
+            context.warnings(),
+            duration,
+            context
+        );
     }
 
     @Override
-    public CompilationContext compile(TestPlan testPlan, CompilationContext initialContext) {
-        CompilationContext context = initialContext;
+    public CompilationResult compileIncremental(TestPlan modified, ExecutionPlan previous) {
+        // For now, just do full compilation
+        // Full incremental compilation would require change detection
+        log.warn("Incremental compilation not yet implemented, performing full compilation");
+        return compile(modified);
+    }
 
-        for (CompilationStage stage : stages) {
-            context = stage.execute(context);
-            if (!context.isValid()) {
-                return context;
-            }
-        }
+    @Override
+    public CompilerOptions options() {
+        return compilerOptions;
+    }
 
-        return context;
+    @Override
+    public String version() {
+        return VERSION;
     }
 
     public static Builder builder() {
@@ -81,15 +121,15 @@ public class DefaultCompiler implements Compiler {
 
     public static class Builder {
         private final List<CompilationStage> stages = new ArrayList<>();
-        private CompilationContext.Factory contextFactory = DefaultCompilationContext::new;
+        private CompilerOptions options = new DefaultCompilerOptions();
 
         public Builder stage(CompilationStage stage) {
             this.stages.add(stage);
             return this;
         }
 
-        public Builder contextFactory(CompilationContext.Factory factory) {
-            this.contextFactory = factory;
+        public Builder options(CompilerOptions options) {
+            this.options = options;
             return this;
         }
 
@@ -110,23 +150,153 @@ public class DefaultCompiler implements Compiler {
             if (stages.isEmpty()) {
                 throw new IllegalStateException("Compiler must have at least one stage");
             }
-            return new DefaultCompiler(stages, contextFactory);
+            return new DefaultCompiler(stages, options);
         }
     }
 
-    /**
-     * Exception thrown when compilation fails.
-     */
-    public static class CompilationException extends RuntimeException {
-        private final List<String> errors;
+    // Implementation classes
 
-        public CompilationException(String message, List<String> errors) {
-            super(message);
-            this.errors = new ArrayList<>(errors);
+    private static class DefaultCompilerOptions implements CompilerOptions {
+        @Override
+        public CompilationStrategy strategy() {
+            return CompilationStrategy.BALANCED;
         }
 
-        public List<String> getErrors() {
-            return List.copyOf(errors);
+        @Override
+        public OptimizationLevel optimizationLevel() {
+            return OptimizationLevel.STANDARD;
         }
+
+        @Override
+        public long maxTrialSpaceSize() {
+            return 1_000_000;
+        }
+
+        @Override
+        public boolean parallelCompilation() {
+            return false;
+        }
+
+        @Override
+        public boolean dryRun() {
+            return false;
+        }
+
+        @Override
+        public Map<String, Object> customOptions() {
+            return Map.of();
+        }
+    }
+
+    private static class DefaultValidationResult implements ValidationResult {
+        private final boolean valid;
+        private final List<CompilationError> errors;
+        private final List<CompilationWarning> warnings;
+
+        public DefaultValidationResult(boolean valid, List<CompilationError> errors,
+                                     List<CompilationWarning> warnings) {
+            this.valid = valid;
+            this.errors = List.copyOf(errors);
+            this.warnings = List.copyOf(warnings);
+        }
+
+        @Override
+        public boolean isValid() { return valid; }
+
+        @Override
+        public boolean hasErrors() { return !errors.isEmpty(); }
+
+        @Override
+        public boolean hasWarnings() { return !warnings.isEmpty(); }
+
+        @Override
+        public List<CompilationError> errors() { return errors; }
+
+        @Override
+        public List<CompilationWarning> warnings() { return warnings; }
+    }
+
+    private static class DefaultCompilationResult implements CompilationResult {
+        private final boolean success;
+        private final Optional<ExecutionPlan> plan;
+        private final List<CompilationError> errors;
+        private final List<CompilationWarning> warnings;
+        private final Duration duration;
+        private final CompilationContext context;
+
+        public DefaultCompilationResult(boolean success, Optional<ExecutionPlan> plan,
+                                      List<CompilationError> errors, List<CompilationWarning> warnings,
+                                      Duration duration, CompilationContext context) {
+            this.success = success;
+            this.plan = plan;
+            this.errors = List.copyOf(errors);
+            this.warnings = List.copyOf(warnings);
+            this.duration = duration;
+            this.context = context;
+        }
+
+        @Override
+        public boolean isSuccess() { return success; }
+
+        @Override
+        public Optional<ExecutionPlan> executionPlan() { return plan; }
+
+        @Override
+        public List<CompilationError> errors() { return errors; }
+
+        @Override
+        public List<CompilationWarning> warnings() { return warnings; }
+
+        @Override
+        public Duration compilationDuration() { return duration; }
+
+        @Override
+        public Optional<OptimizationReport> optimizationReport() {
+            return Optional.empty(); // TODO: implement optimization reporting
+        }
+
+        @Override
+        public CompilationStatistics statistics() {
+            Map<String, Duration> timings = context.timings();
+            Map<String, Long> counters = context.counters();
+
+            return new CompilationStatistics(
+                counters.getOrDefault("trials", 0L).intValue(),
+                counters.getOrDefault("steps", 0L).intValue(),
+                counters.getOrDefault("barriers", 0L).intValue(),
+                counters.getOrDefault("optimizations", 0L).intValue(),
+                timings.getOrDefault("ValidationStage", Duration.ZERO),
+                timings.getOrDefault("TrialEnumerationStage", Duration.ZERO),
+                timings.getOrDefault("OptimizationStage", Duration.ZERO),
+                timings.getOrDefault("CodeGenerationStage", Duration.ZERO)
+            );
+        }
+    }
+
+    private static class DefaultCompilationError implements CompilationError {
+        private final ErrorSeverity severity;
+        private final String message;
+        private final String location;
+        private final String suggestion;
+
+        public DefaultCompilationError(ErrorSeverity severity, String message,
+                                      String location, String suggestion) {
+            this.severity = severity;
+            this.message = message;
+            this.location = location;
+            this.suggestion = suggestion;
+        }
+
+        @Override
+        public ErrorSeverity severity() { return severity; }
+
+        @Override
+        public String message() { return message; }
+
+        @Override
+        public Optional<String> location() { return Optional.ofNullable(location); }
+
+        @Override
+        public Optional<String> suggestion() { return Optional.ofNullable(suggestion); }
     }
 }

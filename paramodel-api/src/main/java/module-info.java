@@ -26,8 +26,10 @@
 module io.nosqlbench.paramodel {
     // Export all API packages
     exports io.nosqlbench.paramodel.core;
+    exports io.nosqlbench.paramodel.core.metadata;
     exports io.nosqlbench.paramodel.sequence;
     exports io.nosqlbench.paramodel.plan;
+    exports io.nosqlbench.paramodel.plan.policies;
     exports io.nosqlbench.paramodel.compilation;
     exports io.nosqlbench.paramodel.execution;
     exports io.nosqlbench.paramodel.observability;

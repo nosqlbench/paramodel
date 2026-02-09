@@ -3,87 +3,33 @@ package io.nosqlbench.paramodel.mock.core;
 import io.nosqlbench.paramodel.core.ValidationResult;
 
 import java.util.List;
-import java.util.Optional;
 
 /**
- * Simple validation result implementations.
+ * Factory methods for creating ValidationResult instances in mock implementations.
  */
-public sealed interface MockValidationResult extends ValidationResult {
+public class MockValidationResult {
 
-    record Passed() implements MockValidationResult {
-        @Override
-        public boolean isPassed() {
-            return true;
-        }
-
-        @Override
-        public boolean isFailed() {
-            return false;
-        }
-
-        @Override
-        public Optional<String> message() {
-            return Optional.empty();
-        }
-
-        @Override
-        public List<String> violations() {
-            return List.of();
-        }
+    private MockValidationResult() {
+        // Utility class
     }
 
-    record Failed(String message, List<String> violations) implements MockValidationResult {
-        public Failed(String message) {
-            this(message, List.of(message));
-        }
-
-        @Override
-        public boolean isPassed() {
-            return false;
-        }
-
-        @Override
-        public boolean isFailed() {
-            return true;
-        }
-
-        @Override
-        public Optional<String> message() {
-            return Optional.of(message);
-        }
+    public static ValidationResult passed() {
+        return new ValidationResult.Passed();
     }
 
-    record Warning(String message) implements MockValidationResult {
-        @Override
-        public boolean isPassed() {
-            return true; // Warnings don't fail validation
-        }
-
-        @Override
-        public boolean isFailed() {
-            return false;
-        }
-
-        @Override
-        public Optional<String> message() {
-            return Optional.of(message);
-        }
-
-        @Override
-        public List<String> violations() {
-            return List.of();
-        }
+    public static ValidationResult failed(String message) {
+        return new ValidationResult.Failed(message, List.of(message));
     }
 
-    static MockValidationResult passed() {
-        return new Passed();
+    public static ValidationResult failed(String message, List<String> violations) {
+        return new ValidationResult.Failed(message, violations);
     }
 
-    static MockValidationResult failed(String message) {
-        return new Failed(message);
+    public static ValidationResult warning(String message) {
+        return new ValidationResult.Warning(message, new ValidationResult.Passed());
     }
 
-    static MockValidationResult warning(String message) {
-        return new Warning(message);
+    public static ValidationResult warning(String message, ValidationResult underlying) {
+        return new ValidationResult.Warning(message, underlying);
     }
 }

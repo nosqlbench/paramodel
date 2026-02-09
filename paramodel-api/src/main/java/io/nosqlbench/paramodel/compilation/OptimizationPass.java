@@ -494,6 +494,7 @@ public interface OptimizationPass {
         REDUCTION,      // Reduce number of operations
         REORDERING,     // Change execution order
         STRUCTURAL,     // Modify graph structure
-        SPECULATIVE     // Anticipate future needs
+        SPECULATIVE,    // Anticipate future needs
+        OTHER           // Other optimization types
     }
 }

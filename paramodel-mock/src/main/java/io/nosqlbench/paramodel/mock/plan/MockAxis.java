@@ -1,22 +1,22 @@
 package io.nosqlbench.paramodel.mock.plan;
 
+import io.nosqlbench.paramodel.core.Parameter;
 import io.nosqlbench.paramodel.plan.Axis;
-import io.nosqlbench.paramodel.plan.Element;
 
 import java.util.*;
 
 /**
  * Simple axis implementation.
  */
-public class MockAxis implements Axis {
+public class MockAxis<T> implements Axis<T> {
     private final String name;
-    private final List<Element> elements;
-    private final AxisType type;
+    private final List<T> values;
+    private final String description;
 
-    public MockAxis(String name, List<Element> elements, AxisType type) {
+    public MockAxis(String name, List<T> values, String description) {
         this.name = Objects.requireNonNull(name);
-        this.elements = new ArrayList<>(elements);
-        this.type = Objects.requireNonNull(type);
+        this.values = new ArrayList<>(values);
+        this.description = description;
     }
 
     @Override
@@ -25,53 +25,76 @@ public class MockAxis implements Axis {
     }
 
     @Override
-    public List<Element> elements() {
-        return Collections.unmodifiableList(elements);
+    public List<T> values() {
+        return Collections.unmodifiableList(values);
     }
 
     @Override
-    public AxisType type() {
-        return type;
+    public List<T> boundaryValues() {
+        if (values.isEmpty()) {
+            return List.of();
+        }
+        if (values.size() == 1) {
+            return List.of(values.get(0));
+        }
+        return List.of(values.get(0), values.get(values.size() - 1));
     }
 
     @Override
-    public int size() {
-        return elements.size();
+    public Optional<String> description() {
+        return Optional.ofNullable(description);
     }
 
-    public static MockAxis of(String name, Element... elements) {
-        return new MockAxis(name, Arrays.asList(elements), AxisType.CARTESIAN);
+    @Override
+    public Optional<Parameter<T>> underlyingParameter() {
+        return Optional.empty();
     }
 
-    public static MockAxis of(String name, AxisType type, Element... elements) {
-        return new MockAxis(name, Arrays.asList(elements), type);
+    @SafeVarargs
+    public static <T> MockAxis<T> of(String name, T... values) {
+        return new MockAxis<>(name, Arrays.asList(values), null);
     }
 
-    public static Builder builder(String name) {
-        return new Builder(name);
+    public static <T> MockAxis<T> of(String name, List<T> values) {
+        return new MockAxis<>(name, values, null);
     }
 
-    public static class Builder {
+    public static <T> Builder<T> builder(String name) {
+        return new Builder<>(name);
+    }
+
+    public static class Builder<T> {
         private final String name;
-        private final List<Element> elements = new ArrayList<>();
-        private AxisType type = AxisType.CARTESIAN;
+        private final List<T> values = new ArrayList<>();
+        private String description;
 
         public Builder(String name) {
             this.name = name;
         }
 
-        public Builder element(Element element) {
-            this.elements.add(element);
+        public Builder<T> value(T value) {
+            this.values.add(value);
             return this;
         }
 
-        public Builder type(AxisType type) {
-            this.type = type;
+        @SafeVarargs
+        public final Builder<T> values(T... values) {
+            this.values.addAll(Arrays.asList(values));
             return this;
         }
 
-        public MockAxis build() {
-            return new MockAxis(name, elements, type);
+        public Builder<T> values(List<T> values) {
+            this.values.addAll(values);
+            return this;
+        }
+
+        public Builder<T> description(String description) {
+            this.description = description;
+            return this;
+        }
+
+        public MockAxis<T> build() {
+            return new MockAxis<>(name, values, description);
         }
     }
 }

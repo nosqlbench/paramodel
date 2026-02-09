@@ -4,9 +4,9 @@ import io.nosqlbench.paramodel.core.Constraint;
 import io.nosqlbench.paramodel.core.Parameter;
 import io.nosqlbench.paramodel.core.ValidationResult;
 import io.nosqlbench.paramodel.core.Value;
-import io.nosqlbench.paramodel.core.metadata.TestPlanMetadata;
 import io.nosqlbench.paramodel.mock.core.MockValidationResult;
 import io.nosqlbench.paramodel.plan.*;
+import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
 import java.util.*;
 
@@ -14,40 +14,60 @@ import java.util.*;
  * Simple test plan implementation.
  */
 public class MockTestPlan implements TestPlan {
-    private final Map<String, Parameter<?>> parameters;
-    private final List<Axis> axes;
-    private final List<Constraint<Map<String, Value<?>>>> constraints;
+    private final String name;
+    private final List<Axis<?>> axes;
+    private final List<Element> elements;
+    private final ExecutionPolicies policies;
     private final OptimizationStrategy optimizationStrategy;
-    private final TestPlanMetadata metadata;
+    private final TestPlan.TestPlanMetadata metadata;
     private final boolean committed;
 
-    public MockTestPlan(Map<String, Parameter<?>> parameters,
-                       List<Axis> axes,
-                       List<Constraint<Map<String, Value<?>>>> constraints,
+    public MockTestPlan(String name,
+                       List<Axis<?>> axes,
+                       List<Element> elements,
+                       ExecutionPolicies policies,
                        OptimizationStrategy optimizationStrategy,
-                       TestPlanMetadata metadata,
+                       TestPlan.TestPlanMetadata metadata,
                        boolean committed) {
-        this.parameters = new HashMap<>(parameters);
+        this.name = name;
         this.axes = new ArrayList<>(axes);
-        this.constraints = new ArrayList<>(constraints);
+        this.elements = new ArrayList<>(elements);
+        this.policies = policies;
         this.optimizationStrategy = optimizationStrategy;
         this.metadata = metadata;
         this.committed = committed;
     }
 
     @Override
-    public Map<String, Parameter<?>> parameters() {
-        return Collections.unmodifiableMap(parameters);
+    public String name() {
+        return name;
     }
 
     @Override
-    public List<Axis> axes() {
+    public List<Axis<?>> axes() {
         return Collections.unmodifiableList(axes);
     }
 
     @Override
-    public List<Constraint<Map<String, Value<?>>>> constraints() {
-        return Collections.unmodifiableList(constraints);
+    public List<Element> elements() {
+        return Collections.unmodifiableList(elements);
+    }
+
+    @Override
+    public Map<TestPlan.ElementPair, RelationshipType> relationships() {
+        // Return empty map for simple mock
+        return Map.of();
+    }
+
+    @Override
+    public Optional<RelationshipType> relationshipBetween(Element element1, Element element2) {
+        // No relationships in simple mock
+        return Optional.empty();
+    }
+
+    @Override
+    public ExecutionPolicies policies() {
+        return policies;
     }
 
     @Override
@@ -56,27 +76,46 @@ public class MockTestPlan implements TestPlan {
     }
 
     @Override
-    public TestPlanMetadata metadata() {
+    public TestPlan.TestPlanMetadata metadata() {
         return metadata;
+    }
+
+    @Override
+    public long trialSpaceSize() {
+        // Calculate trial space size as product of all axis cardinalities
+        long size = 1;
+        for (Axis<?> axis : axes) {
+            size *= axis.cardinality();
+        }
+        return size;
     }
 
     @Override
     public ValidationResult validate() {
         // Basic validation
-        if (parameters.isEmpty()) {
-            return MockValidationResult.failed("TestPlan must have at least one parameter");
+        if (name == null || name.isEmpty()) {
+            return MockValidationResult.failed("TestPlan must have a name");
         }
-
-        // Validate all axes reference valid parameters
-        for (Axis axis : axes) {
-            for (Element element : axis.elements()) {
-                if (!parameters.containsKey(element.parameterName())) {
-                    return MockValidationResult.failed("Unknown parameter: " + element.parameterName());
-                }
-            }
+        if (axes.isEmpty()) {
+            return MockValidationResult.failed("TestPlan must have at least one axis");
         }
-
         return MockValidationResult.passed();
+    }
+
+    @Override
+    public TestPlan reorderAxes(List<String> axisNames) {
+        if (committed) {
+            throw new IllegalStateException("Cannot reorder axes on committed plan");
+        }
+        // Create new list with reordered axes
+        List<Axis<?>> reordered = new ArrayList<>();
+        for (String name : axisNames) {
+            axes.stream()
+                .filter(a -> a.name().equals(name))
+                .findFirst()
+                .ifPresent(reordered::add);
+        }
+        return new MockTestPlan(name, reordered, elements, policies, optimizationStrategy, metadata, false);
     }
 
     @Override
@@ -98,24 +137,30 @@ public class MockTestPlan implements TestPlan {
     }
 
     public static class Builder {
-        private final Map<String, Parameter<?>> parameters = new HashMap<>();
-        private final List<Axis> axes = new ArrayList<>();
-        private final List<Constraint<Map<String, Value<?>>>> constraints = new ArrayList<>();
+        private String name;
+        private final List<Axis<?>> axes = new ArrayList<>();
+        private final List<Element> elements = new ArrayList<>();
+        private ExecutionPolicies policies;
         private OptimizationStrategy optimizationStrategy = OptimizationStrategy.NONE;
-        private TestPlanMetadata metadata;
+        private TestPlan.TestPlanMetadata metadata;
 
-        public Builder parameter(Parameter<?> parameter) {
-            this.parameters.put(parameter.name(), parameter);
+        public Builder name(String name) {
+            this.name = name;
             return this;
         }
 
-        public Builder axis(Axis axis) {
+        public Builder axis(Axis<?> axis) {
             this.axes.add(axis);
             return this;
         }
 
-        public Builder constraint(Constraint<Map<String, Value<?>>> constraint) {
-            this.constraints.add(constraint);
+        public Builder element(Element element) {
+            this.elements.add(element);
+            return this;
+        }
+
+        public Builder policies(ExecutionPolicies policies) {
+            this.policies = policies;
             return this;
         }
 
@@ -124,7 +169,7 @@ public class MockTestPlan implements TestPlan {
             return this;
         }
 
-        public Builder metadata(TestPlanMetadata metadata) {
+        public Builder metadata(TestPlan.TestPlanMetadata metadata) {
             this.metadata = metadata;
             return this;
         }
@@ -133,7 +178,11 @@ public class MockTestPlan implements TestPlan {
             if (metadata == null) {
                 metadata = MockTestPlanMetadata.empty();
             }
-            return new MockTestPlan(parameters, axes, constraints, optimizationStrategy, metadata, false);
+            if (policies == null) {
+                // Create default policies - this would need an actual implementation
+                policies = null; // Placeholder
+            }
+            return new MockTestPlan(name, axes, elements, policies, optimizationStrategy, metadata, false);
         }
     }
 }

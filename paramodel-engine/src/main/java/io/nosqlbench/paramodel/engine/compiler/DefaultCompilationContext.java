@@ -1,9 +1,15 @@
 package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.CompilationContext;
-import io.nosqlbench.paramodel.plan.ExecutionPlan;
+import io.nosqlbench.paramodel.compilation.Compiler;
+import io.nosqlbench.paramodel.plan.AtomicStep;
+import io.nosqlbench.paramodel.plan.Barrier;
+import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.plan.TestPlan;
+import io.nosqlbench.paramodel.sequence.Trial;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -13,30 +19,40 @@ import java.util.*;
  * - Source TestPlan
  * - Intermediate artifacts
  * - Errors and warnings
- * - Final ExecutionPlan
+ * - Compilation metrics
  */
 public class DefaultCompilationContext implements CompilationContext {
     private final TestPlan testPlan;
-    private final Map<String, Object> artifacts;
-    private final List<String> errors;
-    private final List<String> warnings;
-    private ExecutionPlan executionPlan;
+    private final Compiler.CompilerOptions options;
+    private final Map<String, Object> environment;
+    private final Map<String, Object> contextData;
 
-    public DefaultCompilationContext(TestPlan testPlan) {
+    // Compilation artifacts
+    private List<Trial> trials;
+    private final Map<String, List<CompilationContext.ElementInstance>> elementInstances;
+    private List<AtomicStep> steps;
+    private List<Barrier> barriers;
+
+    // Diagnostics
+    private final List<Compiler.CompilationError> errors;
+    private final List<Compiler.CompilationWarning> warnings;
+
+    // Metrics
+    private final Map<String, Long> counters;
+    private final Map<String, Instant> timerStarts;
+    private final Map<String, Duration> timings;
+
+    public DefaultCompilationContext(TestPlan testPlan, Compiler.CompilerOptions options) {
         this.testPlan = Objects.requireNonNull(testPlan);
-        this.artifacts = new HashMap<>();
+        this.options = Objects.requireNonNull(options);
+        this.environment = new HashMap<>();
+        this.contextData = new HashMap<>();
+        this.elementInstances = new HashMap<>();
         this.errors = new ArrayList<>();
         this.warnings = new ArrayList<>();
-    }
-
-    private DefaultCompilationContext(TestPlan testPlan, Map<String, Object> artifacts,
-                                     List<String> errors, List<String> warnings,
-                                     ExecutionPlan executionPlan) {
-        this.testPlan = testPlan;
-        this.artifacts = new HashMap<>(artifacts);
-        this.errors = new ArrayList<>(errors);
-        this.warnings = new ArrayList<>(warnings);
-        this.executionPlan = executionPlan;
+        this.counters = new HashMap<>();
+        this.timerStarts = new HashMap<>();
+        this.timings = new HashMap<>();
     }
 
     @Override
@@ -45,73 +61,197 @@ public class DefaultCompilationContext implements CompilationContext {
     }
 
     @Override
-    public <T> Optional<T> getArtifact(String key, Class<T> type) {
-        Object value = artifacts.get(key);
-        if (value == null) {
-            return Optional.empty();
+    public Compiler.CompilerOptions options() {
+        return options;
+    }
+
+    @Override
+    public Map<String, Object> environment() {
+        return Collections.unmodifiableMap(environment);
+    }
+
+    @Override
+    public Optional<List<Trial>> trials() {
+        return Optional.ofNullable(trials);
+    }
+
+    @Override
+    public void setTrials(List<Trial> trials) {
+        this.trials = new ArrayList<>(trials);
+    }
+
+    @Override
+    public Optional<List<CompilationContext.ElementInstance>> elementInstances() {
+        List<CompilationContext.ElementInstance> allInstances = new ArrayList<>();
+        elementInstances.values().forEach(allInstances::addAll);
+        return allInstances.isEmpty() ? Optional.empty() : Optional.of(allInstances);
+    }
+
+    @Override
+    public String planInstance(Element element, List<Trial> trials, String scopeDescription) {
+        String instanceId = element.name() + "_" + UUID.randomUUID();
+        CompilationContext.ElementInstance instance =
+            new CompilationContext.ElementInstance(instanceId, element, trials, scopeDescription, Set.of());
+        elementInstances.computeIfAbsent(element.name(), k -> new ArrayList<>()).add(instance);
+        return instanceId;
+    }
+
+    @Override
+    public Optional<CompilationContext.ElementInstance> getInstanceForTrial(String elementName, Trial trial) {
+        return elementInstances.getOrDefault(elementName, List.of()).stream()
+            .filter(inst -> inst.trials().contains(trial))
+            .findFirst();
+    }
+
+    @Override
+    public List<CompilationContext.ElementInstance> getInstancesForElement(String elementName) {
+        return Collections.unmodifiableList(elementInstances.getOrDefault(elementName, List.of()));
+    }
+
+    @Override
+    public Optional<List<AtomicStep>> steps() {
+        return Optional.ofNullable(steps);
+    }
+
+    @Override
+    public void setSteps(List<AtomicStep> steps) {
+        this.steps = new ArrayList<>(steps);
+    }
+
+    @Override
+    public Optional<List<Barrier>> barriers() {
+        return Optional.ofNullable(barriers);
+    }
+
+    @Override
+    public void setBarriers(List<Barrier> barriers) {
+        this.barriers = new ArrayList<>(barriers);
+    }
+
+    @Override
+    public void addError(Compiler.ErrorSeverity severity, String message, String location, String suggestion) {
+        errors.add(new DefaultCompilationError(severity, message, location, suggestion));
+    }
+
+    @Override
+    public void addWarning(String message, String suggestion) {
+        warnings.add(new DefaultCompilationWarning(message, suggestion));
+    }
+
+    @Override
+    public void addInfo(String message) {
+        // Could store info messages if needed
+    }
+
+    @Override
+    public List<Compiler.CompilationError> errors() {
+        return Collections.unmodifiableList(errors);
+    }
+
+    @Override
+    public List<Compiler.CompilationWarning> warnings() {
+        return Collections.unmodifiableList(warnings);
+    }
+
+    @Override
+    public boolean hasErrors() {
+        return !errors.isEmpty();
+    }
+
+    @Override
+    public void recordMetric(String name, long value) {
+        counters.put(name, value);
+    }
+
+    @Override
+    public void recordMetric(String name, double value) {
+        counters.put(name, (long) value);
+    }
+
+    @Override
+    public void startTimer(String name) {
+        timerStarts.put(name, Instant.now());
+    }
+
+    @Override
+    public void stopTimer(String name) {
+        Instant start = timerStarts.get(name);
+        if (start != null) {
+            timings.put(name, Duration.between(start, Instant.now()));
         }
-        if (type.isInstance(value)) {
-            return Optional.of(type.cast(value));
+    }
+
+    @Override
+    public Map<String, Duration> timings() {
+        return Collections.unmodifiableMap(timings);
+    }
+
+    @Override
+    public Map<String, Long> counters() {
+        return Collections.unmodifiableMap(counters);
+    }
+
+    @Override
+    public void put(String key, Object value) {
+        contextData.put(key, value);
+    }
+
+    @Override
+    public Optional<Object> get(String key) {
+        return Optional.ofNullable(contextData.get(key));
+    }
+
+    // Inner classes for compilation diagnostics
+
+    private static class DefaultCompilationError implements Compiler.CompilationError {
+        private final Compiler.ErrorSeverity severity;
+        private final String message;
+        private final String location;
+        private final String suggestion;
+
+        public DefaultCompilationError(Compiler.ErrorSeverity severity, String message,
+                                      String location, String suggestion) {
+            this.severity = severity;
+            this.message = message;
+            this.location = location;
+            this.suggestion = suggestion;
         }
-        return Optional.empty();
+
+        @Override
+        public Compiler.ErrorSeverity severity() { return severity; }
+
+        @Override
+        public String message() { return message; }
+
+        @Override
+        public Optional<String> location() { return Optional.ofNullable(location); }
+
+        @Override
+        public Optional<String> suggestion() { return Optional.ofNullable(suggestion); }
     }
 
-    @Override
-    public CompilationContext withArtifact(String key, Object artifact) {
-        Map<String, Object> newArtifacts = new HashMap<>(artifacts);
-        newArtifacts.put(key, artifact);
-        return new DefaultCompilationContext(testPlan, newArtifacts, errors, warnings, executionPlan);
-    }
+    private static class DefaultCompilationWarning implements Compiler.CompilationWarning {
+        private final String message;
+        private final String location;
+        private final String suggestion;
 
-    @Override
-    public CompilationContext withError(String error) {
-        List<String> newErrors = new ArrayList<>(errors);
-        newErrors.add(error);
-        return new DefaultCompilationContext(testPlan, artifacts, newErrors, warnings, executionPlan);
-    }
-
-    @Override
-    public CompilationContext withWarning(String warning) {
-        List<String> newWarnings = new ArrayList<>(warnings);
-        newWarnings.add(warning);
-        return new DefaultCompilationContext(testPlan, artifacts, errors, newWarnings, executionPlan);
-    }
-
-    @Override
-    public CompilationContext withExecutionPlan(ExecutionPlan plan) {
-        return new DefaultCompilationContext(testPlan, artifacts, errors, warnings, plan);
-    }
-
-    @Override
-    public boolean isValid() {
-        return errors.isEmpty();
-    }
-
-    @Override
-    public List<String> errors() {
-        return List.copyOf(errors);
-    }
-
-    @Override
-    public List<String> warnings() {
-        return List.copyOf(warnings);
-    }
-
-    @Override
-    public ExecutionPlan getExecutionPlan() {
-        if (executionPlan == null) {
-            throw new IllegalStateException("ExecutionPlan not yet created");
+        public DefaultCompilationWarning(String message, String suggestion) {
+            this(message, null, suggestion);
         }
-        return executionPlan;
-    }
 
-    @Override
-    public boolean hasExecutionPlan() {
-        return executionPlan != null;
-    }
+        public DefaultCompilationWarning(String message, String location, String suggestion) {
+            this.message = message;
+            this.location = location;
+            this.suggestion = suggestion;
+        }
 
-    @Override
-    public Map<String, Object> allArtifacts() {
-        return Map.copyOf(artifacts);
+        @Override
+        public String message() { return message; }
+
+        @Override
+        public Optional<String> location() { return Optional.ofNullable(location); }
+
+        @Override
+        public Optional<String> suggestion() { return Optional.ofNullable(suggestion); }
     }
 }

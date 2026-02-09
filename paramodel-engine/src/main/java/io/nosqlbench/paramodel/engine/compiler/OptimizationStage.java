@@ -38,32 +38,33 @@ public class OptimizationStage implements CompilationStage {
     }
 
     @Override
-    public CompilationContext execute(CompilationContext context) {
+    public void execute(CompilationContext context) {
         OptimizationStrategy strategy = context.testPlan().optimizationStrategy();
 
         // Skip optimization if strategy is NONE
         if (strategy == OptimizationStrategy.NONE) {
-            return context.withArtifact("optimization_applied", false);
+            return;
         }
-
-        CompilationContext result = context;
 
         // Apply optimization passes based on strategy
         for (OptimizationPass pass : passes) {
-            if (shouldApplyPass(pass, strategy)) {
-                result = pass.apply(result);
+            if (shouldApplyPass(pass, strategy, context)) {
+                pass.apply(context);
             }
         }
-
-        return result.withArtifact("optimization_applied", true);
     }
 
-    private boolean shouldApplyPass(OptimizationPass pass, OptimizationStrategy strategy) {
+    private boolean shouldApplyPass(OptimizationPass pass, OptimizationStrategy strategy, CompilationContext context) {
+        // Check if pass should apply first
+        if (!pass.shouldApply(context)) {
+            return false;
+        }
+
         // Determine if pass should be applied based on strategy
         return switch (strategy) {
             case PRUNE_REDUNDANT -> pass instanceof PruneRedundantPass;
-            case MINIMIZE_TRIALS -> true; // Apply all passes
-            case BALANCE_COVERAGE -> true;
+            case AGGRESSIVE -> true; // Apply all passes
+            case BASIC -> pass instanceof PruneRedundantPass; // Only basic optimizations
             case NONE -> false;
         };
     }
@@ -78,10 +79,15 @@ public class OptimizationStage implements CompilationStage {
         }
 
         @Override
-        public CompilationContext apply(CompilationContext context) {
+        public boolean shouldApply(CompilationContext context) {
+            // Only apply if we have steps to optimize
+            return context.steps().isPresent();
+        }
+
+        @Override
+        public void apply(CompilationContext context) {
             // For now, no-op
             // Full implementation would identify and remove redundant trials
-            return context;
         }
     }
 
@@ -95,10 +101,15 @@ public class OptimizationStage implements CompilationStage {
         }
 
         @Override
-        public CompilationContext apply(CompilationContext context) {
+        public boolean shouldApply(CompilationContext context) {
+            // Only apply if we have steps to optimize
+            return context.steps().isPresent();
+        }
+
+        @Override
+        public void apply(CompilationContext context) {
             // For now, no-op
             // Full implementation would merge steps with identical effects
-            return context;
         }
     }
 }

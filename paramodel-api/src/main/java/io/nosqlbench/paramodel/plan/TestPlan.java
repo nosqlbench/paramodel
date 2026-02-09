@@ -303,7 +303,7 @@ import java.util.Optional;
 /// @see Element
 /// @see RelationshipType
 /// @see ExecutionPolicies
-/// @see com.paramodel.api.compilation.PlanCompiler
+/// @see io.nosqlbench.paramodel.compilation.Compiler
 /// @since 0.1.0
 ///
 public interface TestPlan {
@@ -434,6 +434,16 @@ public interface TestPlan {
     /// @return execution policies, never null
     ///
     ExecutionPolicies policies();
+
+    ///
+    /// Returns the optimization strategy for this plan.
+    ///
+    /// The optimization strategy controls how aggressive the compiler
+    /// should be when optimizing the execution plan.
+    ///
+    /// @return optimization strategy, never null
+    ///
+    OptimizationStrategy optimizationStrategy();
 
     ///
     /// Returns the total size of the trial space (number of trials).
@@ -644,8 +654,7 @@ public interface TestPlan {
     /// - MUST be idempotent (calling twice returns same plan)
     ///
     /// @return immutable execution plan
-    /// @throws InvalidPlanException if validation fails
-    /// @throws IllegalStateException if already committed (unless idempotent)
+    /// @throws IllegalStateException if validation fails or already committed
     ///
     ExecutionPlan commit();
 

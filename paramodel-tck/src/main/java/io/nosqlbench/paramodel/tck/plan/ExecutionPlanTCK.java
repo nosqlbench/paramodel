@@ -3,6 +3,7 @@ package io.nosqlbench.paramodel.tck.plan;
 import io.nosqlbench.paramodel.core.Domain;
 import io.nosqlbench.paramodel.core.Parameter;
 import io.nosqlbench.paramodel.plan.AtomicStep;
+import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import io.nosqlbench.paramodel.sequence.Trial;
@@ -28,11 +29,11 @@ public abstract class ExecutionPlanTCK {
     protected abstract ImplementationProvider getProvider();
 
     @Test
-    public void testExecutionPlanReferencesTestPlan() {
+    public void testExecutionPlanHasTestPlanFingerprint() {
         TestPlan testPlan = getProvider().createTestPlan();
         ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
 
-        assertThat(execPlan.testPlan()).isEqualTo(testPlan);
+        assertThat(execPlan.testPlanFingerprint()).isNotNull();
     }
 
     @Test
@@ -45,10 +46,9 @@ public abstract class ExecutionPlanTCK {
 
     @Test
     public void testExecutionPlanStoresSteps() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("a"));
-        Parameter<String> param = getProvider().createParameter("p", domain);
+        Element element = getProvider().createElement("elem");
         TestPlan testPlan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
         Trial trial = getProvider().createTrial("t1");
@@ -66,15 +66,15 @@ public abstract class ExecutionPlanTCK {
         TestPlan testPlan = getProvider().createTestPlan();
         ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
 
-        assertThat(execPlan.graph()).isNotNull();
+        assertThat(execPlan.executionGraph()).isNotNull();
     }
 
     @Test
-    public void testExecutionPlanEstimatesTrialCount() {
+    public void testExecutionPlanEstimatesMaxParallelism() {
         TestPlan testPlan = getProvider().createTestPlan();
         ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
 
-        assertThat(execPlan.estimatedTrialCount()).isGreaterThanOrEqualTo(0);
+        assertThat(execPlan.estimatedMaxParallelism()).isGreaterThanOrEqualTo(0);
     }
 
     @Test
@@ -83,23 +83,22 @@ public abstract class ExecutionPlanTCK {
         ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
 
         assertThat(execPlan.metadata()).isNotNull();
-        assertThat(execPlan.metadata().compilationVersion()).isNotNull();
+        assertThat(execPlan.metadata().id()).isNotNull();
         assertThat(execPlan.metadata().compiledAt()).isNotNull();
-        assertThat(execPlan.metadata().fingerprint()).isNotNull();
+        assertThat(execPlan.metadata().compilerVersion()).isNotNull();
     }
 
     @Test
     public void testExecutionPlanFromCommittedTestPlan() {
-        Domain<String> domain = getProvider().createDiscreteDomain(List.of("x", "y"));
-        Parameter<String> param = getProvider().createParameter("letters", domain);
+        Element element = getProvider().createElement("elem");
 
         TestPlan testPlan = getProvider().createTestPlanBuilder()
-            .parameter(param)
+            .withElement(element)
             .build();
 
         ExecutionPlan execPlan = testPlan.commit();
 
-        assertThat(execPlan.testPlan()).isEqualTo(testPlan);
+        assertThat(execPlan.testPlanFingerprint()).isNotNull();
         assertThat(testPlan.isCommitted()).isTrue();
     }
 
@@ -109,6 +108,6 @@ public abstract class ExecutionPlanTCK {
         ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
 
         // Execution graph should support topological ordering
-        assertThat(execPlan.graph().topologicalOrder()).isNotNull();
+        assertThat(execPlan.executionGraph().topologicalSort()).isNotNull();
     }
 }

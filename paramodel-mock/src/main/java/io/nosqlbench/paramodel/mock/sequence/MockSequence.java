@@ -70,18 +70,38 @@ public class MockSequence implements Sequence {
 
     private static class MockSequenceMetadata implements SequenceMetadata {
         @Override
-        public int size() {
+        public java.time.Instant generatedAt() {
+            return java.time.Instant.now();
+        }
+
+        @Override
+        public Optional<String> generatedBy() {
+            return Optional.of("mock-sequence");
+        }
+
+        @Override
+        public String orderingStrategy() {
+            return "user-defined";
+        }
+
+        @Override
+        public int totalTrials() {
             return 0;
         }
 
         @Override
-        public Optional<String> description() {
+        public Optional<java.time.Duration> estimatedDuration() {
             return Optional.empty();
         }
 
         @Override
         public Map<String, String> tags() {
             return Map.of();
+        }
+
+        @Override
+        public ValidationStatus validationStatus() {
+            return ValidationStatus.NOT_VALIDATED;
         }
     }
 }

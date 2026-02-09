@@ -256,8 +256,8 @@ public sealed interface Domain<T>
     ///
     /// @param <T> the type of values in the set
     ///
-    record Discrete<T>(Set<T> values) implements Domain<T> {
-        // Implementation details omitted - contract only
+    non-sealed interface Discrete<T> extends Domain<T> {
+        Set<T> values();
     }
 
     ///
@@ -290,8 +290,9 @@ public sealed interface Domain<T>
     ///
     /// @param <T> the comparable type of values in the range
     ///
-    record Range<T extends Comparable<T>>(T min, T max) implements Domain<T> {
-        // Implementation details omitted - contract only
+    non-sealed interface Range<T extends Comparable<T>> extends Domain<T> {
+        T min();
+        T max();
     }
 
     ///
@@ -333,8 +334,8 @@ public sealed interface Domain<T>
     ///
     /// @param <T> the structured type
     ///
-    record Composite<T>(java.util.Map<String, Domain<?>> fields) implements Domain<T> {
-        // Implementation details omitted - contract only
+    non-sealed interface Composite<T> extends Domain<T> {
+        java.util.Map<String, Domain<?>> fields();
     }
 
     ///
@@ -377,10 +378,8 @@ public sealed interface Domain<T>
     ///
     /// @param <T> the type of values
     ///
-    record Custom<T>(
-        java.util.function.Predicate<T> membership,
-        String description
-    ) implements Domain<T> {
-        // Implementation details omitted - contract only
+    non-sealed interface Custom<T> extends Domain<T> {
+        java.util.function.Predicate<T> membership();
+        String description();
     }
 }

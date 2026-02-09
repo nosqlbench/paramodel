@@ -1,6 +1,5 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.core.Value;
 import io.nosqlbench.paramodel.plan.Element;
 
 import java.util.*;
@@ -9,44 +8,103 @@ import java.util.*;
  * Simple element implementation.
  */
 public class MockElement implements Element {
-    private final String parameterName;
-    private final Optional<Value<?>> fixedValue;
-    private final SamplingStrategy samplingStrategy;
+    private final String name;
+    private final ElementType type;
+    private final Map<String, Object> configuration;
+    private final HealthCheckSpec healthCheck;
+    private final InstancingScope instancingScope;
 
-    public MockElement(String parameterName, Optional<Value<?>> fixedValue, SamplingStrategy samplingStrategy) {
-        this.parameterName = Objects.requireNonNull(parameterName);
-        this.fixedValue = Objects.requireNonNull(fixedValue);
-        this.samplingStrategy = Objects.requireNonNull(samplingStrategy);
+    public MockElement(String name, ElementType type, Map<String, Object> configuration,
+                       HealthCheckSpec healthCheck, InstancingScope instancingScope) {
+        this.name = Objects.requireNonNull(name);
+        this.type = Objects.requireNonNull(type);
+        this.configuration = configuration != null ? Map.copyOf(configuration) : Map.of();
+        this.healthCheck = healthCheck;
+        this.instancingScope = instancingScope;
     }
 
     @Override
-    public String parameterName() {
-        return parameterName;
+    public String name() {
+        return name;
     }
 
     @Override
-    public Optional<Value<?>> fixedValue() {
-        return fixedValue;
+    public ElementType type() {
+        return type;
     }
 
     @Override
-    public SamplingStrategy samplingStrategy() {
-        return samplingStrategy;
+    public Map<String, Object> configuration() {
+        return configuration;
     }
 
-    public static MockElement fixed(String parameterName, Value<?> value) {
-        return new MockElement(parameterName, Optional.of(value), SamplingStrategy.FIXED);
+    @Override
+    public Optional<HealthCheckSpec> healthCheck() {
+        return Optional.ofNullable(healthCheck);
     }
 
-    public static MockElement boundary(String parameterName) {
-        return new MockElement(parameterName, Optional.empty(), SamplingStrategy.BOUNDARY);
+    @Override
+    public Optional<InstancingScope> instancingScope() {
+        return Optional.ofNullable(instancingScope);
     }
 
-    public static MockElement random(String parameterName) {
-        return new MockElement(parameterName, Optional.empty(), SamplingStrategy.RANDOM);
+    public static MockElement service(String name) {
+        return new MockElement(name, ElementType.SERVICE, Map.of(), null, null);
     }
 
-    public static MockElement exhaustive(String parameterName) {
-        return new MockElement(parameterName, Optional.empty(), SamplingStrategy.EXHAUSTIVE);
+    public static MockElement environment(String name) {
+        return new MockElement(name, ElementType.ENVIRONMENT, Map.of(), null, null);
+    }
+
+    public static MockElement cache(String name) {
+        return new MockElement(name, ElementType.CACHE, Map.of(), null, null);
+    }
+
+    public static MockElement dataset(String name) {
+        return new MockElement(name, ElementType.DATASET, Map.of(), null, null);
+    }
+
+    public static MockElement tool(String name) {
+        return new MockElement(name, ElementType.TOOL, Map.of(), null, null);
+    }
+
+    public static Builder builder(String name) {
+        return new Builder(name);
+    }
+
+    public static class Builder {
+        private final String name;
+        private ElementType type = ElementType.SERVICE;
+        private Map<String, Object> configuration = Map.of();
+        private HealthCheckSpec healthCheck;
+        private InstancingScope instancingScope;
+
+        public Builder(String name) {
+            this.name = name;
+        }
+
+        public Builder type(ElementType type) {
+            this.type = type;
+            return this;
+        }
+
+        public Builder configuration(Map<String, Object> configuration) {
+            this.configuration = configuration;
+            return this;
+        }
+
+        public Builder healthCheck(HealthCheckSpec healthCheck) {
+            this.healthCheck = healthCheck;
+            return this;
+        }
+
+        public Builder instancingScope(InstancingScope instancingScope) {
+            this.instancingScope = instancingScope;
+            return this;
+        }
+
+        public MockElement build() {
+            return new MockElement(name, type, configuration, healthCheck, instancingScope);
+        }
     }
 }

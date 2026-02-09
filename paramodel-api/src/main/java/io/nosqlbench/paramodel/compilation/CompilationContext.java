@@ -457,14 +457,14 @@ public interface CompilationContext {
     ///
     /// @return Steps if generation completed
     ///
-    Optional<List<com.paramodel.api.plan.AtomicStep>> steps();
+    Optional<List<io.nosqlbench.paramodel.plan.AtomicStep>> steps();
 
     ///
     /// Sets the generated atomic steps.
     ///
     /// @param steps Step list
     ///
-    void setSteps(List<com.paramodel.api.plan.AtomicStep> steps);
+    void setSteps(List<io.nosqlbench.paramodel.plan.AtomicStep> steps);
 
     ///
     /// Returns generated barriers.

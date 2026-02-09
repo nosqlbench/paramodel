@@ -5,6 +5,7 @@ import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.execution.Executor;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 ///
@@ -177,8 +178,4 @@ public interface Debugger {
         Map<String, Object> variables();
     }
 
-    ///
-    /// Import Map for variables.
-    ///
-    Map<String, Object> Map = java.util.Map.of();
 }

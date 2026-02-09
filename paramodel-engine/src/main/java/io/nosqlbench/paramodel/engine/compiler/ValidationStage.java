@@ -1,21 +1,17 @@
 package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.CompilationContext;
+import io.nosqlbench.paramodel.compilation.Compiler;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
-import io.nosqlbench.paramodel.core.Parameter;
-import io.nosqlbench.paramodel.core.ValidationResult;
-import io.nosqlbench.paramodel.plan.Axis;
-import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.plan.TestPlan;
 
 /**
  * Stage 1: Validation
  *
  * Verifies TestPlan correctness:
- * - All parameters are valid
- * - Axes reference existing parameters
- * - Constraints are well-formed
- * - No circular dependencies
+ * - TestPlan validates successfully
+ * - All axes are valid
+ * - Elements reference valid parameters
  */
 public class ValidationStage implements CompilationStage {
 
@@ -25,44 +21,34 @@ public class ValidationStage implements CompilationStage {
     }
 
     @Override
-    public CompilationContext execute(CompilationContext context) {
+    public void execute(CompilationContext context) {
         TestPlan plan = context.testPlan();
-        CompilationContext result = context;
 
         // Validate TestPlan itself
-        ValidationResult planValidation = plan.validate();
-        if (!planValidation.isValid()) {
-            result = result.withError("TestPlan validation failed: " + planValidation.message());
+        io.nosqlbench.paramodel.core.ValidationResult planValidation = plan.validate();
+        if (planValidation.isFailed()) {
+            planValidation.message().ifPresent(msg ->
+                context.addError(Compiler.ErrorSeverity.ERROR, "TestPlan validation failed: " + msg, null, null)
+            );
             for (String violation : planValidation.violations()) {
-                result = result.withError("  - " + violation);
+                context.addError(Compiler.ErrorSeverity.ERROR, violation, null, null);
             }
-            return result;
+            return;
         }
 
-        // Validate all parameters
-        for (Parameter<?> param : plan.parameters().values()) {
-            ValidationResult paramValidation = param.validate(null);
-            if (!paramValidation.isValid()) {
-                result = result.withError("Parameter '" + param.name() + "' validation failed: " +
-                    paramValidation.message());
-            }
+        // Validate axes exist
+        if (plan.axes().isEmpty()) {
+            context.addWarning("TestPlan has no axes", "Add at least one axis to define parameter space");
         }
 
-        // Validate axes reference existing parameters
-        for (Axis axis : plan.axes()) {
-            for (Element element : axis.elements()) {
-                if (!plan.parameters().containsKey(element.parameterName())) {
-                    result = result.withError("Axis '" + axis.name() + "' references unknown parameter: " +
-                        element.parameterName());
-                }
-            }
+        // Validate elements exist
+        if (plan.elements().isEmpty()) {
+            context.addWarning("TestPlan has no elements", "Add at least one element to test");
         }
 
-        // Check for empty parameter space
-        if (plan.parameters().isEmpty()) {
-            result = result.withWarning("TestPlan has no parameters");
-        }
-
-        return result;
+        // Record validation metrics
+        context.recordMetric("axes_count", plan.axes().size());
+        context.recordMetric("elements_count", plan.elements().size());
+        context.recordMetric("trial_space_size", plan.trialSpaceSize());
     }
 }

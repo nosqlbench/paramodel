@@ -1,5 +1,7 @@
 package io.nosqlbench.paramodel.plan;
 
+import io.nosqlbench.paramodel.sequence.TrialResult;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;

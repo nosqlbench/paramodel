@@ -1,43 +1,45 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.core.metadata.TestPlanMetadata;
+import io.nosqlbench.paramodel.plan.TestPlan;
 
+import java.time.Instant;
 import java.util.*;
 
 /**
  * Simple test plan metadata implementation.
  */
-public class MockTestPlanMetadata implements TestPlanMetadata {
-    private final String version;
-    private final String fingerprint;
-    private final Map<String, String> provenance;
-    private final Map<String, String> tags;
+public class MockTestPlanMetadata implements TestPlan.TestPlanMetadata {
+    private final Instant createdAt;
+    private final Optional<String> createdBy;
     private final Optional<String> description;
+    private final Map<String, String> tags;
+    private final Optional<String> version;
 
-    public MockTestPlanMetadata(String version, String fingerprint,
-                               Map<String, String> provenance,
+    public MockTestPlanMetadata(Instant createdAt,
+                               Optional<String> createdBy,
+                               Optional<String> description,
                                Map<String, String> tags,
-                               Optional<String> description) {
-        this.version = version;
-        this.fingerprint = fingerprint;
-        this.provenance = new HashMap<>(provenance);
-        this.tags = new HashMap<>(tags);
+                               Optional<String> version) {
+        this.createdAt = createdAt;
+        this.createdBy = createdBy;
         this.description = description;
+        this.tags = new HashMap<>(tags);
+        this.version = version;
     }
 
     @Override
-    public String version() {
-        return version;
+    public Instant createdAt() {
+        return createdAt;
     }
 
     @Override
-    public String fingerprint() {
-        return fingerprint;
+    public Optional<String> createdBy() {
+        return createdBy;
     }
 
     @Override
-    public Map<String, String> provenance() {
-        return Collections.unmodifiableMap(provenance);
+    public Optional<String> description() {
+        return description;
     }
 
     @Override
@@ -46,12 +48,18 @@ public class MockTestPlanMetadata implements TestPlanMetadata {
     }
 
     @Override
-    public Optional<String> description() {
-        return description;
+    public Optional<String> version() {
+        return version;
     }
 
     public static MockTestPlanMetadata empty() {
-        return new MockTestPlanMetadata("1.0", UUID.randomUUID().toString(), Map.of(), Map.of(), Optional.empty());
+        return new MockTestPlanMetadata(
+            Instant.now(),
+            Optional.empty(),
+            Optional.empty(),
+            Map.of(),
+            Optional.empty()
+        );
     }
 
     public static Builder builder() {
@@ -59,29 +67,19 @@ public class MockTestPlanMetadata implements TestPlanMetadata {
     }
 
     public static class Builder {
-        private String version = "1.0";
-        private String fingerprint = UUID.randomUUID().toString();
-        private final Map<String, String> provenance = new HashMap<>();
-        private final Map<String, String> tags = new HashMap<>();
+        private Instant createdAt = Instant.now();
+        private Optional<String> createdBy = Optional.empty();
         private Optional<String> description = Optional.empty();
+        private final Map<String, String> tags = new HashMap<>();
+        private Optional<String> version = Optional.empty();
 
-        public Builder version(String version) {
-            this.version = version;
+        public Builder createdAt(Instant createdAt) {
+            this.createdAt = createdAt;
             return this;
         }
 
-        public Builder fingerprint(String fingerprint) {
-            this.fingerprint = fingerprint;
-            return this;
-        }
-
-        public Builder provenance(String key, String value) {
-            this.provenance.put(key, value);
-            return this;
-        }
-
-        public Builder tag(String key, String value) {
-            this.tags.put(key, value);
+        public Builder createdBy(String createdBy) {
+            this.createdBy = Optional.of(createdBy);
             return this;
         }
 
@@ -90,8 +88,18 @@ public class MockTestPlanMetadata implements TestPlanMetadata {
             return this;
         }
 
+        public Builder tag(String key, String value) {
+            this.tags.put(key, value);
+            return this;
+        }
+
+        public Builder version(String version) {
+            this.version = Optional.of(version);
+            return this;
+        }
+
         public MockTestPlanMetadata build() {
-            return new MockTestPlanMetadata(version, fingerprint, provenance, tags, description);
+            return new MockTestPlanMetadata(createdAt, createdBy, description, tags, version);
         }
     }
 }

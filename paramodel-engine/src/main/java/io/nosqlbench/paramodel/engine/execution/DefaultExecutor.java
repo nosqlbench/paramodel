@@ -1,109 +1,75 @@
 package io.nosqlbench.paramodel.engine.execution;
 
 import io.nosqlbench.paramodel.execution.Executor;
-import io.nosqlbench.paramodel.execution.Runtime;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
-import io.nosqlbench.paramodel.sequence.Trial;
+import io.nosqlbench.paramodel.sequence.TrialResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.*;
-import java.util.function.Function;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Default executor implementation with concurrent execution support.
  *
- * Features:
- * - Thread pool-based parallel execution
- * - Resource-aware scheduling
- * - Progress tracking
- * - Cancellation support
+ * This is a stub implementation that provides the basic structure
+ * for executing plans.
  */
 public class DefaultExecutor implements Executor {
     private static final Logger log = LoggerFactory.getLogger(DefaultExecutor.class);
 
-    private final Runtime runtime;
-    private final ExecutorService executorService;
-    private final int maxConcurrency;
+    private final ExecutorConfig config;
 
-    public DefaultExecutor(Runtime runtime, int maxConcurrency) {
-        this.runtime = Objects.requireNonNull(runtime);
-        this.maxConcurrency = maxConcurrency;
-        this.executorService = Executors.newFixedThreadPool(
-            maxConcurrency,
-            new ThreadFactory() {
-                private int counter = 0;
-                @Override
-                public Thread newThread(Runnable r) {
-                    Thread t = new Thread(r, "paramodel-executor-" + counter++);
-                    t.setDaemon(true);
-                    return t;
-                }
-            }
-        );
+    public DefaultExecutor(ExecutorConfig config) {
+        this.config = Objects.requireNonNull(config);
     }
 
     @Override
-    public <R> List<R> execute(ExecutionPlan plan, Function<Trial, R> trialExecutor) {
-        log.info("Starting execution of plan with {} estimated trials", plan.estimatedTrialCount());
+    public ExecutionResult execute(ExecutionPlan plan) throws ExecutionFailedException {
+        log.info("Starting execution of plan {}", plan.id());
 
-        List<AtomicStep> steps = plan.graph().topologicalOrder();
-        List<Future<R>> futures = new CopyOnWriteArrayList<>();
-
-        try {
-            // Submit all steps for execution
-            for (AtomicStep step : steps) {
-                Future<R> future = executorService.submit(() -> {
-                    log.debug("Executing step: {}", step.id());
-                    Trial trial = step.trial();
-                    return trialExecutor.apply(trial);
-                });
-                futures.add(future);
-            }
-
-            // Collect results
-            List<R> results = new CopyOnWriteArrayList<>();
-            for (Future<R> future : futures) {
-                try {
-                    R result = future.get();
-                    results.add(result);
-                } catch (ExecutionException e) {
-                    log.error("Step execution failed", e.getCause());
-                    throw new RuntimeException("Step execution failed", e.getCause());
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Execution interrupted", e);
-                }
-            }
-
-            log.info("Execution completed. {} results collected", results.size());
-            return results;
-
-        } finally {
-            // Don't shutdown here - allow reuse
-        }
+        // Stub implementation - would execute the plan
+        return new StubExecutionResult(plan);
     }
 
     @Override
-    public Runtime runtime() {
-        return runtime;
+    public ExecutionHandle executeAsync(ExecutionPlan plan) {
+        log.info("Starting async execution of plan {}", plan.id());
+
+        CompletableFuture<ExecutionResult> future = CompletableFuture.supplyAsync(() -> {
+            try {
+                return execute(plan);
+            } catch (ExecutionFailedException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        return new StubExecutionHandle(plan, future);
     }
 
     @Override
-    public void shutdown() {
-        log.info("Shutting down executor");
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(60, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+    public ExecutionResult resume(ExecutionPlan plan, Checkpoint checkpoint)
+            throws ExecutionFailedException {
+        log.info("Resuming execution from checkpoint {}", checkpoint.checkpointId());
+        return execute(plan);
+    }
+
+    @Override
+    public Optional<Checkpoint> latestCheckpoint(ExecutionPlan plan) {
+        return Optional.empty();
+    }
+
+    @Override
+    public List<Checkpoint> checkpoints(ExecutionPlan plan) {
+        return List.of();
+    }
+
+    @Override
+    public ExecutorConfig config() {
+        return config;
     }
 
     public static Builder builder() {
@@ -111,52 +77,234 @@ public class DefaultExecutor implements Executor {
     }
 
     public static class Builder {
-        private Runtime runtime;
-        private int maxConcurrency = java.lang.Runtime.getRuntime().availableProcessors();
+        private ExecutorConfig config;
 
-        public Builder runtime(Runtime runtime) {
-            this.runtime = runtime;
-            return this;
-        }
-
-        public Builder maxConcurrency(int maxConcurrency) {
-            if (maxConcurrency < 1) {
-                throw new IllegalArgumentException("maxConcurrency must be >= 1");
-            }
-            this.maxConcurrency = maxConcurrency;
+        public Builder config(ExecutorConfig config) {
+            this.config = config;
             return this;
         }
 
         public DefaultExecutor build() {
-            if (runtime == null) {
-                runtime = new SimpleRuntime();
+            if (config == null) {
+                config = ExecutorConfig.builder().build();
             }
-            return new DefaultExecutor(runtime, maxConcurrency);
+            return new DefaultExecutor(config);
         }
     }
 
-    /**
-     * Simple runtime implementation.
-     */
-    private static class SimpleRuntime implements Runtime {
-        @Override
-        public void start() {
-            // No-op
+    private static class StubExecutionResult implements ExecutionResult {
+        private final ExecutionPlan plan;
+        private final String executionId;
+        private final Instant startedAt;
+        private final Instant completedAt;
+
+        StubExecutionResult(ExecutionPlan plan) {
+            this.plan = plan;
+            this.executionId = UUID.randomUUID().toString();
+            this.startedAt = Instant.now();
+            this.completedAt = Instant.now();
         }
 
         @Override
-        public void stop() {
-            // No-op
+        public String executionId() {
+            return executionId;
         }
 
         @Override
-        public boolean isRunning() {
+        public ExecutionPlan plan() {
+            return plan;
+        }
+
+        @Override
+        public ExecutionStatus finalStatus() {
+            return ExecutionStatus.COMPLETED;
+        }
+
+        @Override
+        public Instant startedAt() {
+            return startedAt;
+        }
+
+        @Override
+        public Instant completedAt() {
+            return completedAt;
+        }
+
+        @Override
+        public Duration duration() {
+            return Duration.between(startedAt, completedAt);
+        }
+
+        @Override
+        public List<TrialResult> trialResults() {
+            return List.of();
+        }
+
+        @Override
+        public int totalTrialCount() {
+            return 0;
+        }
+
+        @Override
+        public int successfulTrialCount() {
+            return 0;
+        }
+
+        @Override
+        public int failedTrialCount() {
+            return 0;
+        }
+
+        @Override
+        public boolean isSuccess() {
             return true;
         }
 
         @Override
-        public java.util.Map<String, Object> metrics() {
-            return java.util.Map.of();
+        public Optional<Throwable> error() {
+            return Optional.empty();
+        }
+
+        @Override
+        public ExecutionMetrics metrics() {
+            return new StubExecutionMetrics();
+        }
+
+        @Override
+        public double actualCost() {
+            return 0.0;
+        }
+
+        @Override
+        public Map<String, Object> metadata() {
+            return Map.of();
+        }
+    }
+
+    private static class StubExecutionHandle implements ExecutionHandle {
+        private final ExecutionPlan plan;
+        private final CompletableFuture<ExecutionResult> future;
+        private final String executionId;
+
+        StubExecutionHandle(ExecutionPlan plan, CompletableFuture<ExecutionResult> future) {
+            this.plan = plan;
+            this.future = future;
+            this.executionId = UUID.randomUUID().toString();
+        }
+
+        @Override
+        public String executionId() {
+            return executionId;
+        }
+
+        @Override
+        public ExecutionStatus status() {
+            return future.isDone() ? ExecutionStatus.COMPLETED : ExecutionStatus.EXECUTING;
+        }
+
+        @Override
+        public CompletableFuture<ExecutionResult> future() {
+            return future;
+        }
+
+        @Override
+        public void pause() {
+            // Stub
+        }
+
+        @Override
+        public void resume() {
+            // Stub
+        }
+
+        @Override
+        public void cancel() {
+            future.cancel(true);
+        }
+
+        @Override
+        public boolean isPaused() {
+            return false;
+        }
+
+        @Override
+        public boolean isCancelled() {
+            return future.isCancelled();
+        }
+
+        @Override
+        public boolean isDone() {
+            return future.isDone();
+        }
+
+        @Override
+        public ExecutionResult await() throws InterruptedException {
+            try {
+                return future.get();
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public ExecutionResult await(Duration timeout) throws InterruptedException {
+            try {
+                return future.get(timeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public void onProgress(ProgressListener listener) {
+            // Stub
+        }
+
+        @Override
+        public void onTrialComplete(TrialCompleteListener listener) {
+            // Stub
+        }
+
+        @Override
+        public void onStepComplete(StepCompleteListener listener) {
+            // Stub
+        }
+    }
+
+    private static class StubExecutionMetrics implements ExecutionMetrics {
+        @Override
+        public double peakCpuUsage() {
+            return 0.0;
+        }
+
+        @Override
+        public double averageCpuUsage() {
+            return 0.0;
+        }
+
+        @Override
+        public double peakMemoryUsageGb() {
+            return 0.0;
+        }
+
+        @Override
+        public double averageMemoryUsageGb() {
+            return 0.0;
+        }
+
+        @Override
+        public long totalNetworkBytesTransferred() {
+            return 0;
+        }
+
+        @Override
+        public long totalStorageBytesWritten() {
+            return 0;
+        }
+
+        @Override
+        public Map<String, Double> customMetrics() {
+            return Map.of();
         }
     }
 }
