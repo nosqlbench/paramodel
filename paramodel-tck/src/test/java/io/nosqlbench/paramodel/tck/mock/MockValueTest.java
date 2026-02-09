@@ -1,7 +1,7 @@
 package io.nosqlbench.paramodel.tck.mock;
 
 import io.nosqlbench.paramodel.tck.ImplementationProvider;
-import io.nosqlbench.paramodel.tck.core.ValueTCK;
+import io.nosqlbench.paramodel.tck.parameters.ValueTCK;
 
 /**
  * Validates mock Value implementation against TCK.

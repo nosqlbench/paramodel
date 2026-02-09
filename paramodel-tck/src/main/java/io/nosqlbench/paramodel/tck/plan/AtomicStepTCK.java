@@ -18,6 +18,7 @@ import static org.assertj.core.api.Assertions.*;
  * - Provide metadata
  */
 public abstract class AtomicStepTCK {
+    protected AtomicStepTCK() {}
 
     protected abstract ImplementationProvider getProvider();
 

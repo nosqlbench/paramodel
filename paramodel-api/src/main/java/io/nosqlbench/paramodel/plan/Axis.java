@@ -1,9 +1,11 @@
 package io.nosqlbench.paramodel.plan;
 
-import io.nosqlbench.paramodel.core.Parameter;
+import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.Tagged;
 import io.nosqlbench.paramodel.sequence.Trial;
 
 import java.util.List;
+import java.util.Map;
 
 ///
 /// A named parameter dimension in a Simplica study with ordered discrete values.
@@ -211,7 +213,7 @@ import java.util.List;
 /// @see Trial
 /// @since 0.1.0
 ///
-public interface Axis<T> {
+public interface Axis<T> extends Tagged {
 
     ///
     /// Returns the unique name of this axis within the study.
@@ -237,6 +239,16 @@ public interface Axis<T> {
     /// @return axis name, never null or empty
     ///
     String name();
+
+    ///
+    /// Returns an unmodifiable map of tags describing this axis.
+    ///
+    /// The map MUST contain at minimum a {@code "name"} entry whose value
+    /// equals {@link #name()}.
+    ///
+    /// @return unmodifiable tag map, never null
+    ///
+    Map<String, String> tags();
 
     ///
     /// Returns the ordered list of discrete values along this axis.

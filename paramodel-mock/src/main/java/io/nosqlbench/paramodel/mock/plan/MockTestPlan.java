@@ -1,10 +1,12 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.core.Constraint;
-import io.nosqlbench.paramodel.core.Parameter;
-import io.nosqlbench.paramodel.core.ValidationResult;
-import io.nosqlbench.paramodel.core.Value;
-import io.nosqlbench.paramodel.mock.core.MockValidationResult;
+import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
+import io.nosqlbench.paramodel.parameters.Constraint;
+import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
+import io.nosqlbench.paramodel.parameters.Value;
+import io.nosqlbench.paramodel.mock.parameters.MockValidationResult;
 import io.nosqlbench.paramodel.plan.*;
 import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
@@ -136,6 +138,8 @@ public class MockTestPlan implements TestPlan {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private String name = "unnamed-plan";
         private final List<Axis<?>> axes = new ArrayList<>();
         private final List<Element> elements = new ArrayList<>();

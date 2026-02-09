@@ -1,6 +1,8 @@
 package io.nosqlbench.paramodel.plan;
 
-import io.nosqlbench.paramodel.core.ValidationResult;
+import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
 import java.util.List;
@@ -115,10 +117,8 @@ import java.util.Optional;
 /// );
 /// Axis<Double> tempAxis = Axis.range("temperature", 0.0, 1.0, 0.1);
 ///
-/// // Define elements
-/// Element apiService = Element.service("llm-api")
-///     .withConfiguration(Map.of("endpoint", "https://api.example.com"))
-///     .build();
+/// // Define elements (element types are system-specific)
+/// Element apiService = ...; // "llm-api" with endpoint parameter
 ///
 /// // Create test plan
 /// TestPlan plan = TestPlan.builder()
@@ -143,16 +143,11 @@ import java.util.Optional;
 /// ## Usage Example: Complex Dependencies
 ///
 /// ```java
-/// // Elements with dependencies
-/// Element storage = Element.environment("storage-volume");
-/// Element database = Element.database("postgres")
-///     .dependsOn(storage)
-///     .build();
-/// Element cache = Element.cache("redis");
-/// Element appServer = Element.service("app-server")
-///     .dependsOn(database)
-///     .dependsOn(cache)
-///     .build();
+/// // Elements with dependencies (types are system-specific)
+/// Element storage = ...;    // "storage-volume"
+/// Element database = ...;   // "postgres", depends on storage
+/// Element cache = ...;      // "redis"
+/// Element appServer = ...;  // "app-server", depends on database and cache
 ///
 /// TestPlan plan = TestPlan.builder()
 ///     .name("performance-study")

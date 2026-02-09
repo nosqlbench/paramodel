@@ -1,9 +1,10 @@
 package io.nosqlbench.paramodel.mock.plan;
 
-import io.nosqlbench.paramodel.core.Parameter;
+import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.plan.Axis;
 
 import java.util.*;
+import java.util.Map;
 
 /**
  * Simple axis implementation.
@@ -22,6 +23,11 @@ public class MockAxis<T> implements Axis<T> {
     @Override
     public String name() {
         return name;
+    }
+
+    @Override
+    public Map<String, String> tags() {
+        return Map.of("name", name);
     }
 
     @Override
@@ -51,6 +57,7 @@ public class MockAxis<T> implements Axis<T> {
     }
 
     @SafeVarargs
+    @SuppressWarnings("varargs")
     public static <T> MockAxis<T> of(String name, T... values) {
         return new MockAxis<>(name, Arrays.asList(values), null);
     }
@@ -78,6 +85,7 @@ public class MockAxis<T> implements Axis<T> {
         }
 
         @SafeVarargs
+        @SuppressWarnings("varargs")
         public final Builder<T> values(T... values) {
             this.values.addAll(Arrays.asList(values));
             return this;

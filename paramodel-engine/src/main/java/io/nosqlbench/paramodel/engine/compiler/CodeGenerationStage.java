@@ -14,6 +14,7 @@ import io.nosqlbench.paramodel.compilation.CompilationStage;
  * - Generate execution code
  */
 public class CodeGenerationStage implements CompilationStage {
+    public CodeGenerationStage() {}
 
     @Override
     public String name() {

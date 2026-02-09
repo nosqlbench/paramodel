@@ -244,6 +244,8 @@ public class MockExecutionGraph implements ExecutionGraph {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private final Map<String, AtomicStep> steps = new HashMap<>();
         private final Map<String, Set<String>> dependencies = new HashMap<>();
         private final List<Barrier> barriers = new ArrayList<>();

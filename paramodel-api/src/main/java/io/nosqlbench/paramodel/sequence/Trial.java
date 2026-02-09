@@ -1,8 +1,8 @@
 package io.nosqlbench.paramodel.sequence;
 
-import io.nosqlbench.paramodel.core.Constraint;
-import io.nosqlbench.paramodel.core.Value;
-import io.nosqlbench.paramodel.core.ValidationResult;
+import io.nosqlbench.paramodel.parameters.Constraint;
+import io.nosqlbench.paramodel.parameters.Value;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
 
 import java.util.List;
 import java.util.Map;

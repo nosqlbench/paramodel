@@ -267,7 +267,7 @@ import java.util.Optional;
 ///     .name("cache-perf-study")
 ///     .withAxis(Axis.of("cache_size", List.of(128, 256, 512)))
 ///     .withAxis(Axis.of("concurrency", List.of(10, 50, 100)))
-///     .withElement(Element.redis("cache"))
+///     .withElement(cacheElement) // "cache"
 ///     .build();
 ///
 /// Compiler compiler = Compiler.create();

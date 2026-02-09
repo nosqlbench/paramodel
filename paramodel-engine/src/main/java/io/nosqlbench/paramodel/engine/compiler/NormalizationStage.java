@@ -14,6 +14,7 @@ import io.nosqlbench.paramodel.plan.TestPlan;
  * - Flatten nested structures
  */
 public class NormalizationStage implements CompilationStage {
+    public NormalizationStage() {}
 
     @Override
     public String name() {

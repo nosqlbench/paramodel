@@ -1,6 +1,6 @@
 package io.nosqlbench.paramodel.tck.sequence;
 
-import io.nosqlbench.paramodel.core.Value;
+import io.nosqlbench.paramodel.parameters.Value;
 import io.nosqlbench.paramodel.sequence.Trial;
 import io.nosqlbench.paramodel.tck.ImplementationProvider;
 import org.junit.jupiter.api.Test;
@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.*;
  * - Validate constraints
  */
 public abstract class TrialTCK {
+    protected TrialTCK() {}
 
     protected abstract ImplementationProvider getProvider();
 

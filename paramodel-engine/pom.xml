@@ -14,6 +14,12 @@
     <name>Paramodel Engine</name>
     <description>Full-featured execution engine for Paramodel</description>
 
+    <properties>
+        <jacoco.instruction.minimum>0.30</jacoco.instruction.minimum>
+        <jacoco.line.minimum>0.30</jacoco.line.minimum>
+        <jacoco.method.minimum>0.20</jacoco.method.minimum>
+    </properties>
+
     <dependencies>
         <!-- API Contracts -->
         <dependency>

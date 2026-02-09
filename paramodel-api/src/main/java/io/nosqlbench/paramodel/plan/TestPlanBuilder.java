@@ -1,7 +1,9 @@
 package io.nosqlbench.paramodel.plan;
 
-import io.nosqlbench.paramodel.core.Parameter;
-import io.nosqlbench.paramodel.core.ValidationResult;
+import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
+import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
 import java.util.List;
@@ -143,10 +145,8 @@ import java.util.function.Consumer;
 ///     .name("cache-load-test")
 ///     .withAxis(Axis.of("cache_size_mb", List.of(128, 256, 512, 1024)))
 ///     .withAxis(Axis.of("concurrency", List.of(10, 50, 100)))
-///     .withElement(Element.redis("cache")
-///         .withConfig("maxmemory", "${cache_size_mb}mb"))
-///     .withElement(Element.loadGenerator("load")
-///         .withConfig("threads", "${concurrency}"))
+///     .withElement(cacheElement)   // "cache" with maxmemory parameter
+///     .withElement(loadElement)    // "load" with threads parameter
 ///     .relationship("load", "cache", RelationshipType.SHARED)
 ///     .policies(ExecutionPolicies.builder()
 ///         .trialTimeout(Duration.ofMinutes(5))
@@ -166,9 +166,9 @@ import java.util.function.Consumer;
 ///     .withAxis(Axis.of("auth_version", List.of("v1.2", "v1.3", "v2.0")))
 ///     .withAxis(Axis.of("api_version", List.of("v3.1", "v3.2")))
 ///     .withAxis(Axis.of("db_version", List.of("pg14", "pg15")))
-///     .withElement(Element.postgres("database"))
-///     .withElement(Element.service("auth-service"))
-///     .withElement(Element.service("api-gateway"))
+///     .withElement(databaseElement)     // "database"
+///     .withElement(authElement)         // "auth-service"
+///     .withElement(apiGatewayElement)   // "api-gateway"
 ///     .relationship("auth-service", "database", RelationshipType.SHARED)
 ///     .relationship("api-gateway", "database", RelationshipType.SHARED)
 ///     .relationship("api-gateway", "auth-service", RelationshipType.INSTANCED_PER)
@@ -216,13 +216,9 @@ import java.util.function.Consumer;
 ///     .name("feature-flag-testing")
 ///     .withAxis(Axis.of("feature_x_enabled", List.of(true, false)))
 ///     .withAxis(Axis.of("feature_y_enabled", List.of(true, false)))
-///     .withElement(Element.service("app")
-///         .withConfig("features.x", "${feature_x_enabled}")
-///         .withConfig("features.y", "${feature_y_enabled}"))
-///     .withElement(Element.service("analytics")
-///         .requiredWhen("feature_x_enabled", true)) // Conditional deployment
-///     .withElement(Element.service("ml-service")
-///         .requiredWhen("feature_y_enabled", true))
+///     .withElement(appElement)        // "app" with feature flag parameters
+///     .withElement(analyticsElement)  // "analytics" (conditional deployment)
+///     .withElement(mlElement)         // "ml-service" (conditional deployment)
 ///     .relationship("app", "analytics", RelationshipType.SHARED)
 ///     .relationship("app", "ml-service", RelationshipType.SHARED)
 ///     .policies(ExecutionPolicies.builder()

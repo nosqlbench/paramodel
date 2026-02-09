@@ -1,6 +1,6 @@
 package io.nosqlbench.paramodel.util;
 
-import io.nosqlbench.paramodel.core.ValidationResult;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
 
 ///
 /// # ValidationUtil

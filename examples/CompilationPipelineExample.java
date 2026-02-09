@@ -2,7 +2,7 @@ package examples;
 
 import io.nosqlbench.paramodel.compilation.*;
 import io.nosqlbench.paramodel.engine.compiler.*;
-import io.nosqlbench.paramodel.mock.core.*;
+import io.nosqlbench.paramodel.mock.parameters.*;
 import io.nosqlbench.paramodel.mock.plan.*;
 import io.nosqlbench.paramodel.plan.*;
 

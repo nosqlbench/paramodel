@@ -67,6 +67,8 @@ public class MockTestPlanMetadata implements TestPlan.TestPlanMetadata {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private Instant createdAt = Instant.now();
         private Optional<String> createdBy = Optional.empty();
         private Optional<String> description = Optional.empty();

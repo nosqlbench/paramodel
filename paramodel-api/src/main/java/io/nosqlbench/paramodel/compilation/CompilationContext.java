@@ -1,8 +1,8 @@
 package io.nosqlbench.paramodel.compilation;
 
+import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.TestPlan;
-import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.sequence.Trial;
 
 import java.util.List;

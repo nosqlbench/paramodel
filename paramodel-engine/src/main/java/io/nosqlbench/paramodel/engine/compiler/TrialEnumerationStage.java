@@ -12,6 +12,7 @@ import io.nosqlbench.paramodel.compilation.CompilationStage;
  * - Respect cardinality limits
  */
 public class TrialEnumerationStage implements CompilationStage {
+    public TrialEnumerationStage() {}
 
     @Override
     public String name() {

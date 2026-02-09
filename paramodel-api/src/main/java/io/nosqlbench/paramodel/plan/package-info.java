@@ -148,14 +148,9 @@
 /// Axis<String> modelAxis = Axis.discrete("model", "gpt-4", "claude-3");
 /// Axis<Double> tempAxis = Axis.range("temperature", 0.0, 1.0, 0.1);
 ///
-/// // 2. Define elements (resources)
-/// Element apiService = Element.service("llm-api")
-///     .withEndpoint("https://api.example.com")
-///     .build();
-///
-/// Element cache = Element.cache("response-cache")
-///     .withCapacity("10GB")
-///     .build();
+/// // 2. Define elements (types are system-specific)
+/// Element apiService = ...; // "llm-api" with endpoint parameter
+/// Element cache = ...;      // "response-cache" with capacity parameter
 ///
 /// // 3. Create test plan
 /// TestPlan plan = TestPlan.builder()
@@ -184,10 +179,10 @@
 /// ## Example: Complex Dependencies
 ///
 /// ```java
-/// // Elements with complex relationships
-/// Element database = Element.database("postgres");
-/// Element appServer = Element.service("app-server");
-/// Element loadBalancer = Element.service("load-balancer");
+/// // Elements with complex relationships (types are system-specific)
+/// Element database = ...;     // "postgres"
+/// Element appServer = ...;    // "app-server"
+/// Element loadBalancer = ...; // "load-balancer"
 ///
 /// TestPlan plan = TestPlan.builder()
 ///     .name("scaling-study")
@@ -212,8 +207,8 @@
 /// @see TestPlan
 /// @see ExecutionPlan
 /// @see Axis
-/// @see Element
-/// @see RelationshipType
+/// @see io.nosqlbench.paramodel.elements.Element
+/// @see io.nosqlbench.paramodel.elements.RelationshipType
 /// @since 0.1.0
 ///
 package io.nosqlbench.paramodel.plan;

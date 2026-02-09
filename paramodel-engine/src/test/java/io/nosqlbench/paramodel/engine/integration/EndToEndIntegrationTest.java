@@ -1,10 +1,11 @@
 package io.nosqlbench.paramodel.engine.integration;
 
 import io.nosqlbench.paramodel.compilation.Compiler;
+import io.nosqlbench.paramodel.elements.*;
 import io.nosqlbench.paramodel.engine.compiler.*;
 import io.nosqlbench.paramodel.engine.execution.*;
 import io.nosqlbench.paramodel.execution.Runtime;
-import io.nosqlbench.paramodel.mock.core.*;
+import io.nosqlbench.paramodel.mock.parameters.*;
 import io.nosqlbench.paramodel.mock.plan.*;
 import io.nosqlbench.paramodel.mock.sequence.*;
 import io.nosqlbench.paramodel.plan.*;
@@ -25,8 +26,8 @@ public class EndToEndIntegrationTest {
     @DisplayName("Complete workflow: define → compile → execute")
     public void testCompleteWorkflow() {
         // 1. Define parameters and build test plan using current API
-        Element dbElement = MockElement.service("database");
-        Element cacheElement = MockElement.cache("cache");
+        Element dbElement = MockElement.of("database");
+        Element cacheElement = MockElement.of("cache");
 
         Axis<String> opAxis = MockAxis.of("operation", "read", "write");
 
@@ -96,7 +97,7 @@ public class EndToEndIntegrationTest {
     @Test
     @DisplayName("Test plan cannot be committed twice")
     public void testDoubleCommitFails() {
-        Element element = MockElement.service("svc");
+        Element element = MockElement.of("svc");
         Axis<String> axis = MockAxis.of("mode", "fast", "slow");
 
         TestPlan plan = MockTestPlan.builder()
@@ -115,7 +116,7 @@ public class EndToEndIntegrationTest {
     @Test
     @DisplayName("Compilation validates test plan")
     public void testCompilationValidation() {
-        Element element = MockElement.service("svc");
+        Element element = MockElement.of("svc");
 
         TestPlan plan = MockTestPlan.builder()
             .name("validation-test")

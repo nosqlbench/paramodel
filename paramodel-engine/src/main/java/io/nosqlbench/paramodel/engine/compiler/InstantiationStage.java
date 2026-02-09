@@ -13,6 +13,7 @@ import io.nosqlbench.paramodel.compilation.CompilationStage;
  * - Apply constraints and filter invalid trials
  */
 public class InstantiationStage implements CompilationStage {
+    public InstantiationStage() {}
 
     @Override
     public String name() {

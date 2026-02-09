@@ -262,7 +262,7 @@ import java.util.Random;
 ///     .name("cache-study")
 ///     .withAxis(Axis.of("cache_size", List.of(128, 256, 512, 1024)))
 ///     .withAxis(Axis.of("concurrency", List.of(10, 50, 100, 500)))
-///     .withElement(Element.redis("cache"))
+///     .withElement(cacheElement) // "cache"
 ///     .policies(ExecutionPolicies.builder()
 ///         .trialOrdering(TrialOrdering.EDGE_FIRST)
 ///         .build())
@@ -448,6 +448,8 @@ public interface TrialOrdering {
     /// Sequential ordering implementation (placeholder).
     ///
     class SequentialOrdering implements TrialOrdering {
+        public SequentialOrdering() {}
+
         @Override
         public List<Trial> order(List<Trial> trials) {
             throw new UnsupportedOperationException(
@@ -464,6 +466,8 @@ public interface TrialOrdering {
     /// Edge-first ordering implementation (placeholder).
     ///
     class EdgeFirstOrdering implements TrialOrdering {
+        public EdgeFirstOrdering() {}
+
         @Override
         public List<Trial> order(List<Trial> trials) {
             throw new UnsupportedOperationException(
@@ -480,6 +484,8 @@ public interface TrialOrdering {
     /// Dependency-optimized ordering implementation (placeholder).
     ///
     class DependencyOptimizedOrdering implements TrialOrdering {
+        public DependencyOptimizedOrdering() {}
+
         @Override
         public List<Trial> order(List<Trial> trials) {
             throw new UnsupportedOperationException(
@@ -496,6 +502,8 @@ public interface TrialOrdering {
     /// Cost-optimized ordering implementation (placeholder).
     ///
     class CostOptimizedOrdering implements TrialOrdering {
+        public CostOptimizedOrdering() {}
+
         @Override
         public List<Trial> order(List<Trial> trials) {
             throw new UnsupportedOperationException(

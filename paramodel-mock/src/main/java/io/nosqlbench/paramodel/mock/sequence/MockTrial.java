@@ -1,9 +1,9 @@
 package io.nosqlbench.paramodel.mock.sequence;
 
-import io.nosqlbench.paramodel.core.Constraint;
-import io.nosqlbench.paramodel.core.ValidationResult;
-import io.nosqlbench.paramodel.core.Value;
-import io.nosqlbench.paramodel.mock.core.MockValidationResult;
+import io.nosqlbench.paramodel.parameters.Constraint;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
+import io.nosqlbench.paramodel.parameters.Value;
+import io.nosqlbench.paramodel.mock.parameters.MockValidationResult;
 import io.nosqlbench.paramodel.sequence.Trial;
 
 import java.util.*;
@@ -67,6 +67,8 @@ public class MockTrial implements Trial {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private String id;
         private final Map<String, Value<?>> assignments = new HashMap<>();
         private final List<Constraint<Map<String, Value<?>>>> constraints = new ArrayList<>();

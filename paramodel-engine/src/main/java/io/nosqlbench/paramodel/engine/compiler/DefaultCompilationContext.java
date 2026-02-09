@@ -2,9 +2,9 @@ package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.Compiler;
+import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.Barrier;
-import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import io.nosqlbench.paramodel.sequence.Trial;
 

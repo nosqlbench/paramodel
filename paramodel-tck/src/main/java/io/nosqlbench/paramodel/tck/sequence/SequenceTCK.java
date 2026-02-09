@@ -5,6 +5,8 @@ import io.nosqlbench.paramodel.sequence.Trial;
 import io.nosqlbench.paramodel.tck.ImplementationProvider;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
@@ -15,10 +17,11 @@ import static org.assertj.core.api.Assertions.*;
  * Validates that implementations correctly:
  * - Store ordered collections of trials
  * - Provide iteration capabilities
- * - Compute metadata
+ * - Validate sequences
  * - Support filtering and transformation
  */
 public abstract class SequenceTCK {
+    protected SequenceTCK() {}
 
     protected abstract ImplementationProvider getProvider();
 
@@ -66,11 +69,11 @@ public abstract class SequenceTCK {
     }
 
     @Test
-    public void testSequenceMetadata() {
+    public void testSequenceValidation() {
         Trial trial = getProvider().createTrial("t1");
         Sequence sequence = getProvider().createSequence(List.of(trial));
 
-        assertThat(sequence.metadata()).isNotNull();
+        assertThat(sequence.validate()).isNotNull();
     }
 
     @Test
@@ -116,5 +119,32 @@ public abstract class SequenceTCK {
 
         // Should still store both even with same ID
         assertThat(sequence.size()).isEqualTo(2);
+    }
+
+    @Test
+    public void testSequenceIsEmpty() {
+        Sequence empty = getProvider().createSequence(List.of());
+        assertThat(empty.isEmpty()).isTrue();
+
+        Trial t1 = getProvider().createTrial("t1");
+        Sequence nonEmpty = getProvider().createSequence(List.of(t1));
+        assertThat(nonEmpty.isEmpty()).isFalse();
+    }
+
+    @Test
+    public void testSequenceIterator() {
+        Trial t1 = getProvider().createTrial("t1");
+        Trial t2 = getProvider().createTrial("t2");
+        Trial t3 = getProvider().createTrial("t3");
+
+        Sequence sequence = getProvider().createSequence(List.of(t1, t2, t3));
+
+        List<Trial> fromIterator = new ArrayList<>();
+        Iterator<Trial> iter = sequence.iterator();
+        while (iter.hasNext()) {
+            fromIterator.add(iter.next());
+        }
+
+        assertThat(fromIterator).containsExactlyElementsOf(sequence.trials());
     }
 }

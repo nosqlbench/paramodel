@@ -13,6 +13,7 @@ import io.nosqlbench.paramodel.compilation.CompilationStage;
  * - Track step metadata
  */
 public class StepGenerationStage implements CompilationStage {
+    public StepGenerationStage() {}
 
     @Override
     public String name() {

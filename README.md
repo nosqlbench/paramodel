@@ -111,7 +111,7 @@ Production-ready execution engine with full 8-stage compilation pipeline.
 ### 1. Define Parameters and Domains
 
 ```java
-import io.nosqlbench.paramodel.mock.core.*;
+import io.nosqlbench.paramodel.mock.parameters.*;
 
 // Create discrete domain
 MockDomain<String> opDomain = MockDomain.of("read", "write", "scan");

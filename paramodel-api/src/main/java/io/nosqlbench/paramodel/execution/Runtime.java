@@ -1,6 +1,6 @@
 package io.nosqlbench.paramodel.execution;
 
-import io.nosqlbench.paramodel.plan.Element;
+import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.sequence.Trial;
 import io.nosqlbench.paramodel.sequence.TrialResult;
 
@@ -252,9 +252,7 @@ import java.util.Optional;
 /// ```java
 /// Runtime runtime = Runtime.create();
 ///
-/// Element element = Element.postgres("database")
-///     .withConfig("max_connections", 100)
-///     .withConfig("shared_buffers", "2GB");
+/// Element element = ...; // "database" with max_connections and shared_buffers parameters
 ///
 /// DeploymentRequest request = DeploymentRequest.builder()
 ///     .element(element)

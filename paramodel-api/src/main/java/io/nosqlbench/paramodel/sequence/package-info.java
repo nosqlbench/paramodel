@@ -26,8 +26,7 @@
 ///       ↓ builds
 /// Sequence
 ///   ├── trials(): List<Trial>
-///   ├── validate(): ValidationResult
-///   └── metadata(): SequenceMetadata
+///   └── validate(): ValidationResult
 ///
 /// Trial
 ///   ├── id: String
@@ -99,13 +98,6 @@
 /// - All trials satisfy global constraints
 /// - No impossible parameter combinations
 /// - Dependencies are satisfiable
-///
-/// ### Metadata
-/// Every sequence carries metadata describing:
-/// - Generation strategy used
-/// - Total trial count
-/// - Validation status
-/// - Estimated duration
 ///
 /// ## Example: Edge-First Sequence
 ///

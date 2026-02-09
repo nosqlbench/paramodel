@@ -1,9 +1,9 @@
 package io.nosqlbench.paramodel.tck.plan;
 
-import io.nosqlbench.paramodel.core.Domain;
-import io.nosqlbench.paramodel.core.Parameter;
+import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.parameters.Domain;
+import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.plan.AtomicStep;
-import io.nosqlbench.paramodel.plan.Element;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import io.nosqlbench.paramodel.sequence.Trial;
@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.*;
  * - Track metadata
  */
 public abstract class ExecutionPlanTCK {
+    protected ExecutionPlanTCK() {}
 
     protected abstract ImplementationProvider getProvider();
 
@@ -109,5 +110,59 @@ public abstract class ExecutionPlanTCK {
 
         // Execution graph should support topological ordering
         assertThat(execPlan.executionGraph().topologicalSort()).isNotNull();
+    }
+
+    @Test
+    public void testExecutionPlanHasId() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        assertThat(execPlan.id()).isNotNull();
+        assertThat(execPlan.id()).isNotEmpty();
+    }
+
+    @Test
+    public void testExecutionPlanHasBarriers() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        assertThat(execPlan.barriers()).isNotNull();
+    }
+
+    @Test
+    public void testExecutionPlanHasTrialOrdering() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        assertThat(execPlan.trialOrdering()).isNotNull();
+    }
+
+    @Test
+    public void testExecutionPlanEstimatedDuration() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        // estimatedDuration() may be empty but must be non-null
+        assertThat(execPlan.estimatedDuration()).isNotNull();
+    }
+
+    @Test
+    public void testExecutionPlanResourceRequirements() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        ExecutionPlan.ResourceRequirements reqs = execPlan.resourceRequirements();
+        assertThat(reqs).isNotNull();
+        assertThat(reqs.peakCpu()).isGreaterThanOrEqualTo(0);
+        assertThat(reqs.peakMemoryMb()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    public void testExecutionPlanCheckpoints() {
+        TestPlan testPlan = getProvider().createTestPlan();
+        ExecutionPlan execPlan = getProvider().createExecutionPlan(testPlan);
+
+        assertThat(execPlan.checkpoints()).isNotNull();
+        assertThat(execPlan.latestCheckpoint()).isNotNull();
     }
 }

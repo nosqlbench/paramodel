@@ -169,6 +169,8 @@ public class MockExecutionPlanMetadata implements ExecutionPlanMetadata {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private String id = UUID.randomUUID().toString();
         private String testPlanFingerprint = UUID.randomUUID().toString();
         private Instant compiledAt = Instant.now();

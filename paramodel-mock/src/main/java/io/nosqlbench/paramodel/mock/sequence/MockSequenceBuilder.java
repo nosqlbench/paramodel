@@ -1,8 +1,8 @@
 package io.nosqlbench.paramodel.mock.sequence;
 
-import io.nosqlbench.paramodel.core.Constraint;
-import io.nosqlbench.paramodel.core.Parameter;
-import io.nosqlbench.paramodel.core.Value;
+import io.nosqlbench.paramodel.parameters.Constraint;
+import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.Value;
 import io.nosqlbench.paramodel.sequence.Sequence;
 import io.nosqlbench.paramodel.sequence.SequenceBuilder;
 import io.nosqlbench.paramodel.sequence.Trial;
@@ -19,6 +19,8 @@ import java.util.Map;
  * can be added directly via {@link #addTrial(Trial)}.
  */
 public class MockSequenceBuilder implements SequenceBuilder {
+    public MockSequenceBuilder() {}
+
     private final List<Parameter<?>> parameters = new ArrayList<>();
     private final List<Constraint<Map<String, Value<?>>>> constraints = new ArrayList<>();
     private final List<Trial> trials = new ArrayList<>();

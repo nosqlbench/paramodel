@@ -14,6 +14,12 @@
     <name>Paramodel TCK</name>
     <description>Technology Compatibility Kit for Paramodel API implementations</description>
 
+    <properties>
+        <jacoco.instruction.minimum>0.95</jacoco.instruction.minimum>
+        <jacoco.line.minimum>0.95</jacoco.line.minimum>
+        <jacoco.method.minimum>0.90</jacoco.method.minimum>
+    </properties>
+
     <dependencies>
         <!-- API Contracts -->
         <dependency>
@@ -54,6 +60,23 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>aggregate-report</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>report-aggregate</goal>
+                        </goals>
+                        <configuration>
+                            <title>Paramodel Aggregate Coverage</title>
+                            <outputDirectory>${project.reporting.outputDirectory}/jacoco-aggregate</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

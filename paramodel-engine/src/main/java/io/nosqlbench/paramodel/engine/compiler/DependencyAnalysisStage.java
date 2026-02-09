@@ -14,6 +14,7 @@ import io.nosqlbench.paramodel.compilation.CompilationStage;
  * - Validate no cycles exist
  */
 public class DependencyAnalysisStage implements CompilationStage {
+    public DependencyAnalysisStage() {}
 
     @Override
     public String name() {

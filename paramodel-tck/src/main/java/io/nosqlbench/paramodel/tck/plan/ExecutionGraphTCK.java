@@ -21,6 +21,7 @@ import static org.assertj.core.api.Assertions.*;
  * - Provide graph statistics
  */
 public abstract class ExecutionGraphTCK {
+    protected ExecutionGraphTCK() {}
 
     protected abstract ImplementationProvider getProvider();
 
@@ -107,5 +108,46 @@ public abstract class ExecutionGraphTCK {
 
         Set<AtomicStep> deps = graph.dependencies(step);
         assertThat(deps).isNotNull();
+    }
+
+    @Test
+    public void testExecutionGraphMaximumParallelism() {
+        ExecutionGraph graph = getProvider().createExecutionGraph();
+
+        assertThat(graph.maximumParallelism()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    public void testExecutionGraphIsAcyclic() {
+        ExecutionGraph graph = getProvider().createExecutionGraph();
+
+        assertThat(graph.isAcyclic()).isTrue();
+    }
+
+    @Test
+    public void testExecutionGraphStatistics() {
+        ExecutionGraph graph = getProvider().createExecutionGraph();
+
+        ExecutionGraph.GraphStatistics stats = graph.statistics();
+        assertThat(stats).isNotNull();
+        assertThat(stats.nodeCount()).isGreaterThanOrEqualTo(0);
+        assertThat(stats.edgeCount()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    public void testExecutionGraphCriticalPath() {
+        ExecutionGraph graph = getProvider().createExecutionGraph();
+
+        List<AtomicStep> criticalPath = graph.criticalPath();
+        assertThat(criticalPath).isNotNull();
+    }
+
+    @Test
+    public void testExecutionGraphReadySteps() {
+        ExecutionGraph graph = getProvider().createExecutionGraph();
+
+        // Parallel waves wave 0 contains steps with no dependencies (ready steps)
+        java.util.Map<Integer, List<AtomicStep>> waves = graph.parallelWaves();
+        assertThat(waves).isNotNull();
     }
 }

@@ -37,7 +37,7 @@ public class DefaultCompiler implements Compiler {
 
     @Override
     public ValidationResult validate(TestPlan testPlan) {
-        io.nosqlbench.paramodel.core.ValidationResult planValidation = testPlan.validate();
+        io.nosqlbench.paramodel.parameters.ValidationResult planValidation = testPlan.validate();
 
         List<CompilationError> errors = new ArrayList<>();
         List<CompilationWarning> warnings = new ArrayList<>();
@@ -120,6 +120,8 @@ public class DefaultCompiler implements Compiler {
     }
 
     public static class Builder {
+        public Builder() {}
+
         private final List<CompilationStage> stages = new ArrayList<>();
         private CompilerOptions options = new DefaultCompilerOptions();
 

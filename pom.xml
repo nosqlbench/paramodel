@@ -42,6 +42,12 @@
         <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
         <maven-javadoc-plugin.version>3.11.2</maven-javadoc-plugin.version>
         <maven-source-plugin.version>3.3.1</maven-source-plugin.version>
+        <jacoco-plugin.version>0.8.14</jacoco-plugin.version>
+
+        <!-- JaCoCo Coverage Thresholds (defaults; override in child modules) -->
+        <jacoco.instruction.minimum>0.00</jacoco.instruction.minimum>
+        <jacoco.line.minimum>0.00</jacoco.line.minimum>
+        <jacoco.method.minimum>0.00</jacoco.method.minimum>
     </properties>
 
     <dependencyManagement>
@@ -147,9 +153,62 @@
                     <version>${maven-surefire-plugin.version}</version>
                     <configuration>
                         <argLine>
-                            --enable-preview
+                            @{argLine} --enable-preview
                         </argLine>
                     </configuration>
+                </plugin>
+
+                <!-- JaCoCo Code Coverage -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco-plugin.version}</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>check-coverage</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>INSTRUCTION</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>${jacoco.instruction.minimum}</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>${jacoco.line.minimum}</minimum>
+                                            </limit>
+                                            <limit>
+                                                <counter>METHOD</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>${jacoco.method.minimum}</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
 
                 <!-- Javadoc Plugin with Markdown Support -->
@@ -160,6 +219,7 @@
                     <configuration>
                         <release>${maven.compiler.release}</release>
                         <doclint>all,-missing</doclint>
+                        <failOnWarnings>true</failOnWarnings>
                         <show>protected</show>
                         <detectJavaApiLink>true</detectJavaApiLink>
                         <additionalOptions>
@@ -241,6 +301,12 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-source-plugin</artifactId>
+            </plugin>
+
+            <!-- Apply JaCoCo coverage to all modules -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

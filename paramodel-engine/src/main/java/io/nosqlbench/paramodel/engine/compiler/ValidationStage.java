@@ -14,6 +14,7 @@ import io.nosqlbench.paramodel.plan.TestPlan;
  * - Elements reference valid parameters
  */
 public class ValidationStage implements CompilationStage {
+    public ValidationStage() {}
 
     @Override
     public String name() {
@@ -25,7 +26,7 @@ public class ValidationStage implements CompilationStage {
         TestPlan plan = context.testPlan();
 
         // Validate TestPlan itself
-        io.nosqlbench.paramodel.core.ValidationResult planValidation = plan.validate();
+        io.nosqlbench.paramodel.parameters.ValidationResult planValidation = plan.validate();
         if (planValidation.isFailed()) {
             planValidation.message().ifPresent(msg ->
                 context.addError(Compiler.ErrorSeverity.ERROR, "TestPlan validation failed: " + msg, null, null)

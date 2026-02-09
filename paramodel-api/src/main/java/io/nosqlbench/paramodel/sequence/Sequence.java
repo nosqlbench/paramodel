@@ -1,7 +1,6 @@
 package io.nosqlbench.paramodel.sequence;
 
-import io.nosqlbench.paramodel.core.ValidationResult;
-import io.nosqlbench.paramodel.core.metadata.SequenceMetadata;
+import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 
 import java.util.Iterator;
@@ -28,9 +27,6 @@ import java.util.List;
 /// │
 /// ├── validate(): ValidationResult
 /// │   └── Check all trials satisfy constraints
-/// │
-/// ├── metadata(): SequenceMetadata
-/// │   └── Strategy, size, timestamps, etc.
 /// │
 /// └── iterator(): Iterator<Trial>
 ///     └── Sequential access to trials
@@ -129,10 +125,6 @@ import java.util.List;
 ///     store.save(outcome);
 /// }
 ///
-/// // Check metadata
-/// SequenceMetadata meta = seq.metadata();
-/// System.out.println("Executed " + meta.totalTrials() + " trials");
-/// System.out.println("Using " + meta.orderingStrategy() + " strategy");
 /// ```
 ///
 /// ## Usage Example: Edge-First Strategy
@@ -213,7 +205,6 @@ import java.util.List;
 ///
 /// @see SequenceBuilder
 /// @see Trial
-/// @see SequenceMetadata
 /// @see ExecutionPlan
 /// @since 0.1.0
 ///
@@ -342,37 +333,6 @@ public interface Sequence extends Iterable<Trial> {
     /// @see ValidationResult
     ///
     ValidationResult validate();
-
-    ///
-    /// Returns metadata describing this sequence's generation and characteristics.
-    ///
-    /// ## Metadata Contents
-    ///
-    /// - **generatedAt**: When sequence was created
-    /// - **orderingStrategy**: Which algorithm generated the ordering
-    /// - **totalTrials**: Number of trials (= size())
-    /// - **estimatedDuration**: Expected execution time (if available)
-    /// - **validationStatus**: Whether sequence has been validated
-    ///
-    /// ## Example
-    ///
-    /// ```java
-    /// Sequence seq = builder.generateEdgeFirst().build();
-    /// SequenceMetadata meta = seq.metadata();
-    ///
-    /// System.out.println("Strategy: " + meta.orderingStrategy());
-    /// System.out.println("Trials: " + meta.totalTrials());
-    /// System.out.println("Generated: " + meta.generatedAt());
-    ///
-    /// meta.estimatedDuration().ifPresent(duration ->
-    ///     System.out.println("Est. duration: " + duration)
-    /// );
-    /// ```
-    ///
-    /// @return sequence metadata, never null
-    /// @see SequenceMetadata
-    ///
-    SequenceMetadata metadata();
 
     ///
     /// Returns an iterator over trials in execution order.

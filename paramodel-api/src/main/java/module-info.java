@@ -8,16 +8,14 @@
 ///
 /// ```
 /// io.nosqlbench.paramodel
-/// ├── core          - Core parameter modeling (Parameter, Domain, Constraint, Value)
+/// ├── parameters    - Parameter modeling (Parameter, Domain, Constraint, Value)
+/// ├── elements      - Element modeling (Element, RelationshipType)
 /// ├── sequence      - Sequence generation and validation
 /// ├── plan          - Test Plan and Execution Plan contracts
 /// ├── compilation   - Plan compilation and validation
 /// ├── execution     - Runtime execution contracts
-/// ├── observability - Monitoring and telemetry
 /// ├── persistence   - Result and artifact storage
-/// ├── cost          - Cost estimation and simulation
-/// ├── security      - Access control
-/// ├── versioning    - Version management and provenance
+/// ├── security      - Access control (deferred)
 /// └── util          - Common utilities
 /// ```
 ///
@@ -25,17 +23,15 @@
 ///
 module io.nosqlbench.paramodel {
     // Export all API packages
-    exports io.nosqlbench.paramodel.core;
-    exports io.nosqlbench.paramodel.core.metadata;
+    exports io.nosqlbench.paramodel.parameters;
+    exports io.nosqlbench.paramodel.parameters.types;
+    exports io.nosqlbench.paramodel.elements;
     exports io.nosqlbench.paramodel.sequence;
     exports io.nosqlbench.paramodel.plan;
     exports io.nosqlbench.paramodel.plan.policies;
     exports io.nosqlbench.paramodel.compilation;
     exports io.nosqlbench.paramodel.execution;
-    exports io.nosqlbench.paramodel.observability;
     exports io.nosqlbench.paramodel.persistence;
-    exports io.nosqlbench.paramodel.cost;
     exports io.nosqlbench.paramodel.security;
-    exports io.nosqlbench.paramodel.versioning;
     exports io.nosqlbench.paramodel.util;
 }
