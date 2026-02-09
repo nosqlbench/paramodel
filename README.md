@@ -20,17 +20,17 @@ Paramodel provides a rigorous foundation for defining, compiling, and executing 
 Pure contract interfaces defining the Paramodel specification.
 
 **Packages:**
-- `core` - Parameter, Domain, Value, Constraint, ValidationResult
-- `sequence` - Trial, Sequence, TrialResult
-- `plan` - TestPlan, ExecutionPlan, Axis, Element, ExecutionGraph
-- `compilation` - Compiler, CompilationStage, OptimizationPass
-- `execution` - Executor, Runtime, Scheduler, ResourceManager
-- `observability` - Observer, MetricsExporter, Logger, Profiler
-- `persistence` - ResultStore, ExecutionRepository, CheckpointStore
-- `cost` - CostEstimator, CostModel, BudgetTracker
+- `parameters` - Parameter, Domain, Value, Constraint, ValidationResult, Tagged
+- `parameters.types` - IntegerParameter, DoubleParameter, BooleanParameter, SelectionParameter
+- `elements` - Element, RelationshipType
+- `sequence` - Trial, Sequence, TrialResult, TrialStatus, builders
+- `plan` - TestPlan, ExecutionPlan, Axis, Barrier, ExecutionGraph, AtomicStep, TrialOrdering
+- `plan.policies` - ExecutionPolicies
+- `compilation` - Compiler, CompilationStage, CompilationContext, OptimizationPass
+- `execution` - Executor, Runtime, Scheduler, ResourceManager, ArtifactCollector
+- `persistence` - ResultStore, ExecutionRepository, CheckpointStore, ArtifactStore, MetadataStore
 - `security` - CredentialManager, AccessControl, AuditLog
-- `versioning` - VersionManager, MigrationStrategy, CompatibilityChecker
-- `utilities` - ConfigurationManager, SerializationUtil, ValidationUtil
+- `util` - ConfigurationManager, SerializationUtil, ValidationUtil
 
 **Artifacts:**
 ```xml
@@ -64,9 +64,15 @@ Simple in-memory mock implementations for testing and prototyping.
 Technology Compatibility Kit validating implementation conformance.
 
 **Test Coverage:**
-- Core contracts (Parameter, Domain, Value, Constraint, ValidationResult)
-- Sequence contracts (Trial, Sequence)
-- Plan contracts (TestPlan, ExecutionPlan, ExecutionGraph, AtomicStep)
+- Parameter contracts (Parameter, Domain, Value, Constraint, ValidationResult)
+- Element contracts (Element, RelationshipType)
+- Sequence contracts (Trial, Sequence, TrialResult, TrialStatus)
+- Plan contracts (TestPlan, ExecutionPlan, ExecutionGraph, AtomicStep, Axis, Barrier, ExecutionPolicies)
+- Compilation contracts (Compiler, CompilationContext, CompilationStage)
+- Execution contracts (Executor, Runtime, Scheduler, ResourceManager)
+- Persistence contracts (ResultStore, ExecutionRepository, CheckpointStore, ArtifactStore, MetadataStore)
+- Security contracts (AccessControl, AuditLog, CredentialManager)
+- Utility contracts (ConfigurationManager, SerializationUtil, ValidationUtil)
 
 **Usage:**
 ```java
@@ -95,7 +101,7 @@ Production-ready execution engine with full 8-stage compilation pipeline.
 - **DefaultCompiler** - 8-stage pipeline (Validation → Code Generation)
 - **DefaultExecutor** - Thread pool-based concurrent execution
 - **DefaultScheduler** - Priority-based, work-stealing scheduler
-- **DefaultResourceManager** - Admission control for CPU/memory/I/O
+- **DefaultResourceManager** - Admission control for resource constraints
 
 **Artifacts:**
 ```xml
