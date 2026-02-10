@@ -32,6 +32,7 @@ public final class DoubleParameter implements Parameter<Double> {
     private final String name;
     private final DoubleRangeDomain domain;
     private final List<Constraint<Double>> constraints;
+    private Double defaultValue;
 
     private DoubleParameter(String name, DoubleRangeDomain domain) {
         this.name = Objects.requireNonNull(name, "name must not be null");
@@ -127,6 +128,29 @@ public final class DoubleParameter implements Parameter<Double> {
             }
         }
         return false;
+    }
+
+    ///
+    /// Sets the default value for this parameter. Returns this parameter for chaining.
+    ///
+    /// The default value must be within this parameter's domain.
+    ///
+    /// @param value the default value
+    /// @return this parameter
+    /// @throws IllegalArgumentException if value is not within the domain
+    ///
+    public DoubleParameter withDefault(double value) {
+        if (!domain.contains(value)) {
+            throw new IllegalArgumentException(
+                "Default value " + value + " is not within domain for parameter '" + name + "'");
+        }
+        this.defaultValue = value;
+        return this;
+    }
+
+    @Override
+    public Optional<Double> defaultValue() {
+        return Optional.ofNullable(defaultValue);
     }
 
     ///

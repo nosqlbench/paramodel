@@ -19,6 +19,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 ///
 public abstract class CredentialManagerTCK {
 
+    /// Creates a new TCK test instance.
+    protected CredentialManagerTCK() {}
+
     /// Returns the implementation provider under test.
     protected abstract ImplementationProvider getProvider();
 

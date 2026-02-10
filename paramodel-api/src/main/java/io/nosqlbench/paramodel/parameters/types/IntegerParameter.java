@@ -41,6 +41,7 @@ public final class IntegerParameter implements Parameter<Integer> {
     private final String name;
     private final Domain<Integer> domain;
     private final List<Constraint<Integer>> constraints;
+    private Integer defaultValue;
 
     private IntegerParameter(String name, Domain<Integer> domain) {
         this.name = Objects.requireNonNull(name, "name must not be null");
@@ -152,6 +153,29 @@ public final class IntegerParameter implements Parameter<Integer> {
             }
         }
         return false;
+    }
+
+    ///
+    /// Sets the default value for this parameter. Returns this parameter for chaining.
+    ///
+    /// The default value must be within this parameter's domain.
+    ///
+    /// @param value the default value
+    /// @return this parameter
+    /// @throws IllegalArgumentException if value is not within the domain
+    ///
+    public IntegerParameter withDefault(int value) {
+        if (!domain.contains(value)) {
+            throw new IllegalArgumentException(
+                "Default value " + value + " is not within domain for parameter '" + name + "'");
+        }
+        this.defaultValue = value;
+        return this;
+    }
+
+    @Override
+    public Optional<Integer> defaultValue() {
+        return Optional.ofNullable(defaultValue);
     }
 
     ///

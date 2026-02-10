@@ -24,6 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 ///
 public abstract class ResultStoreTCK {
 
+    /// Creates a new TCK test instance.
+    protected ResultStoreTCK() {}
+
     /// Returns the implementation provider under test.
     protected abstract ImplementationProvider getProvider();
 

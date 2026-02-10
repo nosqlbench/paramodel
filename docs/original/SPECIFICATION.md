@@ -130,6 +130,27 @@ sequence1.then(sequence2) produces a sequence where:
 - Constraints from both are satisfied
 ```
 
+## Study Planning and Resource Binding
+
+A **Study** combines test sequences (axes) with required resources (elements).
+
+### 1. Axis-to-Parameter Binding Laws
+
+Given an axis $A$ and an element parameter $P$ of element $E$:
+
+1.  **Object Identity**: If $A$ is derived from $P$, then $A$ binds to $P$ regardless of naming.
+2.  **Qualified Naming**: If $A.name = E.name + "." + P.name$, then $A$ binds specifically to $P$ of $E$.
+3.  **Simple Naming**: If $A.name = P.name$, then $A$ binds to all such parameters $P$ in any element.
+
+### 2. Element Instantiation Scoping
+
+The instantiation scope $S$ of element $E$ is determined by its bound axes:
+
+- **GLOBAL**: $\forall P \in E.parameters, \neg \exists A \in Axes : binds(A, P)$
+- **PER_TRIAL**: $\exists P \in E.parameters, \exists A \in Axes : binds(A, P)$
+
+An element with PER_TRIAL scope must have a fresh instance for every trial configuration to ensure parameter isolation.
+
 ## Interoperability
 
 ### Cross-Language Protocol

@@ -23,6 +23,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 ///
 public abstract class ExecutionRepositoryTCK {
 
+    /// Creates a new TCK test instance.
+    protected ExecutionRepositoryTCK() {}
+
     /// Returns the implementation provider under test.
     protected abstract ImplementationProvider getProvider();
 

@@ -82,8 +82,14 @@ public class DefaultCompiler implements Compiler {
         context.stopTimer("total");
         Duration duration = Duration.between(startTime, Instant.now());
 
-        // Create ExecutionPlan from context
-        ExecutionPlan plan = testPlan.commit();
+        // Commit the test plan to mark it as frozen
+        ExecutionPlan committedPlan = testPlan.commit();
+
+        // Prefer compiled plan from pipeline; fall back to committed plan
+        ExecutionPlan plan = context.get("executionPlan")
+            .filter(ExecutionPlan.class::isInstance)
+            .map(ExecutionPlan.class::cast)
+            .orElse(committedPlan);
 
         log.info("Compilation completed in {}ms", duration.toMillis());
 

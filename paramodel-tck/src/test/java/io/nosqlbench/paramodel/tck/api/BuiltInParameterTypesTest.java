@@ -23,6 +23,7 @@ import io.nosqlbench.paramodel.parameters.types.DoubleParameter;
 import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
 import io.nosqlbench.paramodel.parameters.types.SelectionParameter;
 import io.nosqlbench.paramodel.parameters.types.SelectionResolver;
+import io.nosqlbench.paramodel.parameters.types.StringParameter;
 
 import org.junit.jupiter.api.Test;
 
@@ -597,5 +598,187 @@ class BuiltInParameterTypesTest {
         assertThat(result.isFailed()).isTrue();
         assertThat(result.violations()).isNotEmpty();
         assertThat(result.message()).isPresent();
+    }
+
+    // ── IntegerParameter.withDefault ─────────────────────────────────
+
+    @Test
+    void integerRangeWithDefault() {
+        var p = IntegerParameter.range("threads", 1, 64).withDefault(4);
+        assertThat(p.defaultValue()).hasValue(4);
+    }
+
+    @Test
+    void integerRangeWithDefaultRejectsOutOfDomain() {
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> IntegerParameter.range("threads", 1, 64).withDefault(100));
+    }
+
+    @Test
+    void integerRangeDefaultValueEmptyByDefault() {
+        var p = IntegerParameter.range("threads", 1, 64);
+        assertThat(p.defaultValue()).isEmpty();
+    }
+
+    @Test
+    void integerDiscreteWithDefault() {
+        var p = IntegerParameter.of("batch", Set.of(32, 64, 128)).withDefault(64);
+        assertThat(p.defaultValue()).hasValue(64);
+    }
+
+    @Test
+    void integerDiscreteWithDefaultRejectsOutOfDomain() {
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> IntegerParameter.of("batch", Set.of(32, 64, 128)).withDefault(50));
+    }
+
+    // ── DoubleParameter.withDefault ──────────────────────────────────
+
+    @Test
+    void doubleRangeWithDefault() {
+        var p = DoubleParameter.range("temp", 0.0, 1.0).withDefault(0.5);
+        assertThat(p.defaultValue()).hasValue(0.5);
+    }
+
+    @Test
+    void doubleRangeWithDefaultRejectsOutOfDomain() {
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> DoubleParameter.range("temp", 0.0, 1.0).withDefault(2.0));
+    }
+
+    @Test
+    void doubleRangeDefaultValueEmptyByDefault() {
+        var p = DoubleParameter.range("temp", 0.0, 1.0);
+        assertThat(p.defaultValue()).isEmpty();
+    }
+
+    // ── BooleanParameter.withDefault ─────────────────────────────────
+
+    @Test
+    void booleanWithDefault() {
+        var p = BooleanParameter.of("verbose").withDefault(false);
+        assertThat(p.defaultValue()).hasValue(false);
+    }
+
+    @Test
+    void booleanWithDefaultTrue() {
+        var p = BooleanParameter.of("flag").withDefault(true);
+        assertThat(p.defaultValue()).hasValue(true);
+    }
+
+    @Test
+    void booleanDefaultValueEmptyByDefault() {
+        var p = BooleanParameter.of("flag");
+        assertThat(p.defaultValue()).isEmpty();
+    }
+
+    // ── SelectionParameter.withDefault ───────────────────────────────
+
+    @Test
+    void selectionWithDefault() {
+        var p = SelectionParameter.of("region", Set.of("us-east-1", "us-west-2"))
+            .withDefault(List.of("us-east-1"));
+        assertThat(p.defaultValue()).hasValue(List.of("us-east-1"));
+    }
+
+    @Test
+    void selectionWithDefaultRejectsInvalidSelection() {
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> SelectionParameter.of("region", Set.of("us-east-1", "us-west-2"))
+                .withDefault(List.of("invalid")));
+    }
+
+    @Test
+    void selectionWithDefaultRejectsExcessSelections() {
+        assertThatIllegalArgumentException()
+            .isThrownBy(() -> SelectionParameter.of("region", Set.of("a", "b", "c"))
+                .withDefault(List.of("a", "b")));
+    }
+
+    @Test
+    void selectionDefaultValueEmptyByDefault() {
+        var p = SelectionParameter.of("region", Set.of("us-east-1"));
+        assertThat(p.defaultValue()).isEmpty();
+    }
+
+    // ── StringParameter ──────────────────────────────────────────────
+
+    @Test
+    void stringParameterBasics() {
+        var p = StringParameter.of("host");
+        assertThat(p.name()).isEqualTo("host");
+        assertThat(p.tags()).containsEntry("name", "host");
+        assertThat(p.tags()).containsEntry("type", "string");
+    }
+
+    @Test
+    void stringParameterDomainAcceptsAnyString() {
+        var p = StringParameter.of("host");
+        assertThat(p.domain().contains("localhost")).isTrue();
+        assertThat(p.domain().contains("")).isTrue();
+        assertThat(p.domain().contains(null)).isFalse();
+    }
+
+    @Test
+    void stringParameterDomainCardinality() {
+        var p = StringParameter.of("host");
+        assertThat(p.domain().cardinality()).isEmpty();
+    }
+
+    @Test
+    void stringParameterDomainEnumerateThrows() {
+        var p = StringParameter.of("host");
+        assertThatThrownBy(() -> p.domain().enumerate())
+            .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void stringParameterGenerate() {
+        var p = StringParameter.of("host");
+        assertThat(p.generate()).isNotNull().isNotEmpty();
+        assertThat(p.generateBoundary()).isNotNull();
+        assertThat(p.generateRandom()).isNotNull().isNotEmpty();
+    }
+
+    @Test
+    void stringParameterValidate() {
+        var p = StringParameter.of("host");
+        assertThat(p.validate("localhost").isPassed()).isTrue();
+        assertThat(p.validate("").isPassed()).isTrue();
+        assertThat(p.validate(null).isFailed()).isTrue();
+    }
+
+    @Test
+    void stringParameterWithDefault() {
+        var p = StringParameter.of("host").withDefault("localhost");
+        assertThat(p.defaultValue()).hasValue("localhost");
+    }
+
+    @Test
+    void stringParameterDefaultValueEmptyByDefault() {
+        var p = StringParameter.of("host");
+        assertThat(p.defaultValue()).isEmpty();
+    }
+
+    @Test
+    void stringParameterWithConstraint() {
+        var p = StringParameter.of("host")
+            .withConstraint((Constraint<String>) v -> v.length() > 0);
+        assertThat(p.validate("localhost").isPassed()).isTrue();
+        assertThat(p.validate("").isFailed()).isTrue();
+    }
+
+    @Test
+    void stringParameterSatisfies() {
+        var p = StringParameter.of("host");
+        Constraint<String> nonEmpty = v -> !v.isEmpty();
+        assertThat(p.satisfies(nonEmpty)).isTrue();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void stringParameterDomainIsCustom() {
+        var p = StringParameter.of("host");
+        assertThat(p.domain()).isInstanceOf(Domain.Custom.class);
     }
 }

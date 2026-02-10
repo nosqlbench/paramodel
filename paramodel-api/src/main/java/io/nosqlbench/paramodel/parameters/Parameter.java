@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.plan.Axis;
 import io.nosqlbench.paramodel.plan.TrialOrdering;
 
 import java.util.Map;
+import java.util.Optional;
 
 ///
 /// A testable parameter dimension with a domain, constraints, and value generation capabilities.
@@ -312,5 +313,24 @@ public interface Parameter<T> extends Tagged {
     /// @return true if the constraint is satisfiable by this parameter's domain
     ///
     boolean satisfies(Constraint<T> constraint);
+
+    ///
+    /// Returns the default value for this parameter, if one is defined.
+    ///
+    /// Used by {@link ParameterBinder} when no input is provided for this parameter.
+    /// If empty, the parameter is considered required — binding fails without input
+    /// unless the binding policy allows skipping.
+    ///
+    /// ## Contract
+    ///
+    /// - MUST return a non-null Optional
+    /// - If present, the value MUST be within {@link #domain()}
+    /// - MUST remain constant for the lifetime of the parameter
+    ///
+    /// @return the default value if defined, empty otherwise
+    ///
+    default Optional<T> defaultValue() {
+        return Optional.empty();
+    }
 
 }

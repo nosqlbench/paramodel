@@ -3,4 +3,5 @@ module io.nosqlbench.paramodel.engine {
     requires org.slf4j;
 
     exports io.nosqlbench.paramodel.engine.compiler;
+    exports io.nosqlbench.paramodel.engine.binding;
 }

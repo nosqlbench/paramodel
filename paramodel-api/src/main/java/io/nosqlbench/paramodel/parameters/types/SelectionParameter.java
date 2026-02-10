@@ -54,6 +54,7 @@ public final class SelectionParameter implements Parameter<List<String>> {
     private final SelectionDomainWrapper domain;
     private final List<Constraint<List<String>>> constraints;
     private int maxSelections;
+    private List<String> defaultValue;
 
     /// The underlying string-level domain (built-in or external).
     private final Domain<String> stringDomain;
@@ -182,6 +183,37 @@ public final class SelectionParameter implements Parameter<List<String>> {
             }
         }
         return false;
+    }
+
+    ///
+    /// Sets the default value for this parameter. Returns this parameter for chaining.
+    ///
+    /// All selections in the default value must be valid selections within the domain.
+    ///
+    /// @param value the default value (list of selected strings)
+    /// @return this parameter
+    /// @throws IllegalArgumentException if any selection is not in the valid set
+    ///
+    public SelectionParameter withDefault(List<String> value) {
+        Objects.requireNonNull(value, "default value must not be null");
+        for (String v : value) {
+            if (!stringDomain.contains(v)) {
+                throw new IllegalArgumentException(
+                    "Default selection '" + v + "' is not a valid value for parameter '" + name + "'");
+            }
+        }
+        if (value.size() > maxSelections) {
+            throw new IllegalArgumentException(
+                "Default selection count " + value.size() +
+                " exceeds maximum " + maxSelections + " for parameter '" + name + "'");
+        }
+        this.defaultValue = List.copyOf(value);
+        return this;
+    }
+
+    @Override
+    public Optional<List<String>> defaultValue() {
+        return Optional.ofNullable(defaultValue);
     }
 
     ///

@@ -424,6 +424,17 @@ public interface CompilationContext {
     Optional<List<ElementInstance>> elementInstances();
 
     ///
+    /// Plans a new element instance with dependencies.
+    ///
+    /// @param element Element to instantiate
+    /// @param trials Trials using this instance
+    /// @param scopeDescription Human-readable scope description
+    /// @param dependsOn Set of instance IDs this instance depends on
+    /// @return Instance identifier
+    ///
+    String planInstance(Element element, List<Trial> trials, String scopeDescription, Set<String> dependsOn);
+
+    ///
     /// Plans a new element instance.
     ///
     /// @param element Element to instantiate

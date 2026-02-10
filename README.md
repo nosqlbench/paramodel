@@ -178,11 +178,12 @@ executor.shutdown();
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    paramodel-api                        │
-│  Pure contract interfaces (57 contracts)                │
-│  - Core, Sequence, Plan, Compilation, Execution, etc.  │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                     paramodel-api                        │
+│  Pure contract interfaces (~52 contracts)                │
+│  parameters, elements, sequence, plan, compilation,     │
+│  execution, persistence, security, util                  │
+└──────────────────────────────────────────────────────────┘
                             ▲
                             │ implements
                 ┌───────────┴───────────┐
@@ -261,6 +262,7 @@ All functionality defined as pure interfaces. Zero implementation coupling. Impl
 - **Maven**: 3.9.0+
 - **Build**: `mvn clean install`
 - **Test**: `mvn test`
+- **Verify**: `mvn clean verify` (runs tests + coverage checks)
 
 ## Build
 
@@ -271,6 +273,9 @@ mvn clean install
 # Run tests
 mvn test
 
+# Full verification (tests + coverage enforcement + javadoc)
+mvn clean verify
+
 # Generate javadocs
 mvn javadoc:javadoc
 
@@ -278,50 +283,85 @@ mvn javadoc:javadoc
 mvn clean install -DskipTests
 ```
 
+## Build Quality Gates
+
+The build enforces two quality gates that run during `mvn verify`:
+
+### JaCoCo Coverage Regression Prevention
+
+Each module declares minimum coverage thresholds. The build fails if coverage drops below the configured floor. Thresholds are defined as Maven properties (`jacoco.instruction.minimum`, `jacoco.line.minimum`, `jacoco.method.minimum`) in each module's POM.
+
+| Module | Instruction | Line | Method |
+|--------|------------|------|--------|
+| paramodel-api | 0.00 (no direct tests) | 0.00 | 0.00 |
+| paramodel-mock | 0.00 (default) | 0.00 | 0.00 |
+| paramodel-tck | 0.95 | 0.95 | 0.90 |
+| paramodel-engine | 0.30 | 0.30 | 0.20 |
+
+Override at the command line to test enforcement:
+```bash
+mvn clean verify -Djacoco.instruction.minimum=0.99  # will fail
+```
+
+### Javadoc Warning Failure
+
+The build fails if `javadoc:jar` produces any warnings (`failOnWarnings` is enabled). This ensures documentation stays consistent with code changes across all modules.
+
 ## Project Structure
 
 ```
 paramodel/
-├── paramodel-api/          # Contract interfaces (57 contracts)
+├── paramodel-api/          # Contract interfaces (~52 contracts)
 │   └── src/main/java/io/nosqlbench/paramodel/
-│       ├── core/           # 7 core contracts
-│       ├── sequence/       # 5 sequence contracts
-│       ├── plan/           # 7 plan contracts
-│       ├── compilation/    # 4 compilation contracts
-│       ├── execution/      # 5 execution contracts
-│       ├── observability/  # 6 observability contracts
-│       ├── persistence/    # 5 persistence contracts
-│       ├── cost/           # 4 cost contracts
-│       ├── security/       # 3 security contracts
-│       ├── versioning/     # 4 versioning contracts
-│       └── utilities/      # 3 utility contracts
+│       ├── parameters/     # Parameter, Domain, Value, Constraint, ValidationResult
+│       │   └── types/      # IntegerParameter, DoubleParameter, BooleanParameter, SelectionParameter
+│       ├── elements/       # Element, RelationshipType
+│       ├── sequence/       # Trial, Sequence, TrialResult, TrialStatus, builders
+│       ├── plan/           # TestPlan, ExecutionPlan, Axis, Barrier, ExecutionGraph
+│       │   └── policies/   # ExecutionPolicies
+│       ├── compilation/    # Compiler, CompilationStage, CompilationContext, OptimizationPass
+│       ├── execution/      # Executor, Runtime, Scheduler, ResourceManager, ArtifactCollector
+│       ├── persistence/    # ResultStore, ExecutionRepository, CheckpointStore, ArtifactStore
+│       ├── security/       # CredentialManager, AccessControl, AuditLog
+│       └── util/           # ConfigurationManager, SerializationUtil, ValidationUtil
 │
-├── paramodel-mock/         # Mock implementations
+├── paramodel-mock/         # Mock implementations (mirrors API packages)
 │   └── src/main/java/io/nosqlbench/paramodel/mock/
-│       ├── core/           # Core mocks
-│       ├── sequence/       # Sequence mocks
-│       └── plan/           # Plan mocks
+│       ├── parameters/     # MockParameter, MockDomain, MockValue, etc.
+│       ├── elements/       # MockElement
+│       ├── sequence/       # MockSequence, MockTrial, etc.
+│       ├── plan/           # MockTestPlan, MockAxis, MockExecutionGraph, etc.
+│       ├── compilation/    # MockCompiler, MockCompilationContext
+│       ├── execution/      # MockExecutor, MockScheduler, MockResourceManager
+│       ├── persistence/    # MockResultStore, MockCheckpointStore, etc.
+│       ├── security/       # MockAccessControl, MockAuditLog, MockCredentialManager
+│       └── util/           # MockConfigurationManager, MockSerializationUtil
 │
 ├── paramodel-tck/          # Technology Compatibility Kit
 │   ├── src/main/java/io/nosqlbench/paramodel/tck/
-│   │   ├── core/           # Core TCK tests
-│   │   ├── sequence/       # Sequence TCK tests
-│   │   └── plan/           # Plan TCK tests
+│   │   ├── parameters/     # Parameter, Domain, Value, Constraint TCK tests
+│   │   ├── elements/       # Element TCK tests
+│   │   ├── sequence/       # Sequence, Trial, TrialResult TCK tests
+│   │   ├── plan/           # TestPlan, ExecutionPlan, Axis, Barrier TCK tests
+│   │   ├── compilation/    # Compiler, CompilationStage TCK tests
+│   │   ├── execution/      # Executor, Runtime TCK tests
+│   │   ├── persistence/    # Persistence TCK tests
+│   │   ├── security/       # Security TCK tests
+│   │   └── util/           # Utility TCK tests
 │   └── src/test/java/      # TCK validation of mock impl
 │
 └── paramodel-engine/       # Production engine
     └── src/main/java/io/nosqlbench/paramodel/engine/
         ├── compiler/       # 8-stage compilation pipeline
-        ├── execution/      # Executor, Scheduler, ResourceManager
-        └── observability/  # Metrics, logging, profiling
+        └── execution/      # Executor, Scheduler, ResourceManager
 ```
 
 ## Documentation
 
-- **API Contracts**: See triple-slash Javadocs in `paramodel-api`
-- **Mock Usage**: See `paramodel-mock/README.md`
-- **TCK Usage**: See `paramodel-tck/README.md`
-- **Engine Usage**: See `paramodel-engine/README.md`
+- **API Contracts**: See triple-slash Javadocs in `paramodel-api` (generate with `mvn javadoc:javadoc`)
+- **Quick Start**: See `QUICKSTART.md`
+- **Examples**: See `examples/README.md`
+- **Coverage Reports**: Generated at `{module}/target/site/jacoco/` and aggregate at `paramodel-tck/target/site/jacoco-aggregate/`
 
 ## License
 
@@ -334,3 +374,5 @@ Apache License 2.0
 3. Use Java 25 features (sealed, records, pattern matching)
 4. Follow existing code style and conventions
 5. Add tests for new functionality
+6. `mvn clean verify` must pass — this enforces coverage thresholds and javadoc correctness
+7. Do not lower per-module coverage thresholds without justification

@@ -26,9 +26,8 @@ cd paramodel
 # Build all modules
 mvn clean install
 
-# Verify build
-./verify-build.sh  # On Linux/macOS
-verify-build.bat   # On Windows
+# Full verification (tests + coverage checks + javadoc)
+mvn clean verify
 ```
 
 ### Option 2: Use as Maven Dependency
@@ -138,7 +137,7 @@ java -cp "../paramodel-api/target/*:../paramodel-mock/target/*:." examples.Const
 ```bash
 cd paramodel-api
 ls src/main/java/io/nosqlbench/paramodel/
-# Explore: core/, sequence/, plan/, compilation/, execution/
+# Explore: parameters/, elements/, sequence/, plan/, compilation/, execution/, persistence/, security/, util/
 ```
 
 **paramodel-mock** - Simple implementations
@@ -168,34 +167,30 @@ cat README.md
 # Project overview
 cat README.md
 
-# Contributing guidelines
-cat CONTRIBUTING.md
-
-# Module documentation
-cat paramodel-mock/README.md
-cat paramodel-tck/README.md
-cat paramodel-engine/README.md
+# Quick start (this file)
+cat QUICKSTART.md
 
 # Examples guide
 cat examples/README.md
+
+# API javadocs (after building)
+mvn javadoc:javadoc
+# then open paramodel-api/target/site/apidocs/index.html
 ```
 
 ### Verify Your Setup
 
-Run the verification script:
+Run the full verification:
 ```bash
-./verify-build.sh  # Linux/macOS
-verify-build.bat   # Windows
+mvn clean verify
 ```
 
 This checks:
-- ✓ Java version
-- ✓ Maven version
-- ✓ Compilation
-- ✓ Tests
-- ✓ Packaging
-- ✓ Artifacts
-- ✓ TCK validation
+- Compilation (Java 25)
+- Tests (JUnit 5 via Surefire)
+- JaCoCo coverage thresholds (per-module minimums)
+- Javadoc correctness (fails on warnings)
+- TCK validation (mock implementation conformance)
 
 ## Common Tasks
 

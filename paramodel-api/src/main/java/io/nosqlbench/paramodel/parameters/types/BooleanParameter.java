@@ -31,6 +31,7 @@ public final class BooleanParameter implements Parameter<Boolean> {
     private final String name;
     private final BooleanDomain domain;
     private final List<Constraint<Boolean>> constraints;
+    private Boolean defaultValue;
 
     private BooleanParameter(String name) {
         this.name = Objects.requireNonNull(name, "name must not be null");
@@ -99,6 +100,22 @@ public final class BooleanParameter implements Parameter<Boolean> {
     @Override
     public boolean satisfies(Constraint<Boolean> constraint) {
         return constraint.test(true) || constraint.test(false);
+    }
+
+    ///
+    /// Sets the default value for this parameter. Returns this parameter for chaining.
+    ///
+    /// @param value the default value
+    /// @return this parameter
+    ///
+    public BooleanParameter withDefault(boolean value) {
+        this.defaultValue = value;
+        return this;
+    }
+
+    @Override
+    public Optional<Boolean> defaultValue() {
+        return Optional.ofNullable(defaultValue);
     }
 
     ///

@@ -89,9 +89,14 @@ public class DefaultCompilationContext implements CompilationContext {
 
     @Override
     public String planInstance(Element element, List<Trial> trials, String scopeDescription) {
+        return planInstance(element, trials, scopeDescription, Set.of());
+    }
+
+    @Override
+    public String planInstance(Element element, List<Trial> trials, String scopeDescription, Set<String> dependsOn) {
         String instanceId = element.name() + "_" + UUID.randomUUID();
         CompilationContext.ElementInstance instance =
-            new CompilationContext.ElementInstance(instanceId, element, trials, scopeDescription, Set.of());
+            new CompilationContext.ElementInstance(instanceId, element, trials, scopeDescription, dependsOn);
         elementInstances.computeIfAbsent(element.name(), k -> new ArrayList<>()).add(instance);
         return instanceId;
     }
