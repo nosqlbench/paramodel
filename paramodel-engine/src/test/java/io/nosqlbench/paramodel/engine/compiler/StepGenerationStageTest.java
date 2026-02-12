@@ -194,6 +194,193 @@ class StepGenerationStageTest {
         assertThat(finalTeardowns.get(1).elementId()).isEqualTo("db");
     }
 
+    @Test
+    @DisplayName("Instance numbers assigned sequentially for per-trial deploys")
+    void testInstanceNumbersAssignedSequentially() {
+        var portParam = IntegerParameter.range("port", 8080, 8082);
+        Element server = MockElement.builder("server")
+            .parameter(portParam)
+            .build();
+
+        Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081, 8082);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("instance-seq-test")
+            .axis(portAxis)
+            .element(server)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep.DeployElement> deploys = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement)
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+
+        assertThat(deploys).hasSize(3);
+        assertThat(deploys.get(0).instanceNumber()).isEqualTo(0);
+        assertThat(deploys.get(1).instanceNumber()).isEqualTo(1);
+        assertThat(deploys.get(2).instanceNumber()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("Instance numbers never reused after teardown and re-deploy")
+    void testInstanceNumbersNeverReused() {
+        var portParam = IntegerParameter.range("port", 8080, 8082);
+        Element server = MockElement.builder("server")
+            .parameter(portParam)
+            .build();
+
+        Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081, 8080);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("instance-no-reuse-test")
+            .axis(portAxis)
+            .element(server)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep.DeployElement> deploys = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement)
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+
+        // Even if config goes back to 8080, instance number still increments
+        for (int i = 0; i < deploys.size(); i++) {
+            assertThat(deploys.get(i).instanceNumber()).isEqualTo(i);
+        }
+    }
+
+    @Test
+    @DisplayName("Teardown carries matching instance number from its deploy")
+    void testTeardownCarriesMatchingInstanceNumber() {
+        var portParam = IntegerParameter.range("port", 8080, 8082);
+        Element server = MockElement.builder("server")
+            .parameter(portParam)
+            .build();
+
+        Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("teardown-match-test")
+            .axis(portAxis)
+            .element(server)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep> steps = context.steps().get();
+
+        // The intermediate teardown (parameter_change) should carry instance 0
+        // matching the deploy it is tearing down
+        List<AtomicStep.TeardownElement> intermediateTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "parameter_change".equals(t.metadata().get("reason")))
+            .map(AtomicStep.TeardownElement.class::cast)
+            .toList();
+
+        assertThat(intermediateTeardowns).hasSize(1);
+        assertThat(intermediateTeardowns.getFirst().instanceNumber()).isEqualTo(0);
+
+        // The final teardown should carry instance 1 (the last deployed instance)
+        List<AtomicStep.TeardownElement> finalTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "cleanup".equals(t.metadata().get("phase")))
+            .map(AtomicStep.TeardownElement.class::cast)
+            .toList();
+
+        assertThat(finalTeardowns).hasSize(1);
+        assertThat(finalTeardowns.getFirst().instanceNumber()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Global (PER_RUN) element gets instance number 0")
+    void testGlobalElementGetsInstanceZero() {
+        Element db = MockElement.of("db");
+        Axis<String> axis = MockAxis.of("mode", "read", "write");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("global-instance-test")
+            .axis(axis)
+            .element(db)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep> steps = context.steps().get();
+
+        AtomicStep.DeployElement deploy = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement)
+            .map(AtomicStep.DeployElement.class::cast)
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(deploy.instanceNumber()).isEqualTo(0);
+
+        AtomicStep.TeardownElement teardown = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "cleanup".equals(t.metadata().get("phase")))
+            .map(AtomicStep.TeardownElement.class::cast)
+            .findFirst()
+            .orElseThrow();
+
+        assertThat(teardown.instanceNumber()).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("Multiple elements have separate instance counters")
+    void testMultipleElementsSeparateCounters() {
+        var portParam = IntegerParameter.range("port", 8080, 8081);
+        var memParam = IntegerParameter.range("mem", 512, 1024);
+
+        Element server = MockElement.builder("server")
+            .parameter(portParam)
+            .build();
+        Element cache = MockElement.builder("cache")
+            .parameter(memParam)
+            .build();
+
+        Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
+        Axis<Integer> memAxis = MockAxis.of("mem", 512, 1024);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("separate-counters-test")
+            .axis(portAxis)
+            .axis(memAxis)
+            .element(server)
+            .element(cache)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep.DeployElement> serverDeploys = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("server"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+
+        List<AtomicStep.DeployElement> cacheDeploys = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("cache"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+
+        // Each element's instance numbers start at 0 independently
+        if (!serverDeploys.isEmpty()) {
+            assertThat(serverDeploys.getFirst().instanceNumber()).isEqualTo(0);
+        }
+        if (!cacheDeploys.isEmpty()) {
+            assertThat(cacheDeploys.getFirst().instanceNumber()).isEqualTo(0);
+        }
+
+        // Instance numbers are sequential within each element
+        for (int i = 0; i < serverDeploys.size(); i++) {
+            assertThat(serverDeploys.get(i).instanceNumber()).isEqualTo(i);
+        }
+        for (int i = 0; i < cacheDeploys.size(); i++) {
+            assertThat(cacheDeploys.get(i).instanceNumber()).isEqualTo(i);
+        }
+    }
+
     private DefaultCompilationContext runPipeline(TestPlan plan) {
         DefaultCompilationContext context = new DefaultCompilationContext(plan, defaultOptions());
         new ValidationStage().execute(context);

@@ -18,6 +18,9 @@ import java.util.Optional;
 public class MockCredentialManager implements CredentialManager {
     private final Map<String, Credential> credentials = new HashMap<>();
 
+    /// Creates a new empty credential manager.
+    public MockCredentialManager() {}
+
     @Override
     public void storeCredential(String key, Credential credential) {
         credentials.put(key, credential);

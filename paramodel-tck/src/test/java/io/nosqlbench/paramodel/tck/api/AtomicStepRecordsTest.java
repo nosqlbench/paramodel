@@ -40,7 +40,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementHasCorrectType() {
         var step = new DeployElement(
-            "step-1", "db", Map.of("port", 5432), List.of(),
+            "step-1", "db", 0, Map.of("port", 5432), List.of(),
             List.of(), Optional.of(Duration.ofSeconds(30)),
             MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.type()).isEqualTo(StepType.DEPLOY_ELEMENT);
@@ -49,7 +49,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementDescription() {
         var step = new DeployElement(
-            "step-1", "redis", Map.of(), List.of(),
+            "step-1", "redis", 0, Map.of(), List.of(),
             List.of(), Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.description()).contains("redis");
     }
@@ -57,7 +57,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementAccessors() {
         var step = new DeployElement(
-            "step-1", "db", Map.of("k", "v"), List.of(),
+            "step-1", "db", 0, Map.of("k", "v"), List.of(),
             List.of("dep-1"), Optional.of(Duration.ofMinutes(1)),
             MINIMAL, Optional.empty(), Map.of("tag", "val"));
         assertThat(step.id()).isEqualTo("step-1");
@@ -73,7 +73,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementExecuteThrows() {
         var step = new DeployElement(
-            "step-1", "db", Map.of(), List.of(),
+            "step-1", "db", 0, Map.of(), List.of(),
             List.of(), Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThatThrownBy(() -> step.execute(null))
             .isInstanceOf(UnsupportedOperationException.class);
@@ -114,7 +114,7 @@ class AtomicStepRecordsTest {
     @Test
     void teardownElementHasCorrectType() {
         var step = new TeardownElement(
-            "step-3", "db", true, List.of("step-2"),
+            "step-3", "db", 0, true, List.of("step-2"),
             Optional.of(Duration.ofSeconds(10)), MINIMAL,
             Optional.empty(), EMPTY_META);
         assertThat(step.type()).isEqualTo(StepType.TEARDOWN_ELEMENT);
@@ -123,7 +123,7 @@ class AtomicStepRecordsTest {
     @Test
     void teardownElementDescription() {
         var step = new TeardownElement(
-            "step-3", "cache", false, List.of(),
+            "step-3", "cache", 0, false, List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.description()).contains("cache");
     }
@@ -131,7 +131,7 @@ class AtomicStepRecordsTest {
     @Test
     void teardownElementAccessors() {
         var step = new TeardownElement(
-            "step-3", "db", true, List.of("barrier-1"),
+            "step-3", "db", 0, true, List.of("barrier-1"),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.elementId()).isEqualTo("db");
         assertThat(step.collectArtifacts()).isTrue();
@@ -313,13 +313,13 @@ class AtomicStepRecordsTest {
     @Test
     void atomicStepSealedSubtypes() {
         AtomicStep deploy = new DeployElement(
-            "1", "e", Map.of(), List.of(), List.of(),
+            "1", "e", 0, Map.of(), List.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         AtomicStep execute = new ExecuteTrial(
             "2", "t", Map.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         AtomicStep teardown = new TeardownElement(
-            "3", "e", false, List.of(),
+            "3", "e", 0, false, List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         AtomicStep barrier = new BarrierSync(
             "4", "b", List.of(),

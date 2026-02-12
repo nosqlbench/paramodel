@@ -16,6 +16,9 @@ import java.util.*;
 public class MockAccessControl implements AccessControl {
     private final Map<String, Set<Permission>> permissions = new HashMap<>();
 
+    /// Creates a new empty access control.
+    public MockAccessControl() {}
+
     @Override
     public void grantPermission(String userId, String resource, Permission permission) {
         String key = userId + ":" + resource;

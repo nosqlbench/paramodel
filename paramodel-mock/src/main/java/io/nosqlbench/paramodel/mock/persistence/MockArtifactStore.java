@@ -21,6 +21,9 @@ public class MockArtifactStore implements ArtifactStore {
     private final Map<String, ArtifactCollector.Artifact> artifacts = new LinkedHashMap<>();
     private final Map<String, byte[]> contents = new HashMap<>();
 
+    /// Creates a new empty artifact store.
+    public MockArtifactStore() {}
+
     @Override
     public void saveArtifact(ArtifactCollector.Artifact artifact, InputStream content) {
         Objects.requireNonNull(artifact, "artifact must not be null");

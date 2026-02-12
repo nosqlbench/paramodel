@@ -452,8 +452,7 @@ public interface TrialOrdering {
 
         @Override
         public List<Trial> order(List<Trial> trials) {
-            throw new UnsupportedOperationException(
-                "SequentialOrdering.order() requires a concrete implementation");
+            return List.copyOf(trials);
         }
 
         @Override
@@ -528,11 +527,9 @@ public interface TrialOrdering {
 
         @Override
         public List<Trial> order(List<Trial> trials) {
-            List<Trial> shuffled = List.copyOf(trials);
-            Random rng = new Random(seed);
-            // Shuffle logic would be implemented here
-            throw new UnsupportedOperationException(
-                "ShuffledOrdering.order() requires a concrete implementation");
+            var copy = new java.util.ArrayList<>(trials);
+            java.util.Collections.shuffle(copy, new Random(seed));
+            return List.copyOf(copy);
         }
 
         @Override

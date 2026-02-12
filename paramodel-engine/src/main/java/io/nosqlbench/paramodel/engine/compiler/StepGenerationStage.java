@@ -60,6 +60,10 @@ public class StepGenerationStage implements CompilationStage {
         Map<String, String> lastStepForElement = new HashMap<>();
         // Track current fingerprint per element (for change detection)
         Map<String, String> currentFingerprintForElement = new HashMap<>();
+        // Track per-element monotonic instance counter (never resets)
+        Map<String, Integer> nextInstanceNumber = new HashMap<>();
+        // Track currently active instance number per element
+        Map<String, Integer> currentInstanceNumber = new HashMap<>();
 
         int stepIndex = 0;
 
@@ -69,10 +73,15 @@ public class StepGenerationStage implements CompilationStage {
                 List<String> deps = computeDependencies(element, lastStepForElement);
                 Map<String, Object> config = buildConfiguration(element, trials.getFirst(), allInstances);
 
+                int instNum = nextInstanceNumber.getOrDefault(element.name(), 0);
+                nextInstanceNumber.put(element.name(), instNum + 1);
+                currentInstanceNumber.put(element.name(), instNum);
+
                 String stepId = "deploy_" + element.name() + "_" + stepIndex++;
                 AtomicStep.DeployElement deployStep = new AtomicStep.DeployElement(
                     stepId,
                     element.name(),
+                    instNum,
                     config,
                     List.of(),
                     deps,
@@ -97,7 +106,7 @@ public class StepGenerationStage implements CompilationStage {
                 }
 
                 // Compute fingerprint for this element in this trial
-                String currentFingerprint = computeElementFingerprint(element, trial);
+                String currentFingerprint = computeElementFingerprint(element, trial, plan);
                 String previousFingerprint = currentFingerprintForElement.get(element.name());
 
                 boolean needsDeploy = (previousFingerprint == null)
@@ -109,10 +118,12 @@ public class StepGenerationStage implements CompilationStage {
                         List<String> teardownDeps = List.of(lastStepForElement.getOrDefault(element.name(), ""));
                         teardownDeps = teardownDeps.stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
 
+                        int teardownInstNum = currentInstanceNumber.get(element.name());
                         String teardownId = "teardown_" + element.name() + "_" + stepIndex++;
                         AtomicStep.TeardownElement teardown = new AtomicStep.TeardownElement(
                             teardownId,
                             element.name(),
+                            teardownInstNum,
                             false,
                             teardownDeps,
                             Optional.empty(),
@@ -125,6 +136,10 @@ public class StepGenerationStage implements CompilationStage {
                     }
 
                     // Deploy with new config
+                    int instNum = nextInstanceNumber.getOrDefault(element.name(), 0);
+                    nextInstanceNumber.put(element.name(), instNum + 1);
+                    currentInstanceNumber.put(element.name(), instNum);
+
                     List<String> deployDeps = computeDependencies(element, lastStepForElement);
                     Map<String, Object> config = buildConfiguration(element, trial, allInstances);
 
@@ -132,6 +147,7 @@ public class StepGenerationStage implements CompilationStage {
                     AtomicStep.DeployElement deploy = new AtomicStep.DeployElement(
                         deployId,
                         element.name(),
+                        instNum,
                         config,
                         List.of(),
                         deployDeps,
@@ -233,10 +249,12 @@ public class StepGenerationStage implements CompilationStage {
                 }
             }
 
+            int finalInstNum = currentInstanceNumber.getOrDefault(element.name(), 0);
             String teardownId = "teardown_final_" + element.name() + "_" + stepIndex++;
             AtomicStep.TeardownElement teardown = new AtomicStep.TeardownElement(
                 teardownId,
                 element.name(),
+                finalInstNum,
                 true,
                 teardownDeps,
                 Optional.empty(),
@@ -261,16 +279,35 @@ public class StepGenerationStage implements CompilationStage {
             .anyMatch(inst -> inst.scopeDescription().equals("global"));
     }
 
-    private String computeElementFingerprint(Element element, Trial trial) {
+    private String computeElementFingerprint(Element element, Trial trial, TestPlan plan) {
         // Concatenate sorted fingerprints of all parameter values for this element
         TreeMap<String, String> sortedFingerprints = new TreeMap<>();
+
+        // Check formal parameters (existing)
         for (var param : element.parameters()) {
             trial.assignment(param.name()).ifPresent(value ->
                 sortedFingerprints.put(param.name(), value.fingerprint())
             );
         }
+
+        // Check axes targeting this element (via targetElement tag)
+        for (var axis : plan.axes()) {
+            if (axis.targetElement().map(t -> t.equals(element.name())).orElse(false)) {
+                trial.assignment(axis.name()).ifPresent(value ->
+                    sortedFingerprints.put(axis.name(), value.fingerprint()));
+            }
+        }
+
         if (sortedFingerprints.isEmpty()) {
-            // No varying parameters — use element name as stable fingerprint
+            // No varying parameters for this element.
+            // If the element has PER_TRIAL scope, it must be redeployed for
+            // every trial even without parameter changes — use the trial id
+            // to produce a unique fingerprint per trial.
+            if (element.instancingScope()
+                    .map(s -> s == Element.InstancingScope.PER_TRIAL)
+                    .orElse(false)) {
+                return "per_trial:" + element.name() + ":" + trial.id();
+            }
             return "static:" + element.name();
         }
         return String.join("|", sortedFingerprints.values());

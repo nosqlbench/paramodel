@@ -392,6 +392,19 @@ public interface Axis<T> extends Tagged {
     java.util.Optional<Parameter<T>> underlyingParameter();
 
     ///
+    /// Returns the name of the element this axis targets, if specified.
+    ///
+    /// When an axis varies a parameter on a specific element, this method
+    /// identifies which element. The value is read from the {@code "targetElement"}
+    /// tag.
+    ///
+    /// @return the target element name, or empty if axis is element-agnostic
+    ///
+    default java.util.Optional<String> targetElement() {
+        return java.util.Optional.ofNullable(tags().get("targetElement"));
+    }
+
+    ///
     /// Checks if a value is present along this axis.
     ///
     /// ## Convenience Method

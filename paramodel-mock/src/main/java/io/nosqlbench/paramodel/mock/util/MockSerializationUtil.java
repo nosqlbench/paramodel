@@ -17,6 +17,9 @@ import java.nio.charset.StandardCharsets;
 ///
 public class MockSerializationUtil implements SerializationUtil {
 
+    /// Creates a new serialization utility.
+    public MockSerializationUtil() {}
+
     @Override
     public <T> void serialize(T object, OutputStream output) {
         try {

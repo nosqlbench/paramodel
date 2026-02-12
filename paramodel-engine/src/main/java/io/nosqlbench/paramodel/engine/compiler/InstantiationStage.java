@@ -42,13 +42,33 @@ public class InstantiationStage implements CompilationStage {
 
         for (Element element : sortedElements) {
              // Determine if element configuration varies across trials
-             boolean dependsOnAxes = false;
-             for (Parameter<?> param : element.parameters()) {
-                 boolean axisTargeting = plan.axes().stream()
-                     .anyMatch(a -> matches(a, param, element));
-                 if (axisTargeting) {
-                     dependsOnAxes = true;
-                     break;
+             // using a three-tier strategy:
+             boolean dependsOnAxes;
+
+             // Tier 1: Explicit scope (set by hyperplane ScopeDeriver)
+             Optional<Element.InstancingScope> explicitScope = element.instancingScope();
+             if (explicitScope.isPresent()) {
+                 dependsOnAxes = explicitScope.get() != Element.InstancingScope.PER_RUN;
+             } else {
+                 dependsOnAxes = false;
+                 // Tier 2: Axis targeting via targetElement()
+                 for (Axis<?> axis : plan.axes()) {
+                     if (axis.targetElement().map(t -> t.equals(element.name())).orElse(false)) {
+                         dependsOnAxes = true;
+                         break;
+                     }
+                 }
+                 // Tier 3: Parameter matching (existing heuristic)
+                 if (!dependsOnAxes) {
+                     for (Parameter<?> param : element.parameters()) {
+                         for (Axis<?> axis : plan.axes()) {
+                             if (matches(axis, param, element)) {
+                                 dependsOnAxes = true;
+                                 break;
+                             }
+                         }
+                         if (dependsOnAxes) break;
+                     }
                  }
              }
 

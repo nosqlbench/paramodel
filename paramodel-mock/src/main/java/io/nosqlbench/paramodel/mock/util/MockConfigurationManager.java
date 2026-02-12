@@ -18,6 +18,9 @@ import java.util.Optional;
 public class MockConfigurationManager implements ConfigurationManager {
     private final Map<String, Object> config = new HashMap<>();
 
+    /// Creates a new empty configuration manager.
+    public MockConfigurationManager() {}
+
     @Override
     public void set(String key, Object value) {
         config.put(key, value);

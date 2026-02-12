@@ -1,6 +1,7 @@
 package io.nosqlbench.paramodel.elements;
 
 import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.ParameterView;
 import io.nosqlbench.paramodel.parameters.Tagged;
 
 import java.util.List;
@@ -80,11 +81,17 @@ import java.util.Optional;
 /// ├── parameters: List<Parameter<?>>
 /// │   └── Configurable dimensions of this element
 /// │
+/// ├── resultParameters: List<Parameter<?>>
+/// │   └── Optional deployment outputs this element can publish
+/// │
 /// ├── dependencies: List<Element>
 /// │   └── Other elements this depends on (DAG)
 /// │
 /// ├── healthCheck: Optional<HealthCheckSpec>
 /// │   └── Readiness verification strategy
+/// │
+/// ├── statusCheck: LiveStatusSummary
+/// │   └── Current operational state + one-line evidence
 /// │
 /// └── instancingScope: Optional<InstancingScope>
 ///     └── PER_TRIAL | PER_GROUP | PER_RUN
@@ -176,6 +183,20 @@ import java.util.Optional;
 /// └── Custom          — user-defined readiness predicate
 /// ```
 ///
+/// ## Live Status Checks
+///
+/// Elements report their current state via {@link #statusCheck()}:
+///
+/// ```
+/// Live Status Report:
+/// ├── OperationalState  — lifecycle position (RUNNING, READY, FAILED, ...)
+/// └── summary           — one-line evidence ("3/3 nodes active")
+/// ```
+///
+/// This is distinct from health checks: a health check is a *specification*
+/// for how to verify readiness; a status check is a *live query* that
+/// returns the element's current operational state.
+///
 /// @see Parameter
 /// @see RelationshipType
 /// @see io.nosqlbench.paramodel.plan.TestPlan
@@ -245,10 +266,58 @@ public interface Element extends Tagged {
     /// }
     /// ```
     ///
+    /// For elements with dynamic parameter views, this method returns the
+    /// required/structural parameters. Consult {@link #parameterView()} for
+    /// the full active parameter set, which may include dynamically resolved
+    /// parameters that depend on required parameter values.
+    ///
     /// @return unmodifiable list of parameter models, never null
     /// @see Parameter
+    /// @see #parameterView()
     ///
     List<Parameter<?>> parameters();
+
+    ///
+    /// Returns a {@link ParameterView} that models the required/dynamic parameter split.
+    ///
+    /// For elements whose valid parameter set depends on the value of certain
+    /// structural parameters, the view distinguishes between required parameters
+    /// (always present) and dynamic parameters (resolved once required values
+    /// are known).
+    ///
+    /// The default implementation returns a static view wrapping {@link #parameters()}.
+    /// Elements with dynamic behavior should override this method.
+    ///
+    /// @return the parameter view for this element, never null
+    /// @see ParameterView
+    ///
+    default ParameterView parameterView() {
+        return ParameterView.of(parameters());
+    }
+
+    ///
+    /// Returns optional result parameter models this element may publish after deployment.
+    ///
+    /// Result parameters model typed outputs produced by materializing this element
+    /// (for example: endpoint URL, allocated port, generated credential ID, or
+    /// runtime feature flags). They are distinct from {@link #parameters()}, which
+    /// model the element's configurable input dimensions.
+    ///
+    /// Concrete implementations MAY override this method to provide result models.
+    /// The default behavior returns an empty list.
+    ///
+    /// ## Contract
+    ///
+    /// - MUST return a non-null, unmodifiable list
+    /// - Parameter names within the list MUST be unique
+    /// - MAY return an empty list when the element publishes no typed outputs
+    ///
+    /// @return unmodifiable list of optional result parameter models, never null
+    /// @see Parameter
+    ///
+    default List<Parameter<?>> resultParameters() {
+        return List.of();
+    }
 
     ///
     /// Returns elements this element depends on.
@@ -296,6 +365,24 @@ public interface Element extends Tagged {
     Optional<HealthCheckSpec> healthCheck();
 
     ///
+    /// Returns the current live status of this element.
+    ///
+    /// Unlike {@link #healthCheck()}, which is a static specification for
+    /// readiness detection, this method returns the element's actual
+    /// operational state and a one-line summary at the moment of invocation.
+    ///
+    /// ## Contract
+    ///
+    /// - MUST return a non-null result
+    /// - The summary MUST be a single human-readable line
+    /// - Implementations SHOULD reflect actual live state when possible
+    /// - When live state cannot be determined, return {@link OperationalState#UNKNOWN}
+    ///
+    /// @return current live status, never null
+    ///
+    LiveStatusSummary statusCheck();
+
+    ///
     /// Returns the instancing scope for this element.
     ///
     /// For {@link RelationshipType#INSTANCED_PER} relationships, the scope
@@ -340,5 +427,58 @@ public interface Element extends Tagged {
 
         /// Interval between retry attempts
         java.time.Duration retryInterval();
+    }
+
+    /// Operational lifecycle state of an element at runtime.
+    ///
+    /// Progresses through: INACTIVE -> PROVISIONING -> STARTING -> HEALTH_CHECK ->
+    /// READY -> RUNNING -> STOPPING -> STOPPED -> TERMINATED.
+    /// FAILED and UNKNOWN are non-sequential states.
+    enum OperationalState {
+        /// Not yet started or provisioned.
+        INACTIVE,
+        /// Infrastructure being allocated (e.g. VM creation).
+        PROVISIONING,
+        /// Process starting up.
+        STARTING,
+        /// Verifying readiness via health check.
+        HEALTH_CHECK,
+        /// Ready for use but not yet active in a trial.
+        READY,
+        /// Actively in use by one or more trials.
+        RUNNING,
+        /// Graceful shutdown in progress.
+        STOPPING,
+        /// Stopped normally, resources still allocated.
+        STOPPED,
+        /// Error state — element cannot operate.
+        FAILED,
+        /// Fully torn down, all resources released.
+        TERMINATED,
+        /// Status cannot be determined.
+        UNKNOWN
+    }
+
+    /// Live status report from an element, combining operational state with a
+    /// human-readable summary line.
+    ///
+    /// The summary provides prima-facie evidence of the element's live state
+    /// and should be a single line suitable for display in dashboards and logs.
+    ///
+    /// Examples:
+    /// - "3/3 nodes active, all heartbeats OK"
+    /// - "Container cassandra:4.1 running on port 9042"
+    /// - "Benchmark 45% complete, 12m remaining"
+    /// - "Stopped normally after 847 requests"
+    record LiveStatusSummary(OperationalState state, String summary) {
+        /// Creates a summary in the UNKNOWN state.
+        public static LiveStatusSummary unknown(String summary) {
+            return new LiveStatusSummary(OperationalState.UNKNOWN, summary);
+        }
+
+        /// Creates a summary indicating the element is inactive.
+        public static LiveStatusSummary inactive() {
+            return new LiveStatusSummary(OperationalState.INACTIVE, "Not started");
+        }
     }
 }

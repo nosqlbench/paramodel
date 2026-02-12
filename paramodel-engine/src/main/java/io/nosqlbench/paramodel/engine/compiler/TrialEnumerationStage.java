@@ -40,8 +40,18 @@ public class TrialEnumerationStage implements CompilationStage {
         TestPlan plan = context.testPlan();
         List<Axis<?>> axes = plan.axes();
 
+        // No axes = single trial with no varying parameters (degenerate Cartesian product).
+        // This supports "one-shot" studies where all element parameters are fixed.
         if (axes.isEmpty()) {
-            context.addError(Compiler.ErrorSeverity.ERROR, "No axes defined in TestPlan", "TrialEnumeration", "Define at least one axis");
+            Trial.TrialMetadata metadata = new SimpleTrialMetadata(0, "default", "degenerate", 0);
+            List<Trial> singleTrial = List.of(new DefaultTrial(
+                UUID.randomUUID().toString(),
+                Collections.emptyMap(),
+                Collections.emptyList(),
+                metadata
+            ));
+            context.setTrials(singleTrial);
+            context.recordMetric("trials_enumerated", 1);
             return;
         }
 
@@ -59,13 +69,14 @@ public class TrialEnumerationStage implements CompilationStage {
     }
 
     private List<Trial> generateTrials(List<Axis<?>> sortedAxes, SamplingConfig config) {
-        // Build Cartesian product with sampling applied
-        List<Map<String, Value<?>>> combinations = new ArrayList<>();
+        // Build raw Cartesian product using CartesianExpander
+        List<Map<String, Object>> combinations = new ArrayList<>();
         combinations.add(new HashMap<>());
 
         for (Axis<?> axis : sortedAxes) {
             List<?> effectiveValues = getEffectiveValues(axis, config);
-            combinations = expandAxis(combinations, axis, effectiveValues);
+            String paramName = axis.underlyingParameter().map(p -> p.name()).orElse(axis.name());
+            combinations = CartesianExpander.expandAxis(combinations, paramName, effectiveValues);
         }
 
         // Apply repetitions
@@ -75,24 +86,28 @@ public class TrialEnumerationStage implements CompilationStage {
             maxRepetitions = Math.max(maxRepetitions, reps);
         }
 
-        List<Map<String, Value<?>>> finalCombinations;
-        if (maxRepetitions > 1) {
-            finalCombinations = applyRepetitions(combinations, maxRepetitions);
-        } else {
-            finalCombinations = combinations;
-        }
+        combinations = CartesianExpander.applyRepetitions(combinations, maxRepetitions);
 
-        // Convert to Trial objects
+        // Convert raw combinations to Trial objects with Value<?> wrappers
         List<Trial> result = new ArrayList<>();
         int index = 0;
-        for (Map<String, Value<?>> assignments : finalCombinations) {
+        for (Map<String, Object> rawAssignments : combinations) {
             int repetitionIndex = 0;
-            if (assignments.containsKey("__repetition__")) {
-                Value<?> repVal = assignments.get("__repetition__");
-                repetitionIndex = ((Number) repVal.value()).intValue();
-                // Remove internal marker from assignments
-                assignments = new HashMap<>(assignments);
-                assignments.remove("__repetition__");
+            if (rawAssignments.containsKey(CartesianExpander.REPETITION_KEY)) {
+                repetitionIndex = ((Number) rawAssignments.get(CartesianExpander.REPETITION_KEY)).intValue();
+            }
+
+            // Wrap raw values in DefaultValue, excluding the repetition marker
+            Map<String, Value<?>> assignments = new HashMap<>();
+            for (Map.Entry<String, Object> entry : rawAssignments.entrySet()) {
+                if (!CartesianExpander.REPETITION_KEY.equals(entry.getKey())) {
+                    assignments.put(entry.getKey(), new DefaultValue<>(
+                        entry.getValue(),
+                        entry.getKey(),
+                        Instant.now(),
+                        Optional.of("Axis enumeration")
+                    ));
+                }
             }
 
             String genMethod = maxRepetitions > 1 ? "cartesian_product_rep" + repetitionIndex : "cartesian_product";
@@ -108,116 +123,9 @@ public class TrialEnumerationStage implements CompilationStage {
     }
 
     private List<?> getEffectiveValues(Axis<?> axis, SamplingConfig config) {
-        List<?> allValues = axis.values();
-        SamplingStrategy strategy = config.strategies().getOrDefault(axis.name(), SamplingStrategy.grid());
-
-        return switch (strategy) {
-            case SamplingStrategy.Grid() -> allValues;
-            case SamplingStrategy.Random(int count, long seed) -> sampleRandom(allValues, count, seed);
-            case SamplingStrategy.Linspace(int count) -> generateLinspace(allValues, count);
-        };
-    }
-
-    private List<?> sampleRandom(List<?> values, int k, long seed) {
-        if (k >= values.size()) {
-            return values;
-        }
-        List<Object> shuffled = new ArrayList<>(values);
-        Random rng = new Random(seed);
-        Collections.shuffle(shuffled, rng);
-        return shuffled.subList(0, k);
-    }
-
-    @SuppressWarnings("unchecked")
-    private List<?> generateLinspace(List<?> values, int count) {
-        if (values.isEmpty() || count >= values.size()) {
-            return values;
-        }
-        if (count == 1) {
-            return List.of(values.getFirst());
-        }
-
-        // Check if all values are numeric
-        boolean allNumeric = values.stream().allMatch(v -> v instanceof Number);
-        if (allNumeric && values.size() >= 2) {
-            return generateNumericLinspace((List<Number>) values, count);
-        }
-
-        // Non-numeric: evenly-spaced indices
-        return sampleEvenly(values, count);
-    }
-
-    private List<Object> generateNumericLinspace(List<Number> values, int count) {
-        double min = values.stream().mapToDouble(Number::doubleValue).min().orElse(0);
-        double max = values.stream().mapToDouble(Number::doubleValue).max().orElse(0);
-
-        // Determine original type from first value
-        Number representative = values.getFirst();
-        double step = (max - min) / (count - 1);
-
-        List<Object> result = new ArrayList<>(count);
-        for (int i = 0; i < count; i++) {
-            double val = min + i * step;
-            if (representative instanceof Integer) {
-                result.add((int) Math.round(val));
-            } else if (representative instanceof Long) {
-                result.add(Math.round(val));
-            } else {
-                result.add(val);
-            }
-        }
-        return result;
-    }
-
-    private List<?> sampleEvenly(List<?> values, int count) {
-        if (count >= values.size()) {
-            return values;
-        }
-        List<Object> result = new ArrayList<>(count);
-        double step = (double) (values.size() - 1) / (count - 1);
-        for (int i = 0; i < count; i++) {
-            int index = (int) Math.round(i * step);
-            result.add(values.get(index));
-        }
-        return result;
-    }
-
-    private List<Map<String, Value<?>>> expandAxis(
-        List<Map<String, Value<?>>> combinations, Axis<?> axis, List<?> effectiveValues
-    ) {
-        List<Map<String, Value<?>>> newCombinations = new ArrayList<>();
-        String paramName = axis.underlyingParameter().map(p -> p.name()).orElse(axis.name());
-
-        for (Map<String, Value<?>> base : combinations) {
-            for (Object val : effectiveValues) {
-                Map<String, Value<?>> next = new HashMap<>(base);
-                Value<Object> valueObj = new DefaultValue<>(
-                    val,
-                    paramName,
-                    Instant.now(),
-                    Optional.of("Axis enumeration")
-                );
-                next.put(paramName, valueObj);
-                newCombinations.add(next);
-            }
-        }
-        return newCombinations;
-    }
-
-    private List<Map<String, Value<?>>> applyRepetitions(
-        List<Map<String, Value<?>>> combinations, int maxRepetitions
-    ) {
-        List<Map<String, Value<?>>> result = new ArrayList<>(combinations.size() * maxRepetitions);
-        for (int rep = 0; rep < maxRepetitions; rep++) {
-            for (Map<String, Value<?>> combo : combinations) {
-                Map<String, Value<?>> copy = new HashMap<>(combo);
-                copy.put("__repetition__", new DefaultValue<>(
-                    rep, "__repetition__", Instant.now(), Optional.of("repetition_index")
-                ));
-                result.add(copy);
-            }
-        }
-        return result;
+        SamplingStrategy strategy = config.strategies()
+            .getOrDefault(axis.name(), SamplingStrategy.grid());
+        return AxisExpander.applyStrategy(axis.values(), strategy);
     }
 
     private static class SimpleTrialMetadata implements Trial.TrialMetadata {

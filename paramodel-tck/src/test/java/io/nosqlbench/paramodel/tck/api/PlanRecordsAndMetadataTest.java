@@ -451,7 +451,7 @@ class PlanRecordsAndMetadataTest {
 
     private static AtomicStep createMinimalStep(String id) {
         return new AtomicStep.DeployElement(
-            id, "element", Map.of(), List.of(), List.of(),
+            id, "element", 0, Map.of(), List.of(), List.of(),
             Optional.empty(),
             AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of());

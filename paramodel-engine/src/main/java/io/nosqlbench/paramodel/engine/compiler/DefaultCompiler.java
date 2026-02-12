@@ -82,10 +82,13 @@ public class DefaultCompiler implements Compiler {
         context.stopTimer("total");
         Duration duration = Duration.between(startTime, Instant.now());
 
-        // Commit the test plan to mark it as frozen
+        // Commit the test plan to mark it as frozen.
+        // TestPlan implementations that delegate commit() to a compiler
+        // must guard against re-entrancy (see Study.commit()).
         ExecutionPlan committedPlan = testPlan.commit();
 
-        // Prefer compiled plan from pipeline; fall back to committed plan
+        // Prefer the compiled plan from the pipeline; fall back to the
+        // plan returned by commit() for simple TestPlan implementations.
         ExecutionPlan plan = context.get("executionPlan")
             .filter(ExecutionPlan.class::isInstance)
             .map(ExecutionPlan.class::cast)

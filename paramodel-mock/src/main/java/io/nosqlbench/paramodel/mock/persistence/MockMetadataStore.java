@@ -19,6 +19,9 @@ public class MockMetadataStore implements MetadataStore {
     private final Map<String, TestPlanMetadata> testPlanMetadata = new LinkedHashMap<>();
     private final Map<String, ExecutionPlanMetadata> executionPlanMetadata = new LinkedHashMap<>();
 
+    /// Creates a new empty metadata store.
+    public MockMetadataStore() {}
+
     @Override
     public void saveTestPlanMetadata(TestPlanMetadata metadata) {
         Objects.requireNonNull(metadata, "metadata must not be null");

@@ -19,6 +19,9 @@ public class MockExecutionRepository implements ExecutionRepository {
     private final Map<String, ExecutionPlan> plans = new LinkedHashMap<>();
     private final Map<String, Executor.ExecutionResult> executions = new LinkedHashMap<>();
 
+    /// Creates a new empty execution repository.
+    public MockExecutionRepository() {}
+
     @Override
     public void savePlan(ExecutionPlan plan) {
         Objects.requireNonNull(plan, "plan must not be null");

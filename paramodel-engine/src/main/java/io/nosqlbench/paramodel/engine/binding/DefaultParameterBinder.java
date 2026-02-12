@@ -56,6 +56,40 @@ public class DefaultParameterBinder implements ParameterBinder {
         this(BindingPolicy.LENIENT);
     }
 
+    ///
+    /// Binds input values using a {@link ParameterView}, handling the two-phase
+    /// binding of required and dynamic parameters.
+    ///
+    /// Overrides the default implementation to ensure passthrough values from the
+    /// required phase are available as inputs for dynamic parameter binding.
+    ///
+    /// @param view   the parameter view defining required and dynamic parameters
+    /// @param inputs raw input values
+    /// @return the binding result with validation status
+    ///
+    @Override
+    public ParameterBinding bind(ParameterView view, Map<String, Object> inputs) {
+        ParameterBinding requiredBinding = bind(view.requiredParameters(), inputs);
+
+        if (!view.isDynamic()) {
+            return requiredBinding;
+        }
+
+        List<Parameter<?>> dynamicParams =
+            view.dynamicParameters(requiredBinding.toValueMap());
+        if (dynamicParams.isEmpty()) {
+            return requiredBinding;
+        }
+
+        // Build input map for dynamic phase: original inputs + passthrough from required phase
+        Map<String, Object> dynamicInputs = new LinkedHashMap<>(inputs);
+        dynamicInputs.putAll(requiredBinding.passthroughValues());
+
+        ParameterBinding dynamicBinding = bind(dynamicParams, dynamicInputs);
+
+        return ParameterBinder.mergedBinding(requiredBinding, dynamicBinding);
+    }
+
     @Override
     public ParameterBinding bind(List<Parameter<?>> parameters, Map<String, Object> inputs) {
         LinkedHashMap<String, Value<?>> assignments = new LinkedHashMap<>();

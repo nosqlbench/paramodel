@@ -44,11 +44,17 @@ public final class MockAtomicStep {
         );
     }
 
-    /// Creates an {@link AtomicStep.DeployElement} with minimal defaults.
+    /// Creates an {@link AtomicStep.DeployElement} with minimal defaults and instance number 0.
     public static AtomicStep.DeployElement deployElement(String id, String elementId) {
+        return deployElement(id, elementId, 0);
+    }
+
+    /// Creates an {@link AtomicStep.DeployElement} with minimal defaults and specified instance number.
+    public static AtomicStep.DeployElement deployElement(String id, String elementId, int instanceNumber) {
         return new AtomicStep.DeployElement(
             id,
             elementId,
+            instanceNumber,
             Map.of(),
             List.of(),
             List.of(),
@@ -59,11 +65,17 @@ public final class MockAtomicStep {
         );
     }
 
-    /// Creates an {@link AtomicStep.TeardownElement} with minimal defaults.
+    /// Creates an {@link AtomicStep.TeardownElement} with minimal defaults and instance number -1.
     public static AtomicStep.TeardownElement teardownElement(String id, String elementId) {
+        return teardownElement(id, elementId, -1);
+    }
+
+    /// Creates an {@link AtomicStep.TeardownElement} with minimal defaults and specified instance number.
+    public static AtomicStep.TeardownElement teardownElement(String id, String elementId, int instanceNumber) {
         return new AtomicStep.TeardownElement(
             id,
             elementId,
+            instanceNumber,
             false,
             List.of(),
             Optional.empty(),

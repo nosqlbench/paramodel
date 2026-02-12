@@ -49,6 +49,13 @@ public abstract class ElementTCK {
     }
 
     @Test
+    public void testElementHasResultParameters() {
+        Element element = getProvider().createElement("service");
+
+        assertThat(element.resultParameters()).isNotNull();
+    }
+
+    @Test
     public void testElementHasDependencies() {
         Element element = getProvider().createElement("app-server");
 
@@ -101,6 +108,17 @@ public abstract class ElementTCK {
         assertThat(element.healthCheck().get().timeout()).isEqualTo(java.time.Duration.ofSeconds(30));
         assertThat(element.healthCheck().get().maxRetries()).isGreaterThanOrEqualTo(0);
         assertThat(element.healthCheck().get().retryInterval()).isNotNull();
+    }
+
+    @Test
+    public void testElementStatusCheck() {
+        Element element = getProvider().createElement("worker");
+
+        Element.LiveStatusSummary status = element.statusCheck();
+        assertThat(status).isNotNull();
+        assertThat(status.state()).isNotNull();
+        assertThat(status.summary()).isNotNull();
+        assertThat(status.summary()).isNotEmpty();
     }
 
     @Test

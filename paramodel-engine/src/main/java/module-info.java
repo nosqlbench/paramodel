@@ -4,4 +4,6 @@ module io.nosqlbench.paramodel.engine {
 
     exports io.nosqlbench.paramodel.engine.compiler;
     exports io.nosqlbench.paramodel.engine.binding;
+    exports io.nosqlbench.paramodel.engine.plan;
+    exports io.nosqlbench.paramodel.engine.sequence;
 }

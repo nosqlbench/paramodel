@@ -49,7 +49,7 @@ class PruneRedundantPassTest {
         List<AtomicStep> injectedSteps = new ArrayList<>();
 
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t0", "server", sameConfig, List.of(), List.of(),
+            "deploy_server_t0", "server", 0, sameConfig, List.of(), List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 0)
         ));
@@ -59,12 +59,12 @@ class PruneRedundantPassTest {
             Optional.empty(), Map.of("trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
-            "teardown_server_t1", "server", false, List.of("exec_trial_0"),
+            "teardown_server_t1", "server", 0, false, List.of("exec_trial_0"),
             Optional.empty(), AtomicStep.ResourceRequirements.none(),
             Optional.empty(), Map.of("reason", "parameter_change", "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t1", "server", sameConfig, List.of(), List.of("teardown_server_t1"),
+            "deploy_server_t1", "server", 1, sameConfig, List.of(), List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 1)
         ));
@@ -74,7 +74,7 @@ class PruneRedundantPassTest {
             Optional.empty(), Map.of("trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
-            "teardown_final_server", "server", true, List.of("exec_trial_1"),
+            "teardown_final_server", "server", 1, true, List.of("exec_trial_1"),
             Optional.empty(), AtomicStep.ResourceRequirements.none(),
             Optional.empty(), Map.of("phase", "cleanup")
         ));
@@ -114,7 +114,7 @@ class PruneRedundantPassTest {
         // Inject steps with different configs
         List<AtomicStep> injectedSteps = new ArrayList<>();
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t0", "server", Map.of("port", 8080), List.of(), List.of(),
+            "deploy_server_t0", "server", 0, Map.of("port", 8080), List.of(), List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 0)
         ));
@@ -124,12 +124,12 @@ class PruneRedundantPassTest {
             Optional.empty(), Map.of("trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
-            "teardown_server_t1", "server", false, List.of("exec_trial_0"),
+            "teardown_server_t1", "server", 0, false, List.of("exec_trial_0"),
             Optional.empty(), AtomicStep.ResourceRequirements.none(),
             Optional.empty(), Map.of("reason", "parameter_change", "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t1", "server", Map.of("port", 8081), List.of(), List.of("teardown_server_t1"),
+            "deploy_server_t1", "server", 1, Map.of("port", 8081), List.of(), List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 1)
         ));
@@ -139,7 +139,7 @@ class PruneRedundantPassTest {
             Optional.empty(), Map.of("trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
-            "teardown_final_server", "server", true, List.of("exec_trial_1"),
+            "teardown_final_server", "server", 1, true, List.of("exec_trial_1"),
             Optional.empty(), AtomicStep.ResourceRequirements.none(),
             Optional.empty(), Map.of("phase", "cleanup")
         ));
@@ -177,17 +177,17 @@ class PruneRedundantPassTest {
         Map<String, Object> sameConfig = Map.of("port", 8080);
         List<AtomicStep> injectedSteps = new ArrayList<>();
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t0", "server", sameConfig, List.of(), List.of(),
+            "deploy_server_t0", "server", 0, sameConfig, List.of(), List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
-            "teardown_server_t1", "server", false, List.of("deploy_server_t0"),
+            "teardown_server_t1", "server", 0, false, List.of("deploy_server_t0"),
             Optional.empty(), AtomicStep.ResourceRequirements.none(),
             Optional.empty(), Map.of("reason", "parameter_change", "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.DeployElement(
-            "deploy_server_t1", "server", sameConfig, List.of(), List.of("teardown_server_t1"),
+            "deploy_server_t1", "server", 1, sameConfig, List.of(), List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("scope", "PER_TRIAL", "trial_index", 1)
         ));

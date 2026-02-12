@@ -17,6 +17,9 @@ import java.util.*;
 public class MockCheckpointStore implements CheckpointStore {
     private final Map<String, Executor.Checkpoint> checkpoints = new LinkedHashMap<>();
 
+    /// Creates a new empty checkpoint store.
+    public MockCheckpointStore() {}
+
     @Override
     public void saveCheckpoint(Executor.Checkpoint checkpoint) {
         Objects.requireNonNull(checkpoint, "checkpoint must not be null");

@@ -11,6 +11,7 @@ import io.nosqlbench.paramodel.parameters.types.BooleanParameter;
 import io.nosqlbench.paramodel.parameters.types.DoubleParameter;
 import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
 import io.nosqlbench.paramodel.parameters.types.SelectionParameter;
+import io.nosqlbench.paramodel.parameters.types.StringParameter;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 
@@ -77,6 +78,22 @@ class VirtualElementsTest {
             assertThat(node.healthCheck()).isPresent();
             assertThat(node.healthCheck().get().type()).isEqualTo("TCP");
             assertThat(node.instancingScope()).contains(Element.InstancingScope.PER_TRIAL);
+        }
+
+        @Test
+        @DisplayName("elements can model deployment result parameters separately from input parameters")
+        void testElementResultParameters() {
+            Element service = MockElement.builder("service")
+                .parameter(IntegerParameter.range("replicas", 1, 5))
+                .resultParameter(StringParameter.of("endpoint"))
+                .resultParameter(StringParameter.of("credential_id"))
+                .build();
+
+            assertThat(service.parameters()).hasSize(1);
+            assertThat(parameterNames(service.parameters())).containsExactly("replicas");
+            assertThat(service.resultParameters()).hasSize(2);
+            assertThat(parameterNames(service.resultParameters()))
+                .containsExactly("endpoint", "credential_id");
         }
     }
 

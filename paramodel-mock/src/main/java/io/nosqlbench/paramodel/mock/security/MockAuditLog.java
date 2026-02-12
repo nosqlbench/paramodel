@@ -20,6 +20,9 @@ import java.util.stream.Stream;
 public class MockAuditLog implements AuditLog {
     private final List<AuditEntry> entries = new ArrayList<>();
 
+    /// Creates a new empty audit log.
+    public MockAuditLog() {}
+
     @Override
     public void log(AuditEntry entry) {
         entries.add(entry);
@@ -100,6 +103,9 @@ public class MockAuditLog implements AuditLog {
         /// Builder for MockAuditQuery.
         ///
         public static class Builder implements AuditQuery.Builder {
+            /// Creates a new audit query builder.
+            public Builder() {}
+
             private String userId;
             private String action;
             private Instant after;

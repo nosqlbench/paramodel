@@ -20,6 +20,9 @@ import java.util.stream.Stream;
 public class MockResultStore implements ResultStore {
     private final Map<String, TrialResult> results = new LinkedHashMap<>();
 
+    /// Creates a new empty result store.
+    public MockResultStore() {}
+
     @Override
     public void save(TrialResult result) {
         Objects.requireNonNull(result, "result must not be null");
@@ -108,6 +111,9 @@ public class MockResultStore implements ResultStore {
         /// Builder for MockQuery.
         ///
         public static class Builder implements Query.Builder {
+            /// Creates a new query builder.
+            public Builder() {}
+
             private TrialStatus status;
             private final Map<String, Object> parameters = new HashMap<>();
             private Instant after;

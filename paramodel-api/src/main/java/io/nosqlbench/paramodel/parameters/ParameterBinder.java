@@ -17,6 +17,8 @@ package io.nosqlbench.paramodel.parameters;
 
 import io.nosqlbench.paramodel.elements.Element;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -83,15 +85,140 @@ public interface ParameterBinder {
     ParameterBinding bind(List<Parameter<?>> parameters, Map<String, Object> inputs);
 
     ///
-    /// Binds input values to an Element's parameters.
+    /// Binds input values using a {@link ParameterView}, resolving dynamic parameters
+    /// from the required parameter bindings.
     ///
-    /// Convenience overload that extracts parameters from the element.
+    /// ## Algorithm
+    ///
+    /// 1. Bind required parameters from inputs
+    /// 2. If the view is dynamic, resolve dynamic parameters using required bindings
+    /// 3. Bind dynamic parameters from remaining inputs
+    /// 4. Combine into a single {@link ParameterBinding}
+    ///
+    /// @param view   the parameter view defining required and dynamic parameters
+    /// @param inputs raw input values
+    /// @return the binding result with validation status
+    ///
+    default ParameterBinding bind(ParameterView view, Map<String, Object> inputs) {
+        ParameterBinding requiredBinding = bind(view.requiredParameters(), inputs);
+
+        if (!view.isDynamic()) {
+            return requiredBinding;
+        }
+
+        List<Parameter<?>> dynamicParams =
+            view.dynamicParameters(requiredBinding.toValueMap());
+        if (dynamicParams.isEmpty()) {
+            return requiredBinding;
+        }
+        ParameterBinding dynamicBinding = bind(dynamicParams, inputs);
+
+        return mergedBinding(requiredBinding, dynamicBinding);
+    }
+
+    ///
+    /// Binds input values to an Element's parameters using its {@link ParameterView}.
+    ///
+    /// Convenience overload that delegates to {@link #bind(ParameterView, Map)}
+    /// using the element's parameter view.
     ///
     /// @param element the element whose parameters to bind
     /// @param inputs  raw input values
     /// @return the binding result with validation status
     ///
     default ParameterBinding bind(Element element, Map<String, Object> inputs) {
-        return bind(element.parameters(), inputs);
+        return bind(element.parameterView(), inputs);
+    }
+
+    ///
+    /// Merges two {@link ParameterBinding}s into one, combining assignments,
+    /// passthroughs, parameter lists, and validation results.
+    ///
+    /// Used internally to combine the results of binding required parameters
+    /// and dynamic parameters into a single unified binding.
+    ///
+    /// @param first  the first binding (typically required parameters)
+    /// @param second the second binding (typically dynamic parameters)
+    /// @return a merged binding combining both results
+    ///
+    static ParameterBinding mergedBinding(ParameterBinding first, ParameterBinding second) {
+        LinkedHashMap<String, Value<?>> mergedAssignments = new LinkedHashMap<>(first.assignments());
+        mergedAssignments.putAll(second.assignments());
+
+        LinkedHashMap<String, Object> mergedPassthrough = new LinkedHashMap<>(first.passthroughValues());
+        // Remove from passthrough any keys that the second binding consumed as assignments
+        for (String key : second.assignments().keySet()) {
+            mergedPassthrough.remove(key);
+        }
+        mergedPassthrough.putAll(second.passthroughValues());
+
+        List<Parameter<?>> mergedParams = new ArrayList<>(first.parameters());
+        mergedParams.addAll(second.parameters());
+
+        ValidationResult mergedValidation;
+        if (first.validationResult().isFailed() || second.validationResult().isFailed()) {
+            List<String> allViolations = new ArrayList<>(first.validationResult().violations());
+            allViolations.addAll(second.validationResult().violations());
+            mergedValidation = new ValidationResult.Failed(
+                "Binding validation failed", List.copyOf(allViolations));
+        } else {
+            mergedValidation = new ValidationResult.Passed();
+        }
+
+        Map<String, Value<?>> finalAssignments = Map.copyOf(mergedAssignments);
+        Map<String, Object> finalPassthrough = Map.copyOf(mergedPassthrough);
+        List<Parameter<?>> finalParams = List.copyOf(mergedParams);
+
+        return new ParameterBinding() {
+            @Override
+            public Map<String, Value<?>> assignments() {
+                return finalAssignments;
+            }
+
+            @Override
+            public Map<String, Object> toValueMap() {
+                LinkedHashMap<String, Object> values = new LinkedHashMap<>();
+                for (var entry : finalAssignments.entrySet()) {
+                    values.put(entry.getKey(), entry.getValue().value());
+                }
+                return Map.copyOf(values);
+            }
+
+            @Override
+            public Map<String, Object> passthroughValues() {
+                return finalPassthrough;
+            }
+
+            @Override
+            public java.util.Optional<Value<?>> get(String parameterName) {
+                return java.util.Optional.ofNullable(finalAssignments.get(parameterName));
+            }
+
+            @Override
+            public <T> T getValue(String parameterName, Class<T> type) {
+                Value<?> value = finalAssignments.get(parameterName);
+                if (value == null) {
+                    throw new IllegalArgumentException(
+                        "Parameter '" + parameterName + "' is not bound");
+                }
+                Object raw = value.value();
+                if (!type.isInstance(raw)) {
+                    throw new IllegalArgumentException(
+                        "Parameter '" + parameterName + "' value is " +
+                        raw.getClass().getName() + ", not " + type.getName());
+                }
+                return type.cast(raw);
+            }
+
+            @Override
+            public List<Parameter<?>> parameters() {
+                return finalParams;
+            }
+
+            @Override
+            public ValidationResult validationResult() {
+                return mergedValidation;
+            }
+        };
     }
 }

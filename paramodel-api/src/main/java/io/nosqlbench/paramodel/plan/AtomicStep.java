@@ -448,6 +448,7 @@ public sealed interface AtomicStep
     ///
     /// @param id Step identifier
     /// @param elementId Element to deploy
+    /// @param instanceNumber Monotonically increasing instance number for this element deployment
     /// @param configuration Element configuration (may include parameter bindings)
     /// @param healthChecks Health check specifications
     /// @param dependencies Prerequisite step IDs
@@ -459,6 +460,7 @@ public sealed interface AtomicStep
     record DeployElement(
         String id,
         String elementId,
+        int instanceNumber,
         Map<String, Object> configuration,
         List<HealthCheck> healthChecks,
         List<String> dependencies,
@@ -475,7 +477,7 @@ public sealed interface AtomicStep
 
         @Override
         public String description() {
-            return "Deploy element: " + elementId;
+            return "Deploy element: " + elementId + " #" + instanceNumber;
         }
 
         @Override
@@ -530,6 +532,7 @@ public sealed interface AtomicStep
     ///
     /// @param id Step identifier
     /// @param elementId Element to teardown
+    /// @param instanceNumber Instance number of the element instance being torn down
     /// @param collectArtifacts Whether to collect artifacts before teardown
     /// @param dependencies Prerequisite step IDs
     /// @param estimatedDuration Estimated teardown time
@@ -540,6 +543,7 @@ public sealed interface AtomicStep
     record TeardownElement(
         String id,
         String elementId,
+        int instanceNumber,
         boolean collectArtifacts,
         List<String> dependencies,
         Optional<Duration> estimatedDuration,
@@ -555,7 +559,7 @@ public sealed interface AtomicStep
 
         @Override
         public String description() {
-            return "Teardown element: " + elementId;
+            return "Teardown element: " + elementId + " #" + instanceNumber;
         }
 
         @Override

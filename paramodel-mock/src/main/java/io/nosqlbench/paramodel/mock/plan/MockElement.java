@@ -1,7 +1,9 @@
 package io.nosqlbench.paramodel.mock.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.parameters.DynamicParameterResolver;
 import io.nosqlbench.paramodel.parameters.Parameter;
+import io.nosqlbench.paramodel.parameters.ParameterView;
 
 import java.util.*;
 
@@ -34,19 +36,30 @@ public class MockElement implements Element {
     private final String name;
     private final String type;
     private final List<Parameter<?>> parameters;
+    private final List<Parameter<?>> resultParameters;
     private final List<Element> dependencies;
     private final HealthCheckSpec healthCheck;
     private final InstancingScope instancingScope;
+    private final LiveStatusSummary statusSummary;
+    private final DynamicParameterResolver dynamicResolver;
+    private final List<Parameter<?>> requiredParameters;
 
     private MockElement(String name, String type, List<Parameter<?>> parameters,
+                        List<Parameter<?>> resultParameters,
                         List<Element> dependencies, HealthCheckSpec healthCheck,
-                        InstancingScope instancingScope) {
+                        InstancingScope instancingScope, LiveStatusSummary statusSummary,
+                        DynamicParameterResolver dynamicResolver,
+                        List<Parameter<?>> requiredParameters) {
         this.name = Objects.requireNonNull(name);
         this.type = type;
         this.parameters = parameters != null ? List.copyOf(parameters) : List.of();
+        this.resultParameters = resultParameters != null ? List.copyOf(resultParameters) : List.of();
         this.dependencies = dependencies != null ? List.copyOf(dependencies) : List.of();
         this.healthCheck = healthCheck;
         this.instancingScope = instancingScope;
+        this.statusSummary = statusSummary != null ? statusSummary : LiveStatusSummary.inactive();
+        this.dynamicResolver = dynamicResolver;
+        this.requiredParameters = requiredParameters != null ? List.copyOf(requiredParameters) : List.of();
     }
 
     @Override
@@ -68,6 +81,19 @@ public class MockElement implements Element {
     }
 
     @Override
+    public ParameterView parameterView() {
+        if (dynamicResolver != null) {
+            return ParameterView.dynamic(requiredParameters, dynamicResolver);
+        }
+        return ParameterView.of(parameters);
+    }
+
+    @Override
+    public List<Parameter<?>> resultParameters() {
+        return resultParameters;
+    }
+
+    @Override
     public List<Element> dependencies() {
         return dependencies;
     }
@@ -82,6 +108,11 @@ public class MockElement implements Element {
         return Optional.ofNullable(instancingScope);
     }
 
+    @Override
+    public LiveStatusSummary statusCheck() {
+        return statusSummary;
+    }
+
     ///
     /// Creates an element with just a name (no type tag, no parameters).
     ///
@@ -89,7 +120,7 @@ public class MockElement implements Element {
     /// @return a simple mock element
     ///
     public static MockElement of(String name) {
-        return new MockElement(name, null, List.of(), List.of(), null, null);
+        return new MockElement(name, null, List.of(), List.of(), List.of(), null, null, null, null, null);
     }
 
     ///
@@ -100,7 +131,7 @@ public class MockElement implements Element {
     /// @return a typed mock element
     ///
     public static MockElement ofType(String name, String type) {
-        return new MockElement(name, type, List.of(), List.of(), null, null);
+        return new MockElement(name, type, List.of(), List.of(), List.of(), null, null, null, null, null);
     }
 
     ///
@@ -120,9 +151,13 @@ public class MockElement implements Element {
         private final String name;
         private String type;
         private final List<Parameter<?>> parameters = new ArrayList<>();
+        private final List<Parameter<?>> resultParameters = new ArrayList<>();
         private final List<Element> dependencies = new ArrayList<>();
         private HealthCheckSpec healthCheck;
         private InstancingScope instancingScope;
+        private LiveStatusSummary statusSummary;
+        private DynamicParameterResolver dynamicResolver;
+        private final List<Parameter<?>> requiredParameters = new ArrayList<>();
 
         public Builder(String name) {
             this.name = name;
@@ -147,6 +182,17 @@ public class MockElement implements Element {
         ///
         public Builder parameter(Parameter<?> parameter) {
             this.parameters.add(parameter);
+            return this;
+        }
+
+        ///
+        /// Adds a typed deployment result model for this element.
+        ///
+        /// @param parameter the result parameter to add
+        /// @return this builder
+        ///
+        public Builder resultParameter(Parameter<?> parameter) {
+            this.resultParameters.add(parameter);
             return this;
         }
 
@@ -184,12 +230,57 @@ public class MockElement implements Element {
         }
 
         ///
+        /// Sets the live status summary for this element.
+        ///
+        /// @param statusSummary the status summary
+        /// @return this builder
+        ///
+        public Builder statusCheck(LiveStatusSummary statusSummary) {
+            this.statusSummary = statusSummary;
+            return this;
+        }
+
+        ///
+        /// Sets the dynamic parameter resolver for this element.
+        ///
+        /// When set, the element's {@link Element#parameterView()} returns a dynamic
+        /// view that uses this resolver. Required parameters should be added via
+        /// {@link #requiredParameter(Parameter)}.
+        ///
+        /// @param resolver the dynamic parameter resolver
+        /// @return this builder
+        ///
+        public Builder dynamicResolver(DynamicParameterResolver resolver) {
+            this.dynamicResolver = resolver;
+            return this;
+        }
+
+        ///
+        /// Adds a required parameter for dynamic resolution.
+        ///
+        /// Required parameters must have defined values before dynamic parameters
+        /// can be resolved. These are also added to the element's {@link Element#parameters()}
+        /// list.
+        ///
+        /// @param parameter the required parameter to add
+        /// @return this builder
+        ///
+        public Builder requiredParameter(Parameter<?> parameter) {
+            this.requiredParameters.add(parameter);
+            this.parameters.add(parameter);
+            return this;
+        }
+
+        ///
         /// Builds the element.
         ///
         /// @return the constructed element
         ///
         public MockElement build() {
-            return new MockElement(name, type, parameters, dependencies, healthCheck, instancingScope);
+            return new MockElement(
+                name, type, parameters, resultParameters, dependencies,
+                healthCheck, instancingScope, statusSummary,
+                dynamicResolver, requiredParameters);
         }
     }
 }

@@ -46,9 +46,8 @@ class PlanInnerTypesTest {
     }
 
     @Test
-    void sequentialOrderingThrowsOnOrder() {
-        assertThatThrownBy(() -> TrialOrdering.SEQUENTIAL.order(List.of()))
-            .isInstanceOf(UnsupportedOperationException.class);
+    void sequentialOrderingPreservesInputOrder() {
+        assertThat(TrialOrdering.SEQUENTIAL.order(List.of())).isEmpty();
     }
 
     @Test
@@ -141,10 +140,9 @@ class PlanInnerTypesTest {
     }
 
     @Test
-    void shuffledOrderingThrowsOnOrder() {
+    void shuffledOrderingReturnsAllTrials() {
         var ordering = TrialOrdering.shuffled(1L);
-        assertThatThrownBy(() -> ordering.order(List.of()))
-            .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(ordering.order(List.of())).isEmpty();
     }
 
     // ── CustomOrdering ─────────────────────────────────────────────
