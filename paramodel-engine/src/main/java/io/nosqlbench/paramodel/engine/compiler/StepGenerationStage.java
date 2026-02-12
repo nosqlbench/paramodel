@@ -290,10 +290,13 @@ public class StepGenerationStage implements CompilationStage {
             );
         }
 
-        // Check axes targeting this element (via targetElement tag)
+        // Check axes targeting this element (via targetElement tag).
+        // Trial assignment keys use the "elementId.parameterName" format,
+        // so look up the qualified key when the axis targets a specific element.
         for (var axis : plan.axes()) {
             if (axis.targetElement().map(t -> t.equals(element.name())).orElse(false)) {
-                trial.assignment(axis.name()).ifPresent(value ->
+                String qualifiedKey = element.name() + "." + axis.name();
+                trial.assignment(qualifiedKey).ifPresent(value ->
                     sortedFingerprints.put(axis.name(), value.fingerprint()));
             }
         }

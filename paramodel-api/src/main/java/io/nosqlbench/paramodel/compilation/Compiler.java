@@ -472,13 +472,24 @@ public interface Compiler {
     }
 
     ///
-    /// Compilation error.
+    /// Compilation error with severity, message, and optional metadata.
+    ///
+    /// The {@code code} and {@code explanation} methods carry structured
+    /// diagnostic metadata that tools and UIs can use for filtering,
+    /// linking to documentation, and providing rich error descriptions.
     ///
     interface CompilationError {
         ErrorSeverity severity();
         String message();
         Optional<String> location();
         Optional<String> suggestion();
+
+        /// Returns an optional machine-readable error code (e.g. "MISSING_NAME").
+        default Optional<String> code() { return Optional.empty(); }
+
+        /// Returns an optional longer explanation of why this error occurred
+        /// and how to resolve it.
+        default Optional<String> explanation() { return Optional.empty(); }
     }
 
     ///
@@ -491,16 +502,27 @@ public interface Compiler {
     }
 
     ///
-    /// Compilation warning.
+    /// Compilation warning with message and optional metadata.
+    ///
+    /// The {@code code} and {@code explanation} methods carry structured
+    /// diagnostic metadata, mirroring {@link CompilationError} for
+    /// consistent handling across all severity levels.
     ///
     interface CompilationWarning {
         String message();
         Optional<String> location();
         Optional<String> suggestion();
+
+        /// Returns an optional machine-readable warning code.
+        default Optional<String> code() { return Optional.empty(); }
+
+        /// Returns an optional longer explanation of why this warning
+        /// was emitted and what action to consider.
+        default Optional<String> explanation() { return Optional.empty(); }
     }
 
     ///
-    /// Validation result.
+    /// Validation result containing diagnostics across all severity levels.
     ///
     interface ValidationResult {
         boolean isValid();
@@ -508,6 +530,14 @@ public interface Compiler {
         boolean hasWarnings();
         List<CompilationError> errors();
         List<CompilationWarning> warnings();
+
+        /// Returns all diagnostics across all severity levels (ERROR,
+        /// WARNING, INFO). Default implementation returns only errors;
+        /// implementations that track INFO and WARNING diagnostics
+        /// separately should override this.
+        default List<CompilationError> diagnostics() {
+            return errors();
+        }
     }
 
     ///

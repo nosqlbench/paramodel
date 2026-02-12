@@ -175,8 +175,8 @@ Converts trials into `AtomicStep` objects -- the fundamental unit of work in an
 - `DEPLOY_ELEMENT` -- provision a resource
 - `EXECUTE_TRIAL` -- run a single trial with its parameter bindings
 - `TEARDOWN_ELEMENT` -- clean up a resource
-- `BARRIER` -- synchronization point
-- `CHECKPOINT` -- persist execution state for recovery
+- `BARRIER_SYNC` -- synchronization point
+- `CHECKPOINT_STATE` -- persist execution state for recovery
 
 ### Stage 6: Dependency Analysis
 
@@ -217,7 +217,7 @@ ExecutionPlan executionPlan = result.executionPlan().orElseThrow();
 // High-level metrics
 System.out.println("Plan ID:          " + executionPlan.id());
 System.out.println("Steps:            " + executionPlan.steps().size());
-System.out.println("Graph nodes:      " + executionPlan.executionGraph().nodes().size());
+System.out.println("Graph nodes:      " + executionPlan.executionGraph().steps().size());
 System.out.println("Max parallelism:  " + executionPlan.estimatedMaxParallelism());
 
 // Metadata
@@ -300,7 +300,7 @@ public class CompilationTutorial {
             System.out.println("Plan ID:     " + executionPlan.id());
             System.out.println("Steps:       " + executionPlan.steps().size());
             System.out.println("Graph nodes: " +
-                executionPlan.executionGraph().nodes().size());
+                executionPlan.executionGraph().steps().size());
         } else {
             System.err.println("Compilation failed:");
             result.errors().forEach(err ->

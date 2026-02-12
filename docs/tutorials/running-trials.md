@@ -160,8 +160,7 @@ for (TrialResult trialResult : result.trialResults()) {
 
     // Timing
     TrialResult.ExecutionTiming timing = trialResult.timing();
-    Duration elapsed = Duration.between(
-        timing.startedAt(), timing.completedAt());
+    Duration elapsed = timing.duration();
     System.out.println("  Started at:   " + timing.startedAt());
     System.out.println("  Completed at: " + timing.completedAt());
     System.out.println("  Elapsed:      " + elapsed.toMillis() + "ms");
@@ -296,8 +295,7 @@ public class RunningTrialsTutorial {
 
         // 4. Inspect per-trial results
         for (TrialResult tr : result.trialResults()) {
-            Duration elapsed = Duration.between(
-                tr.timing().startedAt(), tr.timing().completedAt());
+            Duration elapsed = tr.timing().duration();
             System.out.printf("  Trial %s: %s (%dms)%n",
                 tr.trial().id(), tr.status(), elapsed.toMillis());
         }

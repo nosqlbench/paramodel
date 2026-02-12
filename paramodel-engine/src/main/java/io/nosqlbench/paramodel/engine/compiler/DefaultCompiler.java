@@ -1,6 +1,7 @@
 package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.*;
+import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import org.slf4j.Logger;
@@ -81,6 +82,16 @@ public class DefaultCompiler implements Compiler {
 
         context.stopTimer("total");
         Duration duration = Duration.between(startTime, Instant.now());
+
+        // Push generated trials back to the plan so adopters that query
+        // plan.trials() / plan.size() see the compiler-generated trials.
+        context.trials().ifPresent(trials -> {
+            if (testPlan instanceof DefaultTestPlan dtp) {
+                for (var trial : trials) {
+                    dtp.addTrial(trial);
+                }
+            }
+        });
 
         // Commit the test plan to mark it as frozen.
         // TestPlan implementations that delegate commit() to a compiler

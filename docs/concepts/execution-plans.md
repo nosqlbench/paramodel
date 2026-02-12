@@ -56,44 +56,7 @@ Compilation proceeds through eight conceptual stages:
 | 5     | Step generation            | Create `AtomicStep` records for deploy, execute, teardown    |
 | 6     | Barrier placement          | Insert synchronization barriers per relationship semantics   |
 | 7     | Optimization               | Apply the chosen `OptimizationStrategy` (prune, reorder)     |
-| 8     | Code generation / finalize | Produce the immutable `ExecutionPlan` with metadata          |
-
-Concrete implementations of these stages live in
-`io.nosqlbench.paramodel.engine.compiler` (e.g., `ValidationStage`,
-`TrialEnumerationStage`, `DependencyAnalysisStage`, `StepGenerationStage`,
-`OptimizationStage`, `CodeGenerationStage`).
-
-## Immutability -- The Ship of Theseus Principle
-
-Once compiled, an `ExecutionPlan` cannot be modified. This is by design:
-
-- Reproducibility requires that the same plan always defines the same steps.
-- Provenance links (fingerprints) are meaningful only if the plan is stable.
-- Concurrent executors can safely share the plan without locks.
-
-Any refinement -- adding an axis, changing a policy, adjusting concurrency
--- creates a **new** plan through a new `TestPlan.commit()` cycle.
-
-The one exception is `ExecutionPlan.withMaxConcurrency(int)`, which returns
-a *new* `ExecutionPlan` instance with adjusted parallelism. It does not
-mutate the original.
-
-## ExecutionPlan Interface
-
-Key methods:
-
-| Method                      | Returns                       | Purpose                                           |
-|-----------------------------|-------------------------------|---------------------------------------------------|
-| `id()`                      | `String`                      | Unique plan identifier                            |
-| `testPlanFingerprint()`     | `String`                      | SHA-256 of the source test plan                   |
-| `steps()`                   | `List<AtomicStep>`            | All steps in topological order                    |
-| `barriers()`                | `List<Barrier>`               | All synchronization barriers                      |
-| `executionGraph()`          | `ExecutionGraph`              | DAG of steps and dependencies                     |
-| `trialOrdering()`           | `TrialOrdering`               | The ordering strategy used                        |
-| `estimatedDuration()`       | `Optional<Duration>`          | Wall-clock estimate (accounts for parallelism)    |
-| `estimatedMaxParallelism()` | `int`                         | Peak concurrent trial count                       |
-| `resourceRequirements()`    | `ResourceRequirements`        | Aggregate CPU, memory, storage, network           |
-| `metadata()`                | `ExecutionPlanMetadata`       | Compilation version, timestamp, fingerprint, etc. |
+| 8     | Finalization               | Produce the immutable `ExecutionPlan` with metadata          |
 
 ## AtomicStep
 
@@ -119,32 +82,52 @@ Every step carries:
 | `estimatedDuration()`   | `Optional<Duration>`        | Time estimate for scheduling       |
 | `resourceRequirements()`| `ResourceRequirements`      | CPU, memory, storage, network      |
 | `retryPolicy()`         | `Optional<RetryPolicy>`     | Retry count and backoff strategy   |
-| `execute(ExecutionContext)` | `StepResult`            | Perform the step (impl-specific)   |
-
-Steps are designed to be **idempotent** where possible, supporting safe
-retry after transient failures.
 
 ## ExecutionGraph
 
-The `ExecutionGraph` is a directed acyclic graph (DAG) where nodes are
-`AtomicStep` instances and edges represent dependency (happens-before)
-relationships.
+The `ExecutionGraph` is a directed acyclic graph (DAG) representing the
+dependency structure of the plan. It enables analysis of critical paths and
+parallelism opportunities.
 
-Key capabilities:
+### Graph Properties
 
-| Method                       | Returns                          | Purpose                                     |
-|------------------------------|----------------------------------|---------------------------------------------|
-| `criticalPath()`             | `List<AtomicStep>`               | Longest dependency chain                    |
-| `criticalPathDuration()`     | `Duration`                       | Minimum time with unlimited parallelism     |
-| `topologicalSort()`          | `List<AtomicStep>`               | A valid execution ordering                  |
-| `parallelWaves()`            | `Map<Integer, List<AtomicStep>>` | Steps grouped by wave (no mutual deps)      |
-| `maximumParallelism()`       | `int`                            | Largest wave size                           |
-| `averageParallelism()`       | `double`                         | total duration / critical path duration     |
-| `canExecuteConcurrently(a,b)`| `boolean`                        | True if neither step depends on the other   |
-| `subgraphForElement(id)`     | `ExecutionGraph`                 | Extract lifecycle subgraph for one element  |
+- **Nodes**: `AtomicStep` instances.
+- **Edges**: Dependency relationships (A → B means B depends on A).
+- **Acyclic**: Guaranteed by construction; no circular dependencies.
 
-The graph is guaranteed acyclic (by construction). All algorithms run in
-O(V + E) time where V = nodes and E = edges.
+### Key Capabilities
+
+- **Critical Path**: The longest dependency chain determining minimum execution time.
+- **Topological Sort**: A valid sequential ordering of all steps.
+- **Parallel Waves**: Groups of steps that can run concurrently because they have no mutual dependencies.
+- **Resource-Constrained Scheduling**: Computing a schedule that respects CPU and memory limits.
+
+## Barrier
+
+A **Barrier** is a synchronization primitive that coordinates concurrent
+execution. It ensures that downstream steps wait until all prerequisite
+conditions are met.
+
+### Barrier Types
+
+| Type                  | Purpose                                          |
+|-----------------------|--------------------------------------------------|
+| `ELEMENT_READY`       | Signals that an element instance is fully deployed. |
+| `ELEMENT_SCOPE_END`   | Signals that all trials using an instance are done. |
+| `TRIAL_BATCH`         | Groups trials into batches for checkpointing.     |
+| `CHECKPOINT_BOUNDARY` | Forces synchronization before state persistence.  |
+| `CUSTOM`              | User-defined synchronization point.              |
+
+### States and Transitions
+
+```
+PENDING (waiting) → SATISFIED (released)
+                  → FAILED (dependency failed)
+                  → TIMEOUT (limit exceeded)
+```
+
+Barriers support timeout policies (`FAIL_FAST`, `SKIP_DEPENDENT`, `RETRY`) to
+handle stuck or slow dependencies.
 
 ## ExecutionPlanMetadata
 
@@ -159,30 +142,10 @@ compilation:
 | `optimizationLevel()`    | `OptimizationLevel` enum      | NONE, BASIC, STANDARD, or AGGRESSIVE         |
 | `trialCount()`           | `int`                         | Number of trials in the plan                 |
 | `stepCount()`            | `int`                         | Total atomic steps                           |
-| `barrierCount()`         | `int`                         | Synchronization barriers                     |
 | `performanceMetrics()`   | `PerformanceMetrics`          | Parallelism, speedup, graph complexity       |
-| `testPlanFingerprint()`  | `String`                      | Links back to the source plan                |
-
-The metadata also tracks execution history through `executionHistory()`,
-recording the outcome, duration, and cost of every run.
-
-## Checkpoint and Recovery
-
-Execution plans support checkpointing. Periodic `CheckpointState` steps
-persist the set of completed and pending step IDs, element instance states,
-and partial results. If execution is interrupted, `resumeFrom(Checkpoint)`
-produces a new `ExecutionPlan` that skips already-completed steps and
-continues from where the previous run left off.
 
 ## Further Reading
 
 - [Test Plans and Axes](test-plans-and-axes.md) -- the source specification
-  that execution plans are compiled from
-- [Elements and Relationships](elements-and-relationships.md) -- the
-  resources whose lifecycles execution plans orchestrate
-- [../reference/compilation-stages.md](../reference/compilation-stages.md)
-  -- detailed reference for each compilation stage
-- [../tutorials/compilation-pipeline.md](../tutorials/compilation-pipeline.md)
-  -- walkthrough of the compilation process
-- [../explanation/immutability-and-reproducibility.md](../explanation/immutability-and-reproducibility.md)
-  -- why immutability matters
+- [Elements and Relationships](elements-and-relationships.md) -- resource orchestration
+- [../explanation/immutability-and-reproducibility.md](../explanation/immutability-and-reproducibility.md) -- why immutability matters

@@ -196,6 +196,56 @@ SelectionParameter tags = SelectionParameter.of("tags",
     .maxSelections(2);
 ```
 
+### StringParameter
+
+```java
+import io.nosqlbench.paramodel.parameters.types.StringParameter;
+
+// String matching a regex
+StringParameter model = StringParameter.of("model", "gpt-[34].*");
+
+assert model.domain().contains("gpt-4");
+assert !model.domain().contains("claude");
+```
+
+---
+
+## Define a derived parameter
+
+Use `DerivedParameter` to compute a value based on other already-bound
+parameters.
+
+```java
+import io.nosqlbench.paramodel.parameters.DerivedParameter;
+import java.util.Map;
+
+DerivedParameter<Integer> batchSize = new DerivedParameter<>() {
+    @Override public String name() { return "batch_size"; }
+    @Override public Integer compute(Map<String, Object> inputs) {
+        int threads = (int) inputs.get("threads");
+        return threads * 2;
+    }
+    @Override public String expression() { return "threads * 2"; }
+    // ... other methods from Parameter interface ...
+};
+```
+
+---
+
+## Add tags to a parameter
+
+Tags provide metadata for classification or display.
+
+```java
+import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
+
+IntegerParameter threads = IntegerParameter.range("threads", 1, 64)
+    .withTag("unit", "count")
+    .withTag("category", "performance");
+
+assert threads.tags().get("unit").equals("count");
+```
+
 ---
 
 ## Understand boundary values

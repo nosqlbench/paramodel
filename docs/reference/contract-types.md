@@ -47,6 +47,49 @@ public interface Parameter<T> extends Tagged {
     T generateRandom();
     ValidationResult validate(T value);
     boolean satisfies(Constraint<T> constraint);
+    Map<String, String> tags();
+}
+```
+
+---
+
+### `DerivedParameter<T>`
+
+**Package:** `io.nosqlbench.paramodel.parameters`
+
+**Responsibility:** A parameter whose value is computed from other bound parameter
+values. Evaluated after independent parameters are bound.
+
+```java
+public interface DerivedParameter<T> extends Parameter<T> {
+    T compute(Map<String, Object> boundValues);
+    String expression();
+}
+```
+
+**Contract Requirements:**
+- `compute()` MUST be deterministic and MUST NOT modify the input map.
+- Result MUST be within the parameter's domain.
+
+---
+
+### `BindingNode`
+
+**Package:** `io.nosqlbench.paramodel.parameters`
+
+**Responsibility:** A node in the hierarchical element binding tree representing an
+element instance and its parameter scope.
+
+```java
+public interface BindingNode extends Tagged {
+    Optional<Element> element();
+    ParameterBinding binding();
+    Map<String, Object> cascadedInputs();
+    Map<String, Object> localInputs();
+    List<BindingNode> parents();
+    Map<String, BindingNode> children();
+    int depth();
+    boolean isRoot();
 }
 ```
 

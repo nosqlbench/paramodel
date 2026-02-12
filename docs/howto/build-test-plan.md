@@ -224,6 +224,27 @@ Available strategies:
 | `PRUNE_REDUNDANT` | Moderate | Good | Production |
 | `AGGRESSIVE` | Slowest | Best | Long-running studies |
 
+## Set the binding policy
+
+`BindingPolicy` determines how the binder behaves when required values
+are missing or when multiple inputs conflict.
+
+```java
+import io.nosqlbench.paramodel.parameters.BindingPolicy;
+
+MockTestPlan plan = MockTestPlan.builder()
+    .name("strict-study")
+    .axis(MockAxis.of("threads", 1, 4, 16))
+    .bindingPolicy(BindingPolicy.STRICT)
+    .build();
+```
+
+Common policies:
+
+- `STRICT`: Fail if any required parameter lacks a value.
+- `DEFAULT_IF_MISSING`: Use the parameter's default value if available.
+- `IGNORE_UNKNOWN`: Silently skip inputs that don't match any parameter.
+
 ## Bind axes to element parameters
 
 Axes are automatically bound to element parameters during compilation. You

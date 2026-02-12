@@ -26,7 +26,7 @@ generators.
 
 ## What a Parameter Represents
 
-Every parameter captures five facets:
+Every parameter captures six facets:
 
 | Facet          | Purpose                                                    |
 |----------------|------------------------------------------------------------|
@@ -35,6 +35,7 @@ Every parameter captures five facets:
 | **Type**       | The Java type `T` of values produced                       |
 | **Constraints**| Predicates that values must satisfy                        |
 | **Generation** | Methods for producing values from the domain               |
+| **Tags**       | Metadata for classification (e.g., `"type"`, `"unit"`)     |
 
 The `Parameter<T>` interface lives in the package
 `io.nosqlbench.paramodel.parameters` and exposes the following core methods:
@@ -48,6 +49,7 @@ The `Parameter<T>` interface lives in the package
 | `generateRandom()`          | `T`                  | Produce a uniformly random value             |
 | `validate(T)`               | `ValidationResult`   | Check a value against all constraints        |
 | `satisfies(Constraint<T>)`  | `boolean`            | Test whether a constraint is satisfiable     |
+| `tags()`                    | `Map<String, String>`| Metadata tags for this parameter             |
 
 Parameters are **immutable after creation**, **thread-safe**, and guarantee that
 every generated value is a member of the declared domain.
@@ -62,18 +64,28 @@ Built-in parameter types are provided in the
 | `IntegerParameter`    | Integer range or set | `IntegerParameter.range("threads", 1, 64)`              |
 | `DoubleParameter`     | Continuous range     | `DoubleParameter.range("temperature", 0.0, 1.0)`       |
 | `BooleanParameter`    | `{true, false}`      | `BooleanParameter.of("enable_cache")`                   |
+| `StringParameter`     | Regex or Set         | `StringParameter.of("region", "us-.*")`                 |
 | `SelectionParameter`  | String set or resolver | `SelectionParameter.of("region", Set.of("us-east-1"))` |
 
-These categories map to common parameter patterns:
+## Derived Parameters
 
-- **Discrete** parameters have a finite, enumerable set of values.
-- **Continuous** parameters span a numeric range (uncountable).
-- **Composite** parameters combine multiple named fields into a structured type.
+A **DerivedParameter** is a parameter whose value is computed from other bound
+parameter values. They are evaluated **after** independent parameters are bound
+and before validation.
+
+| Method                      | Returns              | Purpose                                      |
+|-----------------------------|----------------------|----------------------------------------------|
+| `compute(Map<String, Object>)` | `T`               | Compute value from bound independent params  |
+| `expression()`              | `String`             | Human-readable description of derivation     |
+
+Derived parameters allow modeling dependencies between configuration values,
+such as `batchSize = threads * 2`. They should NOT be used as axes in test
+plans, as they are deterministic functions of other parameters.
 
 ## Domains
 
 `Domain<T>` is a sealed interface that specifies the valid value space for a
-parameter. Every domain supports four operations:
+parameter. Every domain supports five operations:
 
 | Operation          | Method              | Purpose                                    |
 |--------------------|---------------------|--------------------------------------------|
@@ -87,34 +99,39 @@ parameter. Every domain supports four operations:
 
 The sealed interface permits exactly four subtypes:
 
-**Discrete** -- a finite set of explicit values.
+- **Discrete**: A finite set of explicit values.
+- **Range**: A min/max bounded interval (inclusive/exclusive).
+- **Composite**: Named fields, each with its own domain (e.g., a struct).
+- **Custom**: Defined by an arbitrary membership predicate.
 
-```
-{v1, v2, ..., vn}        cardinality = n        always enumerable
-```
+## Parameter Binding and the Binding Tree
 
-**Range** -- a min/max bounded interval.
+In a study context, parameters must be bound to values for each trial. The
+`ParameterBinder` orchestrates this process, producing a `ParameterBinding`
+which contains both the final assignments and any validation errors.
 
-```
-[min, max]                cardinality = max-min+1 (integers) or infinite (doubles)
-```
+### The Binding Node
 
-**Composite** -- named fields, each with its own domain.
+Elements and their dependencies form a hierarchical **Binding Tree**. Each
+`BindingNode` in this tree corresponds to an element instance and manages
+its own parameter scope.
 
-```
-{field1: Domain<A>, field2: Domain<B>}     cardinality = |A| x |B|
-```
+- **Global Inputs**: Provided by the virtual root of the tree.
+- **Cascaded Inputs**: Merged from parent nodes (dependencies) down to children.
+- **Local Inputs**: Overrides provided specifically for one node.
 
-**Custom** -- defined by an arbitrary membership predicate.
+### Binding Policies
 
-```
-{v : T | predicate(v)}   cardinality may be unknown   usually not enumerable
-```
+The `BindingPolicy` determines how the binder behaves when required values
+are missing or when multiple inputs conflict:
+
+- **STRICT**: Fail if any required parameter lacks a value.
+- **DEFAULT_IF_MISSING**: Use the parameter's default value if available.
+- **IGNORE_UNKNOWN**: Silently skip inputs that don't match any parameter.
 
 ## Value and Provenance
 
-`Value<T>` (in `io.nosqlbench.paramodel.parameters`) wraps a concrete parameter
-assignment with metadata for traceability:
+`Value<T>` wraps a concrete parameter assignment with metadata for traceability:
 
 | Field                 | Type                | Purpose                              |
 |-----------------------|---------------------|--------------------------------------|
@@ -123,20 +140,6 @@ assignment with metadata for traceability:
 | `generatedAt()`       | `Instant`           | When the value was generated         |
 | `generatorMetadata()` | `Optional<String>`  | How it was generated (strategy info) |
 | `fingerprint()`       | `String`            | SHA-256 hash for deduplication       |
-
-Values are immutable. They form a provenance chain that links results back
-through trials to the exact parameter configuration that produced them.
-
-## The Tagged Interface
-
-`Parameter<T>` extends `Tagged`, a small contract in
-`io.nosqlbench.paramodel.parameters` that provides a `name()` and an
-unmodifiable `tags()` map. The `tags()` map always contains at least a
-`"name"` entry equal to `name()` and may carry additional classification
-metadata such as `"type"`.
-
-`Tagged` is also implemented by `Element` and `Axis`, giving the entire type
-system a uniform naming and tagging mechanism.
 
 ## Algebraic Properties
 

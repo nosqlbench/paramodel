@@ -37,11 +37,11 @@ Packages in `paramodel-api`:
 
 | Package | Responsibility |
 |---------|---------------|
-| `io.nosqlbench.paramodel.parameters` | `Parameter<T>`, `Constraint<T>`, `Domain<T>`, `Value<T>`, `ValidationResult`, `Tagged` |
-| `io.nosqlbench.paramodel.parameters.types` | `IntegerParameter`, `DoubleParameter`, `BooleanParameter`, `SelectionParameter` |
+| `io.nosqlbench.paramodel.parameters` | `Parameter<T>`, `DerivedParameter<T>`, `Constraint<T>`, `Domain<T>`, `Value<T>`, `BindingNode`, `ParameterBinding` |
+| `io.nosqlbench.paramodel.parameters.types` | `IntegerParameter`, `DoubleParameter`, `BooleanParameter`, `SelectionParameter`, `StringParameter` |
 | `io.nosqlbench.paramodel.elements` | `Element`, `RelationshipType` |
 | `io.nosqlbench.paramodel.sequence` | `Sequence`, `SequenceBuilder`, `Trial`, `TrialBuilder`, `TrialResult`, `TrialStatus` |
-| `io.nosqlbench.paramodel.plan` | `TestPlan`, `TestPlanBuilder`, `ExecutionPlan`, `ExecutionGraph`, `AtomicStep`, `Barrier`, `TrialOrdering`, `OptimizationStrategy`, policies |
+| `io.nosqlbench.paramodel.plan` | `TestPlan`, `TestPlanBuilder`, `ExecutionPlan`, `ExecutionGraph`, `AtomicStep`, `Barrier`, `TrialOrdering` |
 | `io.nosqlbench.paramodel.plan.policies` | `ExecutionPolicies` |
 | `io.nosqlbench.paramodel.compilation` | `Compiler`, `CompilationStage`, `CompilationContext`, `OptimizationPass` |
 | `io.nosqlbench.paramodel.execution` | `Executor`, `Scheduler`, `ResourceManager`, `ArtifactCollector`, `Runtime` |

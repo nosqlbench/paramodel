@@ -383,6 +383,31 @@ public interface Element extends Tagged {
     LiveStatusSummary statusCheck();
 
     ///
+    /// Returns the element's base configuration — fixed parameter values
+    /// that do not vary across trials.
+    ///
+    /// Configuration entries serve as default bindings for the element.
+    /// When an axis targets this element and varies a parameter that also
+    /// appears in the configuration map, the axis value overrides the
+    /// configuration value for that trial.
+    ///
+    /// @return unmodifiable configuration map, never null
+    ///
+    default Map<String, Object> configuration() {
+        return Map.of();
+    }
+
+    ///
+    /// Returns export definitions that this element publishes for
+    /// downstream elements to reference.
+    ///
+    /// @return unmodifiable exports map, never null
+    ///
+    default Map<String, String> exports() {
+        return Map.of();
+    }
+
+    ///
     /// Returns the instancing scope for this element.
     ///
     /// For {@link RelationshipType#INSTANCED_PER} relationships, the scope
