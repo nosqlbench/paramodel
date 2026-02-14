@@ -1,5 +1,6 @@
 package io.nosqlbench.paramodel.engine.execution;
 
+import io.nosqlbench.paramodel.engine.CompactId;
 import io.nosqlbench.paramodel.execution.ResourceManager;
 import io.nosqlbench.paramodel.execution.Runtime;
 import org.slf4j.Logger;
@@ -33,7 +34,7 @@ public class DefaultResourceManager implements ResourceManager {
         // Stub implementation
         Runtime.ResourceAllocation allocation = new StubResourceAllocation(
             request,
-            UUID.randomUUID().toString()
+            CompactId.next()
         );
         allocations.add(allocation);
         return allocation;

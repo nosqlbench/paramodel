@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 /// A production implementation of {@link Element} with builder, tag-based metadata,
 /// fixed configuration bindings, export definitions, and mutable instancing scope.
@@ -120,6 +121,19 @@ public class DefaultElement implements Element {
     @Override
     public LiveStatusSummary statusCheck() {
         return statusSummary;
+    }
+
+    /// Returns the max concurrency limit for parallel deployments, or empty
+    /// if unlimited.
+    ///
+    /// The value is read from the {@code max_concurrency} tag, which is set
+    /// by the composition pipeline from the element definition's properties map.
+    ///
+    /// @return the max concurrency limit, or empty if unlimited
+    public OptionalInt maxConcurrency() {
+        String val = tags.get("max_concurrency");
+        if (val == null || val.isBlank()) return OptionalInt.empty();
+        return OptionalInt.of(Integer.parseInt(val));
     }
 
     /// Sets the instancing scope. Called during compilation by scope derivation

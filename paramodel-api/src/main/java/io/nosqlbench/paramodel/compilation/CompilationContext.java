@@ -504,6 +504,23 @@ public interface CompilationContext {
     void addError(Compiler.ErrorSeverity severity, String message,
                   String location, String suggestion);
 
+    /// Adds a compilation error with diagnostic code and explanation.
+    ///
+    /// Default implementation delegates to the four-argument overload,
+    /// discarding `code` and `explanation`. Implementations that track
+    /// structured diagnostics should override this method.
+    ///
+    /// @param severity Error severity
+    /// @param code Machine-readable error code (e.g. "MISSING_NAME")
+    /// @param message Error message
+    /// @param location Optional location identifier
+    /// @param explanation Optional longer description of why this error occurred
+    /// @param suggestion Optional suggestion for fixing
+    default void addError(Compiler.ErrorSeverity severity, String code, String message,
+                          String location, String explanation, String suggestion) {
+        addError(severity, message, location, suggestion);
+    }
+
     ///
     /// Adds a compilation warning.
     ///

@@ -9,7 +9,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
+import io.nosqlbench.paramodel.engine.CompactId;
 
 public class DefaultTrial implements Trial {
 
@@ -21,7 +21,7 @@ public class DefaultTrial implements Trial {
     public DefaultTrial(String id, Map<String, Value<?>> assignments,
                         List<Constraint<Map<String, Value<?>>>> constraints,
                         TrialMetadata metadata) {
-        this.id = id != null ? id : UUID.randomUUID().toString();
+        this.id = id != null ? id : CompactId.next();
         this.assignments = assignments != null ? Map.copyOf(assignments) : Map.of();
         this.constraints = constraints != null ? List.copyOf(constraints) : List.of();
         this.metadata = metadata;

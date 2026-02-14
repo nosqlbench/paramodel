@@ -3,6 +3,7 @@ package io.nosqlbench.paramodel.engine.compiler;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.engine.plan.DefaultElement;
 import io.nosqlbench.paramodel.parameters.Value;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.Barrier;
@@ -64,6 +65,9 @@ public class StepGenerationStage implements CompilationStage {
         Map<String, Integer> nextInstanceNumber = new HashMap<>();
         // Track currently active instance number per element
         Map<String, Integer> currentInstanceNumber = new HashMap<>();
+
+        // Sliding window for per-element max concurrency enforcement
+        Map<String, Deque<String>> concurrencyWindows = new HashMap<>();
 
         int stepIndex = 0;
 
@@ -141,6 +145,20 @@ public class StepGenerationStage implements CompilationStage {
                     currentInstanceNumber.put(element.name(), instNum);
 
                     List<String> deployDeps = computeDependencies(element, lastStepForElement);
+
+                    // Enforce max concurrency: if a limit is set, the new deploy
+                    // must wait for the oldest in-flight deploy to complete when
+                    // the sliding window is full.
+                    int maxConc = getMaxConcurrency(element);
+                    if (maxConc > 0) {
+                        Deque<String> recentDeploys = concurrencyWindows
+                                .computeIfAbsent(element.name(), k -> new ArrayDeque<>());
+                        if (recentDeploys.size() >= maxConc) {
+                            String oldestStep = recentDeploys.pollFirst();
+                            deployDeps.add(oldestStep);
+                        }
+                    }
+
                     Map<String, Object> config = buildConfiguration(element, trial, allInstances);
 
                     String deployId = "deploy_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
@@ -159,6 +177,13 @@ public class StepGenerationStage implements CompilationStage {
                     steps.add(deploy);
                     lastStepForElement.put(element.name(), deployId);
                     trialDeployStepIds.add(deployId);
+
+                    // Track this deploy step in the concurrency window
+                    if (maxConc > 0) {
+                        concurrencyWindows
+                                .computeIfAbsent(element.name(), k -> new ArrayDeque<>())
+                                .addLast(deployId);
+                    }
 
                     currentFingerprintForElement.put(element.name(), currentFingerprint);
                 } else {
@@ -269,6 +294,20 @@ public class StepGenerationStage implements CompilationStage {
         context.setBarriers(barriers);
         context.recordMetric("steps_generated", steps.size());
         context.recordMetric("barriers_generated", barriers.size());
+    }
+
+    /// Returns the max concurrency limit for the element, or 0 if unlimited.
+    ///
+    /// Reads from the {@code max_concurrency} tag set by the composition
+    /// pipeline. If the element is a {@link DefaultElement}, the typed
+    /// accessor is used; otherwise falls back to tag lookup.
+    private int getMaxConcurrency(Element element) {
+        if (element instanceof DefaultElement de) {
+            return de.maxConcurrency().orElse(0);
+        }
+        String val = element.tags().get("max_concurrency");
+        if (val == null || val.isBlank()) return 0;
+        return Integer.parseInt(val);
     }
 
     private boolean isGlobalScope(Element element, List<CompilationContext.ElementInstance> allInstances) {

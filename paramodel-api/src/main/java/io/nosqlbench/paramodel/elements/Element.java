@@ -4,8 +4,10 @@ import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ParameterView;
 import io.nosqlbench.paramodel.parameters.Tagged;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 ///
@@ -93,8 +95,15 @@ import java.util.Optional;
 /// ├── statusCheck: LiveStatusSummary
 /// │   └── Current operational state + one-line evidence
 /// │
-/// └── instancingScope: Optional<InstancingScope>
-///     └── PER_TRIAL | PER_GROUP | PER_RUN
+/// ├── instancingScope: Optional<InstancingScope>
+/// │   └── PER_TRIAL | PER_GROUP | PER_RUN
+/// │
+/// ├── trial lifecycle (via TrialLifecycleParticipant)
+/// │   ├── onTrialStarting(TrialContext)
+/// │   └── onTrialEnding(TrialContext)
+/// │
+/// └── state observation (via OperationalStateObservable)
+///     └── observeState(listener) → StateObservation
 /// ```
 ///
 /// ## Dependency Semantics
@@ -199,10 +208,12 @@ import java.util.Optional;
 ///
 /// @see Parameter
 /// @see RelationshipType
+/// @see TrialLifecycleParticipant
+/// @see OperationalStateObservable
 /// @see io.nosqlbench.paramodel.plan.TestPlan
 /// @since 0.1.0
 ///
-public interface Element extends Tagged {
+public interface Element extends Tagged, TrialLifecycleParticipant, OperationalStateObservable {
 
     ///
     /// Returns the unique name of this element within the study.
@@ -422,6 +433,41 @@ public interface Element extends Tagged {
     /// @return instancing scope if this element is instanced per scope
     ///
     Optional<InstancingScope> instancingScope();
+
+    // -----------------------------------------------------------------------
+    // State observation (default implementation)
+    // -----------------------------------------------------------------------
+
+    ///
+    /// Registers a listener for operational state transitions.
+    ///
+    /// The default implementation immediately delivers a synthetic transition
+    /// from {@link OperationalState#UNKNOWN} to the element's current state
+    /// (as reported by {@link #statusCheck()}) and returns a no-op observation
+    /// handle. This satisfies the registration-as-catchup contract: the
+    /// observer immediately learns the element's current state.
+    ///
+    /// Concrete implementations that support real-time state transitions
+    /// (e.g. elements backed by live infrastructure) SHOULD override this
+    /// method to maintain a listener registry and deliver genuine transitions
+    /// as they occur.
+    ///
+    /// @param listener the listener to receive state transitions, must not be null
+    /// @return a handle for cancelling the observation, never null
+    /// @throws NullPointerException if listener is null
+    ///
+    @Override
+    default StateObservation observeState(StateTransitionListener listener) {
+        Objects.requireNonNull(listener, "listener must not be null");
+        LiveStatusSummary current = statusCheck();
+        listener.onStateTransition(new StateTransition(
+            OperationalState.UNKNOWN,
+            current.state(),
+            current.summary(),
+            Instant.now()
+        ));
+        return () -> {};
+    }
 
     ///
     /// Instancing scope for INSTANCED_PER relationships.

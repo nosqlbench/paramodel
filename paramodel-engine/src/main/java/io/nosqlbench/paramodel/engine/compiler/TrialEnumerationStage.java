@@ -3,6 +3,7 @@ package io.nosqlbench.paramodel.engine.compiler;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.engine.CompactId;
 import io.nosqlbench.paramodel.engine.sequence.DefaultTrial;
 import io.nosqlbench.paramodel.engine.sequence.DefaultValue;
 import io.nosqlbench.paramodel.parameters.SamplingStrategy;
@@ -60,7 +61,7 @@ public class TrialEnumerationStage implements CompilationStage {
         if (axes.isEmpty()) {
             Trial.TrialMetadata metadata = new SimpleTrialMetadata(0, "default", "degenerate", 0);
             List<Trial> singleTrial = List.of(new DefaultTrial(
-                UUID.randomUUID().toString(),
+                CompactId.next(),
                 Collections.emptyMap(),
                 Collections.emptyList(),
                 metadata
@@ -181,7 +182,7 @@ public class TrialEnumerationStage implements CompilationStage {
                 : "element_aware";
             Trial.TrialMetadata metadata = new SimpleTrialMetadata(index++, "default", genMethod, 0);
             result.add(new DefaultTrial(
-                UUID.randomUUID().toString(),
+                CompactId.next(),
                 assignments,
                 Collections.emptyList(),
                 metadata
@@ -304,7 +305,7 @@ public class TrialEnumerationStage implements CompilationStage {
             String genMethod = maxRepetitions > 1 ? "cartesian_product_rep" + repetitionIndex : "cartesian_product";
             Trial.TrialMetadata metadata = new SimpleTrialMetadata(index++, "default", genMethod, 0);
             result.add(new DefaultTrial(
-                UUID.randomUUID().toString(),
+                CompactId.next(),
                 assignments,
                 Collections.emptyList(),
                 metadata

@@ -18,6 +18,7 @@
     <modules>
         <module>paramodel-api</module>
         <module>paramodel-mock</module>
+        <module>paramodel-sims</module>
         <module>paramodel-tck</module>
         <module>paramodel-engine</module>
     </modules>

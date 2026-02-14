@@ -3,6 +3,7 @@ package io.nosqlbench.paramodel.engine.compiler;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.Compiler;
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.engine.CompactId;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -94,7 +95,7 @@ public class DefaultCompilationContext implements CompilationContext {
 
     @Override
     public String planInstance(Element element, List<Trial> trials, String scopeDescription, Set<String> dependsOn) {
-        String instanceId = element.name() + "_" + UUID.randomUUID();
+        String instanceId = element.name() + "_" + CompactId.next();
         CompilationContext.ElementInstance instance =
             new CompilationContext.ElementInstance(instanceId, element, trials, scopeDescription, dependsOn);
         elementInstances.computeIfAbsent(element.name(), k -> new ArrayList<>()).add(instance);

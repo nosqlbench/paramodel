@@ -1,8 +1,14 @@
 package io.nosqlbench.paramodel.tck.elements;
 
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.OperationalStateObservable;
+import io.nosqlbench.paramodel.elements.TrialContext;
+import io.nosqlbench.paramodel.elements.TrialLifecycleParticipant;
+import io.nosqlbench.paramodel.sequence.Trial;
 import io.nosqlbench.paramodel.tck.ImplementationProvider;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -14,8 +20,12 @@ import static org.assertj.core.api.Assertions.*;
 /// - Return tags containing at minimum a "name" entry
 /// - Return non-null parameter, dependency, health check, and scope values
 /// - Support element construction with dependencies and health checks
+/// - Implement {@link TrialLifecycleParticipant} with safe default behavior
+/// - Support {@link OperationalStateObservable} with registration-as-catchup semantics
 ///
 /// @see Element
+/// @see TrialLifecycleParticipant
+/// @see OperationalStateObservable
 /// @since 0.1.0
 ///
 public abstract class ElementTCK {
@@ -128,5 +138,108 @@ public abstract class ElementTCK {
 
         assertThat(element.instancingScope()).isPresent();
         assertThat(element.instancingScope().get()).isEqualTo(Element.InstancingScope.PER_TRIAL);
+    }
+
+    // -----------------------------------------------------------------------
+    // Trial lifecycle participation
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testElementIsTrialLifecycleParticipant() {
+        Element element = getProvider().createElement("worker");
+
+        assertThat(element).isInstanceOf(TrialLifecycleParticipant.class);
+    }
+
+    @Test
+    public void testDefaultOnTrialStartingDoesNotThrow() {
+        Element element = getProvider().createElement("worker");
+        Trial trial = getProvider().createTrial("trial-1");
+        TrialContext context = TrialContext.now(trial);
+
+        assertThatCode(() -> element.onTrialStarting(context)).doesNotThrowAnyException();
+    }
+
+    @Test
+    public void testDefaultOnTrialEndingDoesNotThrow() {
+        Element element = getProvider().createElement("worker");
+        Trial trial = getProvider().createTrial("trial-1");
+        TrialContext context = TrialContext.now(trial);
+
+        assertThatCode(() -> element.onTrialEnding(context)).doesNotThrowAnyException();
+    }
+
+    @Test
+    public void testTrialLifecycleIdempotent() {
+        Element element = getProvider().createElement("worker");
+        Trial trial = getProvider().createTrial("trial-1");
+        TrialContext context = TrialContext.now(trial);
+
+        // Calling twice for the same trial must not throw
+        assertThatCode(() -> {
+            element.onTrialStarting(context);
+            element.onTrialStarting(context);
+            element.onTrialEnding(context);
+            element.onTrialEnding(context);
+        }).doesNotThrowAnyException();
+    }
+
+    // -----------------------------------------------------------------------
+    // Operational state observation
+    // -----------------------------------------------------------------------
+
+    @Test
+    public void testElementIsOperationalStateObservable() {
+        Element element = getProvider().createElement("worker");
+
+        assertThat(element).isInstanceOf(OperationalStateObservable.class);
+    }
+
+    @Test
+    public void testObserveStateDeliversImmediateTransition() {
+        Element element = getProvider().createElement("worker");
+        AtomicReference<OperationalStateObservable.StateTransition> received =
+            new AtomicReference<>();
+
+        element.observeState(received::set);
+
+        assertThat(received.get()).isNotNull();
+        assertThat(received.get().from()).isEqualTo(Element.OperationalState.UNKNOWN);
+        assertThat(received.get().to()).isNotNull();
+        assertThat(received.get().summary()).isNotNull();
+        assertThat(received.get().summary()).isNotEmpty();
+        assertThat(received.get().timestamp()).isNotNull();
+    }
+
+    @Test
+    public void testObserveStateReturnsNonNullHandle() {
+        Element element = getProvider().createElement("worker");
+
+        OperationalStateObservable.StateObservation observation =
+            element.observeState(transition -> {});
+
+        assertThat(observation).isNotNull();
+    }
+
+    @Test
+    public void testObserveStateCancelIsIdempotent() {
+        Element element = getProvider().createElement("worker");
+
+        OperationalStateObservable.StateObservation observation =
+            element.observeState(transition -> {});
+
+        // Cancel twice — second call must not throw
+        assertThatCode(() -> {
+            observation.cancel();
+            observation.cancel();
+        }).doesNotThrowAnyException();
+    }
+
+    @Test
+    public void testObserveStateRejectsNullListener() {
+        Element element = getProvider().createElement("worker");
+
+        assertThatThrownBy(() -> element.observeState(null))
+            .isInstanceOf(NullPointerException.class);
     }
 }

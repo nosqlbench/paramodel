@@ -188,6 +188,67 @@ import java.util.concurrent.CompletableFuture;
 ///   - Progress metrics
 /// ```
 ///
+/// ## Element State Rehydration
+///
+/// When the executor resumes from a checkpoint, it must reconstruct not only
+/// execution position but also the element models and their signaling chains.
+/// The executor relies on the host system to maintain sufficient state so that
+/// element instances can be reconstituted with their current operational state.
+///
+/// ### Required Checkpoint State for Rehydration
+///
+/// The {@link Checkpoint#state()} map must include enough information for the
+/// host system to:
+///
+/// 1. **Reconstruct element instances** — Determine which elements were
+///    deployed and their current operational state (e.g. a service element
+///    that was RUNNING before the restart is still RUNNING after).
+///
+/// 2. **Identify the active trial** — Which trial was in progress and which
+///    elements were part of its trial stack, so that trial lifecycle
+///    notifications can be re-issued.
+///
+/// 3. **Reconstruct the element dependency stack** — The ordering of
+///    elements for trial boundary notifications (outer→inner for starting,
+///    inner→outer for ending).
+///
+/// ### State Observation Re-wiring
+///
+/// After reconstructing element instances, the executor re-registers
+/// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable.StateTransitionListener
+/// state observers} on each element. Because the
+/// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable
+/// OperationalStateObservable} contract guarantees that registration
+/// immediately delivers the element's current state (as a synthetic
+/// {@code UNKNOWN → current} transition), re-registration alone is
+/// sufficient to re-establish the signaling chain. No separate
+/// recovery protocol is needed.
+///
+/// ```
+/// Rehydration Sequence:
+///
+///   1. Load checkpoint
+///   2. Reconstruct element models from checkpoint state
+///   3. Set each element's operational state from persisted state
+///   4. Re-register state observers on each element
+///      → Each observer immediately receives UNKNOWN → current
+///      → Signaling chain is fully re-established
+///   5. Resume trial execution from the checkpoint position
+/// ```
+///
+/// ### Idempotent Rehydration
+///
+/// The rehydration process MUST be idempotent: invoking it multiple times
+/// with the same checkpoint must produce the same result. This is naturally
+/// satisfied because:
+///
+/// - Element reconstruction from persisted state is deterministic.
+/// - Observer registration is additive (duplicate registrations produce
+///   duplicate initial deliveries, which are harmless if listeners are
+///   themselves idempotent).
+/// - Trial lifecycle notifications are re-issued from the current position,
+///   not replayed from the beginning.
+///
 /// ## Resource Limits
 ///
 /// The executor enforces resource constraints:
@@ -419,6 +480,23 @@ public interface Executor {
     ///
     /// Resumes execution from a checkpoint.
     ///
+    /// The executor reconstructs element models from the checkpoint's
+    /// {@link Checkpoint#state() state map}, sets their operational states
+    /// to match the persisted values, and re-registers
+    /// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable.StateTransitionListener
+    /// state observers} on each element. Because the
+    /// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable
+    /// OperationalStateObservable} contract delivers current state
+    /// immediately on registration, this re-wires the signaling chain
+    /// without a separate recovery protocol.
+    ///
+    /// Execution then continues from the first incomplete trial,
+    /// skipping trials already recorded in
+    /// {@link Checkpoint#completedTrialIds()}.
+    ///
+    /// This operation MUST be idempotent: resuming with the same checkpoint
+    /// multiple times must not produce duplicate results or corrupt state.
+    ///
     /// @param plan Execution plan
     /// @param checkpoint Checkpoint to resume from
     /// @return Execution result
@@ -533,6 +611,34 @@ public interface Executor {
 
     ///
     /// Checkpoint for resumable execution.
+    ///
+    /// A checkpoint captures enough state to resume execution after a
+    /// restart. Beyond tracking which trials and steps have completed,
+    /// the {@link #state()} map carries opaque host-system state that
+    /// enables element model reconstruction and signaling chain re-wiring.
+    ///
+    /// ## State Map Requirements for Rehydration
+    ///
+    /// The {@code state()} map SHOULD include:
+    ///
+    /// - **Element operational states**: The {@link io.nosqlbench.paramodel.elements.Element.OperationalState
+    ///   OperationalState} of each deployed element at checkpoint time,
+    ///   keyed by element name. This allows the host system to reconstruct
+    ///   element instances with their correct current state.
+    ///
+    /// - **Active trial context**: The identity and position of the
+    ///   in-progress trial (if any), including which elements are in the
+    ///   trial stack and their notification ordering.
+    ///
+    /// - **Element dependency graph**: Sufficient structure to reconstruct
+    ///   the element ordering used for trial lifecycle notifications
+    ///   (outer→inner for start, inner→outer for end).
+    ///
+    /// The executor uses this information to reconstruct element models,
+    /// set their operational states, re-register
+    /// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable.StateTransitionListener
+    /// state observers} (which immediately receive the current state via
+    /// the registration-as-catchup contract), and resume execution.
     ///
     interface Checkpoint {
         String checkpointId();

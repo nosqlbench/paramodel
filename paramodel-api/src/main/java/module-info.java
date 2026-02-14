@@ -31,7 +31,12 @@ module io.nosqlbench.paramodel {
     exports io.nosqlbench.paramodel.plan.policies;
     exports io.nosqlbench.paramodel.compilation;
     exports io.nosqlbench.paramodel.execution;
+    exports io.nosqlbench.paramodel.execution.journal;
     exports io.nosqlbench.paramodel.persistence;
     exports io.nosqlbench.paramodel.security;
     exports io.nosqlbench.paramodel.util;
+
+    // SPI contracts for element discovery
+    uses io.nosqlbench.paramodel.elements.ElementProvider;
+    uses io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 }

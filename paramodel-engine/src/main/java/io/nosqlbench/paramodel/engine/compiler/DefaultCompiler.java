@@ -1,6 +1,7 @@
 package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.*;
+import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -40,16 +41,15 @@ public class DefaultCompiler implements Compiler {
     public ValidationResult validate(TestPlan testPlan) {
         io.nosqlbench.paramodel.parameters.ValidationResult planValidation = testPlan.validate();
 
-        List<CompilationError> errors = new ArrayList<>();
-        List<CompilationWarning> warnings = new ArrayList<>();
+        DefaultValidationResult result = new DefaultValidationResult();
 
         if (planValidation.isFailed()) {
             for (String violation : planValidation.violations()) {
-                errors.add(new DefaultCompilationError(ErrorSeverity.ERROR, violation, null, null));
+                result.addError(null, violation);
             }
         }
 
-        return new DefaultValidationResult(errors.isEmpty(), errors, warnings);
+        return result;
     }
 
     @Override
@@ -156,9 +156,16 @@ public class DefaultCompiler implements Compiler {
         }
 
         public Builder standardPipeline() {
+            return standardPipeline(ElementTypeDescriptorProvider.open());
+        }
+
+        /// Adds the 8 standard pipeline stages with the given type provider.
+        ///
+        /// @param typeProvider supplies element type descriptors for validation
+        public Builder standardPipeline(ElementTypeDescriptorProvider typeProvider) {
             // Add 8 standard stages
             return this
-                .stage(new ValidationStage())
+                .stage(new ValidationStage(typeProvider))
                 .stage(new NormalizationStage())
                 .stage(new TrialEnumerationStage())
                 .stage(new InstantiationStage())
@@ -210,33 +217,7 @@ public class DefaultCompiler implements Compiler {
         }
     }
 
-    private static class DefaultValidationResult implements ValidationResult {
-        private final boolean valid;
-        private final List<CompilationError> errors;
-        private final List<CompilationWarning> warnings;
-
-        public DefaultValidationResult(boolean valid, List<CompilationError> errors,
-                                     List<CompilationWarning> warnings) {
-            this.valid = valid;
-            this.errors = List.copyOf(errors);
-            this.warnings = List.copyOf(warnings);
-        }
-
-        @Override
-        public boolean isValid() { return valid; }
-
-        @Override
-        public boolean hasErrors() { return !errors.isEmpty(); }
-
-        @Override
-        public boolean hasWarnings() { return !warnings.isEmpty(); }
-
-        @Override
-        public List<CompilationError> errors() { return errors; }
-
-        @Override
-        public List<CompilationWarning> warnings() { return warnings; }
-    }
+    // DefaultValidationResult is now a public top-level class in this package.
 
     private static class DefaultCompilationResult implements CompilationResult {
         private final boolean success;

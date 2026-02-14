@@ -7,8 +7,9 @@ import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.ExecutionGraph;
 import io.nosqlbench.paramodel.plan.TrialOrdering;
 
+import io.nosqlbench.paramodel.engine.CompactId;
+
 import java.util.List;
-import java.util.UUID;
 
 ///
 /// Stage 8: Code Generation
@@ -39,7 +40,7 @@ public class CodeGenerationStage implements CompilationStage {
             .map(ExecutionGraph.class::cast)
             .orElseGet(() -> new DefaultExecutionGraph(steps));
 
-        String planId = UUID.randomUUID().toString();
+        String planId = CompactId.next();
         String fingerprint = "compiled:" + context.testPlan().name() + ":" + steps.size();
 
         DefaultExecutionPlan plan = new DefaultExecutionPlan(
