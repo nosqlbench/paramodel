@@ -60,7 +60,7 @@ public interface ImplementationProvider {
     Element createElementWithDependencies(String name, List<Element> dependencies);
     Element createElementWithHealthCheck(String name, Element.HealthCheckSpec healthCheck);
     Element createElementWithScope(String name, Element.InstancingScope scope);
-    Element.HealthCheckSpec createHealthCheckSpec(String type, Duration timeout);
+    Element.HealthCheckSpec createHealthCheckSpec(Duration timeout);
 
     // Typed axis contract
     <T> Axis<T> createTypedAxis(String name, List<T> values);

@@ -8,20 +8,18 @@ import java.util.Objects;
 ///
 /// Simple implementation of {@link Element.HealthCheckSpec} for testing.
 ///
-/// Provides factory methods for common health check types (HTTP, TCP)
-/// with sensible defaults for timeout, retries, and retry interval.
+/// The host system owns the health check mechanism (protocol, endpoint,
+/// acceptance criteria). This mock only carries the timing parameters
+/// that paramodel needs for coordination.
 ///
 /// ## Usage
 ///
 /// ```java
-/// // HTTP health check with default timeout
-/// HealthCheckSpec http = MockHealthCheckSpec.http(Duration.ofSeconds(30));
-///
-/// // TCP health check with custom timeout
-/// HealthCheckSpec tcp = MockHealthCheckSpec.tcp(Duration.ofSeconds(15));
+/// // Health check with default timeout
+/// HealthCheckSpec hc = MockHealthCheckSpec.withTimeout(Duration.ofSeconds(30));
 ///
 /// // Fully customized health check
-/// HealthCheckSpec custom = new MockHealthCheckSpec("COMMAND", Duration.ofSeconds(60), 5, Duration.ofSeconds(10));
+/// HealthCheckSpec custom = new MockHealthCheckSpec(Duration.ofSeconds(60), 5, Duration.ofSeconds(10));
 /// ```
 ///
 /// @see Element.HealthCheckSpec
@@ -33,21 +31,18 @@ public class MockHealthCheckSpec implements Element.HealthCheckSpec {
     private static final int DEFAULT_MAX_RETRIES = 3;
     private static final Duration DEFAULT_RETRY_INTERVAL = Duration.ofSeconds(5);
 
-    private final String type;
     private final Duration timeout;
     private final int maxRetries;
     private final Duration retryInterval;
 
     ///
-    /// Creates a health check specification with the given configuration.
+    /// Creates a health check specification with the given timing configuration.
     ///
-    /// @param type          health check type (e.g. "HTTP", "TCP", "COMMAND", "CUSTOM")
     /// @param timeout       maximum time to wait for health check to pass
     /// @param maxRetries    maximum number of retry attempts
     /// @param retryInterval interval between retry attempts
     ///
-    public MockHealthCheckSpec(String type, Duration timeout, int maxRetries, Duration retryInterval) {
-        this.type = Objects.requireNonNull(type, "type must not be null");
+    public MockHealthCheckSpec(Duration timeout, int maxRetries, Duration retryInterval) {
         this.timeout = Objects.requireNonNull(timeout, "timeout must not be null");
         if (maxRetries < 0) {
             throw new IllegalArgumentException("maxRetries must be >= 0, got " + maxRetries);
@@ -57,28 +52,13 @@ public class MockHealthCheckSpec implements Element.HealthCheckSpec {
     }
 
     ///
-    /// Creates an HTTP health check with the given timeout and default retry settings.
+    /// Creates a health check specification with the given timeout and default retry settings.
     ///
-    /// @param timeout maximum time to wait for HTTP endpoint to respond
-    /// @return HTTP health check specification
+    /// @param timeout maximum time to wait for health check to pass
+    /// @return health check specification with default retries and interval
     ///
-    public static MockHealthCheckSpec http(Duration timeout) {
-        return new MockHealthCheckSpec("HTTP", timeout, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_INTERVAL);
-    }
-
-    ///
-    /// Creates a TCP health check with the given timeout and default retry settings.
-    ///
-    /// @param timeout maximum time to wait for TCP port to be open
-    /// @return TCP health check specification
-    ///
-    public static MockHealthCheckSpec tcp(Duration timeout) {
-        return new MockHealthCheckSpec("TCP", timeout, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_INTERVAL);
-    }
-
-    @Override
-    public String type() {
-        return type;
+    public static MockHealthCheckSpec withTimeout(Duration timeout) {
+        return new MockHealthCheckSpec(timeout, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_INTERVAL);
     }
 
     @Override
@@ -98,7 +78,7 @@ public class MockHealthCheckSpec implements Element.HealthCheckSpec {
 
     @Override
     public String toString() {
-        return "MockHealthCheckSpec{type='" + type + "', timeout=" + timeout +
+        return "MockHealthCheckSpec{timeout=" + timeout +
             ", maxRetries=" + maxRetries + ", retryInterval=" + retryInterval + '}';
     }
 }

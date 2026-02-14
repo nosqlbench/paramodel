@@ -166,8 +166,8 @@ public class MockImplementationProvider implements ImplementationProvider {
     }
 
     @Override
-    public Element.HealthCheckSpec createHealthCheckSpec(String type, Duration timeout) {
-        return new MockHealthCheckSpec(type, timeout, 3, Duration.ofSeconds(5));
+    public Element.HealthCheckSpec createHealthCheckSpec(Duration timeout) {
+        return new MockHealthCheckSpec(timeout, 3, Duration.ofSeconds(5));
     }
 
     @Override

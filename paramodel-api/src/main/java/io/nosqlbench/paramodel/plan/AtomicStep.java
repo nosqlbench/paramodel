@@ -446,11 +446,18 @@ public sealed interface AtomicStep
     ///
     /// Step for deploying an element (infrastructure, service, etc.).
     ///
+    /// Health checking is owned by the host system via
+    /// {@link io.nosqlbench.paramodel.elements.Element#healthCheck()
+    /// Element.healthCheck()} and
+    /// {@link io.nosqlbench.paramodel.elements.OperationalStateObservable
+    /// OperationalStateObservable}. The deploy step does not carry
+    /// health check details; instead, the executor waits for the
+    /// element to reach {@code READY} state via state observation.
+    ///
     /// @param id Step identifier
     /// @param elementId Element to deploy
     /// @param instanceNumber Monotonically increasing instance number for this element deployment
     /// @param configuration Element configuration (may include parameter bindings)
-    /// @param healthChecks Health check specifications
     /// @param dependencies Prerequisite step IDs
     /// @param estimatedDuration Estimated deployment time
     /// @param resourceRequirements Resource needs
@@ -462,7 +469,6 @@ public sealed interface AtomicStep
         String elementId,
         int instanceNumber,
         Map<String, Object> configuration,
-        List<HealthCheck> healthChecks,
         List<String> dependencies,
         Optional<Duration> estimatedDuration,
         ResourceRequirements resourceRequirements,
@@ -674,27 +680,6 @@ public sealed interface AtomicStep
         }
     }
 
-    ///
-    /// Health check specification for element deployment.
-    ///
-    record HealthCheck(
-        String name,
-        HealthCheckType type,
-        String target,
-        Duration timeout,
-        Duration interval,
-        int requiredConsecutivePasses
-    ) {}
-
-    ///
-    /// Health check types.
-    ///
-    enum HealthCheckType {
-        HTTP,
-        TCP,
-        COMMAND,
-        CUSTOM
-    }
 
     ///
     /// Retry policy for failed steps.

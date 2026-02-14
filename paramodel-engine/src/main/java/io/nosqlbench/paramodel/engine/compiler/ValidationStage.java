@@ -450,11 +450,11 @@ public class ValidationStage implements CompilationStage {
                             String.format("Element '%s' (%s scope) cannot depend on '%s' (%s scope)",
                                     elem.id(), downstreamScope, dep.element(), upstreamScope),
                             "element:" + elem.id(),
-                            "Scope determines element lifetime: PER_RUN (whole study), PER_TRIAL (per trial). " +
+                            "Scope determines element lifetime: PER_RUN (whole run) > PER_GROUP (group of trials) > PER_TRIAL (single trial). " +
                             "An element cannot depend on something with a shorter lifetime because the " +
                             "dependency might not exist when needed. For example, a PER_RUN-scoped element " +
-                            "cannot depend on a PER_TRIAL-scoped element since the trial element may be " +
-                            "torn down while the PER_RUN element still runs.",
+                            "cannot depend on a PER_GROUP-scoped element since the group element may be " +
+                            "torn down at a group boundary while the PER_RUN element still runs.",
                             List.of("Promote '" + dep.element() + "' to " + downstreamScope + " scope",
                                     "Demote '" + elem.id() + "' to " + upstreamScope + " scope",
                                     "Restructure the dependency relationship"));

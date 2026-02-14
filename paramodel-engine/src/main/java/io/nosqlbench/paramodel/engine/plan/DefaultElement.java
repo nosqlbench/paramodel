@@ -54,6 +54,7 @@ public class DefaultElement implements Element {
     private final Map<String, String> exports;
     private final HealthCheckSpec healthCheck;
     private volatile InstancingScope instancingScope;
+    private volatile boolean scopeExplicit;
     private volatile LiveStatusSummary statusSummary;
 
     private DefaultElement(Builder builder) {
@@ -68,6 +69,7 @@ public class DefaultElement implements Element {
         this.exports = Collections.unmodifiableMap(new LinkedHashMap<>(builder.exports));
         this.healthCheck = builder.healthCheck;
         this.instancingScope = builder.instancingScope;
+        this.scopeExplicit = builder.instancingScope != null;
         this.statusSummary = builder.statusSummary != null
                 ? builder.statusSummary
                 : LiveStatusSummary.inactive();
@@ -136,9 +138,20 @@ public class DefaultElement implements Element {
         return OptionalInt.of(Integer.parseInt(val));
     }
 
+    /// Returns {@code true} if the instancing scope was set explicitly by the
+    /// user (in the plan definition or builder) rather than inferred by the
+    /// compilation pipeline. Only explicitly scoped {@code PER_TRIAL} elements
+    /// receive independent concurrent instances per trial; inferred scopes
+    /// (typically {@code PER_GROUP}) use fingerprint-based group lifecycle.
+    public boolean isScopeExplicit() {
+        return scopeExplicit;
+    }
+
     /// Sets the instancing scope. Called during compilation by scope derivation
     /// stages after all elements are constructed and dependency analysis is
-    /// complete.
+    /// complete. Scopes set via this method are considered **inferred** (not
+    /// explicit); only scopes provided at construction time via the builder
+    /// are marked as explicit (see {@link #isScopeExplicit()}).
     ///
     /// @param scope the derived instancing scope
     public void setInstancingScope(InstancingScope scope) {

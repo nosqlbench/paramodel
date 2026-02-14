@@ -120,7 +120,7 @@ class DependencyAnalysisStageTest {
 
     private AtomicStep deployStep(String id, List<String> deps) {
         return new AtomicStep.DeployElement(
-            id, "elem_" + id, 0, Map.of(), List.of(), deps,
+            id, "elem_" + id, 0, Map.of(), deps,
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of()
         );

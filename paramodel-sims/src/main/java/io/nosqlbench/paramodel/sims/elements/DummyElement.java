@@ -289,17 +289,14 @@ public class DummyElement implements Element {
 
     /// Health check specification for dummy elements.
     ///
-    /// Uses the CUSTOM type with reasonable defaults for simulated environments.
+    /// The host system owns the health check mechanism — this spec only
+    /// carries timing parameters for coordination. Uses reasonable defaults
+    /// for simulated environments.
     private static final class DummyHealthCheckSpec implements HealthCheckSpec {
 
         private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
         private static final int DEFAULT_MAX_RETRIES = 3;
         private static final Duration DEFAULT_RETRY_INTERVAL = Duration.ofSeconds(5);
-
-        @Override
-        public String type() {
-            return "CUSTOM";
-        }
 
         @Override
         public Duration timeout() {

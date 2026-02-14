@@ -4,7 +4,6 @@ import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.engine.plan.DefaultElement;
-import io.nosqlbench.paramodel.parameters.Value;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -12,21 +11,31 @@ import io.nosqlbench.paramodel.sequence.Trial;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.stream.Collectors;
 
 ///
 /// Stage 5: Step Generation
 ///
 /// Converts trials and element instances into a flat, ordered list of {@link AtomicStep}
-/// records. Ported from the PlanComposer algorithm in hyperplane-study.
+/// records.
 ///
 /// ## Three-Phase Algorithm
 ///
-/// 1. **PER_RUN elements**: Single deploy at the start
-/// 2. **Per-trial steps**: For each trial, compare Value fingerprints against previous trial.
-///    If element config changed, emit teardown-then-deploy. Emit ExecuteTrial binding.
-///    Emit BarrierSync at trial boundaries.
-/// 3. **Final teardown**: Reverse topological order
+/// 1. **PER_RUN elements** (outermost group): Single deploy at the start, with
+///    an {@code ELEMENT_READY} barrier after each deploy for downstream coordination.
+/// 2. **Per-trial steps**: Non-global elements are classified into two categories:
+///    - **PER_GROUP**: Elements that vary by axis. A group is a contiguous block
+///      of trials with constant configuration (same fingerprint). The element
+///      deploys at group start, persists across all trials in the group, and
+///      tears down at the group boundary when the fingerprint changes. Group
+///      boundaries produce {@code ELEMENT_SCOPE_END} barriers; redeploys produce
+///      {@code ELEMENT_READY} barriers.
+///    - **PER_TRIAL (independent)**: Elements with explicit {@code PER_TRIAL}
+///      instancing scope get a fresh instance per trial. Trials are independent
+///      (no cross-trial dependencies unless {@code max_concurrency} is set) and
+///      instances are eagerly torn down in LIFO order after each trial's execution.
+/// 3. **Final teardown**: Reverse topological order for PER_RUN and PER_GROUP
+///    elements only (PER_TRIAL elements are already torn down in phase 2).
+///    An {@code ELEMENT_SCOPE_END} barrier is emitted before each final teardown.
 ///
 public class StepGenerationStage implements CompilationStage {
     public StepGenerationStage() {}
@@ -57,7 +66,7 @@ public class StepGenerationStage implements CompilationStage {
         List<AtomicStep> steps = new ArrayList<>();
         List<Barrier> barriers = new ArrayList<>();
 
-        // Track last step ID per element (for dependency chaining)
+        // Track last step ID per element (for dependency chaining — PER_RUN and recycling only)
         Map<String, String> lastStepForElement = new HashMap<>();
         // Track current fingerprint per element (for change detection)
         Map<String, String> currentFingerprintForElement = new HashMap<>();
@@ -69,9 +78,24 @@ public class StepGenerationStage implements CompilationStage {
         // Sliding window for per-element max concurrency enforcement
         Map<String, Deque<String>> concurrencyWindows = new HashMap<>();
 
+        // Classify non-global elements into PER_TRIAL (independent) vs PER_GROUP
+        List<Element> perTrialElements = new ArrayList<>();
+        List<Element> perGroupElements = new ArrayList<>();
+        for (Element element : sortedElements) {
+            if (isGlobalScope(element, allInstances)) continue;
+            if (isPerTrialScope(element)) {
+                perTrialElements.add(element);
+            } else {
+                perGroupElements.add(element);
+            }
+        }
+        // Reverse topo order for LIFO teardowns
+        List<Element> perTrialReversed = new ArrayList<>(perTrialElements);
+        Collections.reverse(perTrialReversed);
+
         int stepIndex = 0;
 
-        // Phase 1: Deploy PER_RUN elements
+        // Phase 1: Deploy PER_RUN elements (outermost group)
         for (Element element : sortedElements) {
             if (isGlobalScope(element, allInstances)) {
                 List<String> deps = computeDependencies(element, lastStepForElement);
@@ -87,7 +111,6 @@ public class StepGenerationStage implements CompilationStage {
                     element.name(),
                     instNum,
                     config,
-                    List.of(),
                     deps,
                     Optional.empty(),
                     AtomicStep.ResourceRequirements.minimal(),
@@ -96,20 +119,54 @@ public class StepGenerationStage implements CompilationStage {
                 );
                 steps.add(deployStep);
                 lastStepForElement.put(element.name(), stepId);
+
+                // ELEMENT_READY barrier: downstream steps can await this
+                // element's readiness via OperationalStateObservable
+                if (element.healthCheck().isPresent()) {
+                    String readyBarrierId = "barrier_ready_" + element.name();
+                    String readyBarrierStepId = "barrier_ready_step_" + element.name() + "_" + stepIndex++;
+                    AtomicStep.BarrierSync readyBarrierStep = new AtomicStep.BarrierSync(
+                        readyBarrierStepId,
+                        readyBarrierId,
+                        List.of(stepId),
+                        Optional.empty(),
+                        AtomicStep.ResourceRequirements.none(),
+                        Optional.empty(),
+                        Map.of("element", element.name(), "scope", "PER_RUN")
+                    );
+                    steps.add(readyBarrierStep);
+                    lastStepForElement.put(element.name(), readyBarrierStepId);
+
+                    barriers.add(new DefaultBarrier(
+                        readyBarrierId,
+                        Barrier.BarrierType.ELEMENT_READY,
+                        element.name() + " ready after deploy",
+                        List.of(stepId),
+                        List.of(),
+                        null,
+                        Barrier.TimeoutAction.FAIL_FAST,
+                        Map.of("element", element.name(), "scope", "PER_RUN")
+                    ));
+                }
             }
         }
 
         // Phase 2: Per-trial steps
+        // Track last sequential exec step for recycling teardown dependencies
+        String lastSequentialExecId = null;
+        // Collect all exec step IDs for Phase 3 final teardowns
+        List<String> allExecStepIds = new ArrayList<>();
+
         for (int trialIdx = 0; trialIdx < trials.size(); trialIdx++) {
             Trial trial = trials.get(trialIdx);
-            List<String> trialDeployStepIds = new ArrayList<>();
 
-            for (Element element : sortedElements) {
-                if (isGlobalScope(element, allInstances)) {
-                    continue; // Already deployed in phase 1
-                }
+            // === 2a: PER_GROUP elements — group boundary detection ===
+            // Identify which PER_GROUP elements need teardown and/or deploy
+            // based on configuration fingerprint changes at group boundaries.
+            List<Element> toTeardown = new ArrayList<>();
+            List<Element> toDeploy = new ArrayList<>();
 
-                // Compute fingerprint for this element in this trial
+            for (Element element : perGroupElements) {
                 String currentFingerprint = computeElementFingerprint(element, trial, plan);
                 String previousFingerprint = currentFingerprintForElement.get(element.name());
 
@@ -117,99 +174,215 @@ public class StepGenerationStage implements CompilationStage {
                     || !currentFingerprint.equals(previousFingerprint);
 
                 if (needsDeploy) {
-                    // Teardown previous if replacing
                     if (previousFingerprint != null) {
-                        List<String> teardownDeps = List.of(lastStepForElement.getOrDefault(element.name(), ""));
-                        teardownDeps = teardownDeps.stream().filter(s -> !s.isEmpty()).collect(Collectors.toList());
-
-                        int teardownInstNum = currentInstanceNumber.get(element.name());
-                        String teardownId = "teardown_" + element.name() + "_" + stepIndex++;
-                        AtomicStep.TeardownElement teardown = new AtomicStep.TeardownElement(
-                            teardownId,
-                            element.name(),
-                            teardownInstNum,
-                            false,
-                            teardownDeps,
-                            Optional.empty(),
-                            AtomicStep.ResourceRequirements.none(),
-                            Optional.empty(),
-                            Map.of("reason", "parameter_change", "trial_index", trialIdx)
-                        );
-                        steps.add(teardown);
-                        lastStepForElement.put(element.name(), teardownId);
+                        toTeardown.add(element);
                     }
-
-                    // Deploy with new config
-                    int instNum = nextInstanceNumber.getOrDefault(element.name(), 0);
-                    nextInstanceNumber.put(element.name(), instNum + 1);
-                    currentInstanceNumber.put(element.name(), instNum);
-
-                    List<String> deployDeps = computeDependencies(element, lastStepForElement);
-
-                    // Enforce max concurrency: if a limit is set, the new deploy
-                    // must wait for the oldest in-flight deploy to complete when
-                    // the sliding window is full.
-                    int maxConc = getMaxConcurrency(element);
-                    if (maxConc > 0) {
-                        Deque<String> recentDeploys = concurrencyWindows
-                                .computeIfAbsent(element.name(), k -> new ArrayDeque<>());
-                        if (recentDeploys.size() >= maxConc) {
-                            String oldestStep = recentDeploys.pollFirst();
-                            deployDeps.add(oldestStep);
-                        }
-                    }
-
-                    Map<String, Object> config = buildConfiguration(element, trial, allInstances);
-
-                    String deployId = "deploy_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
-                    AtomicStep.DeployElement deploy = new AtomicStep.DeployElement(
-                        deployId,
-                        element.name(),
-                        instNum,
-                        config,
-                        List.of(),
-                        deployDeps,
-                        Optional.empty(),
-                        AtomicStep.ResourceRequirements.minimal(),
-                        Optional.empty(),
-                        Map.of("scope", "PER_TRIAL", "trial_index", trialIdx)
-                    );
-                    steps.add(deploy);
-                    lastStepForElement.put(element.name(), deployId);
-                    trialDeployStepIds.add(deployId);
-
-                    // Track this deploy step in the concurrency window
-                    if (maxConc > 0) {
-                        concurrencyWindows
-                                .computeIfAbsent(element.name(), k -> new ArrayDeque<>())
-                                .addLast(deployId);
-                    }
-
+                    toDeploy.add(element);
                     currentFingerprintForElement.put(element.name(), currentFingerprint);
-                } else {
-                    // Reuse: no new steps needed for this element
-                    String existingId = lastStepForElement.get(element.name());
-                    if (existingId != null) {
-                        trialDeployStepIds.add(existingId);
-                    }
                 }
             }
 
-            // Emit ExecuteTrial step
+            // Teardown PER_GROUP elements at group boundaries in REVERSE
+            // topological (LIFO) order. Each teardown depends on the previous
+            // trial's execution step so it cannot race with an in-progress trial.
+            // An ELEMENT_SCOPE_END barrier is emitted for each group boundary
+            // teardown, signaling that all trials using this element instance
+            // have completed.
+            List<Element> teardownReversed = new ArrayList<>(toTeardown);
+            Collections.reverse(teardownReversed);
+            for (Element element : teardownReversed) {
+                // ELEMENT_SCOPE_END barrier before teardown
+                String scopeEndBarrierId = "barrier_scope_end_" + element.name() + "_t" + trialIdx;
+                String scopeEndStepId = "barrier_scope_end_step_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
+                List<String> scopeEndDeps = new ArrayList<>();
+                if (lastSequentialExecId != null) {
+                    scopeEndDeps.add(lastSequentialExecId);
+                } else {
+                    String lastStep = lastStepForElement.get(element.name());
+                    if (lastStep != null) scopeEndDeps.add(lastStep);
+                }
+                AtomicStep.BarrierSync scopeEndStep = new AtomicStep.BarrierSync(
+                    scopeEndStepId,
+                    scopeEndBarrierId,
+                    scopeEndDeps,
+                    Optional.empty(),
+                    AtomicStep.ResourceRequirements.none(),
+                    Optional.empty(),
+                    Map.of("element", element.name(), "trial_index", trialIdx)
+                );
+                steps.add(scopeEndStep);
+                barriers.add(new DefaultBarrier(
+                    scopeEndBarrierId,
+                    Barrier.BarrierType.ELEMENT_SCOPE_END,
+                    element.name() + " group scope ended at trial " + trialIdx,
+                    scopeEndDeps,
+                    List.of(),
+                    null,
+                    Barrier.TimeoutAction.FAIL_FAST,
+                    Map.of("element", element.name(), "trial_index", trialIdx)
+                ));
+
+                int teardownInstNum = currentInstanceNumber.get(element.name());
+                String teardownId = "teardown_" + element.name() + "_" + stepIndex++;
+                AtomicStep.TeardownElement teardown = new AtomicStep.TeardownElement(
+                    teardownId,
+                    element.name(),
+                    teardownInstNum,
+                    false,
+                    List.of(scopeEndStepId),
+                    Optional.empty(),
+                    AtomicStep.ResourceRequirements.none(),
+                    Optional.empty(),
+                    Map.of("reason", "group_boundary", "trial_index", trialIdx)
+                );
+                steps.add(teardown);
+                lastStepForElement.put(element.name(), teardownId);
+            }
+
+            // Deploy PER_GROUP elements in FORWARD topological order
+            for (Element element : toDeploy) {
+                int instNum = nextInstanceNumber.getOrDefault(element.name(), 0);
+                nextInstanceNumber.put(element.name(), instNum + 1);
+                currentInstanceNumber.put(element.name(), instNum);
+
+                List<String> deployDeps = computeDependencies(element, lastStepForElement);
+
+                // Ensure deploy waits for this element's own teardown (if just recycled)
+                String ownLastStep = lastStepForElement.get(element.name());
+                if (ownLastStep != null && !deployDeps.contains(ownLastStep)) {
+                    deployDeps.add(ownLastStep);
+                }
+
+                // Enforce max concurrency sliding window
+                int maxConc = getMaxConcurrency(element);
+                if (maxConc > 0) {
+                    Deque<String> window = concurrencyWindows
+                            .computeIfAbsent(element.name(), k -> new ArrayDeque<>());
+                    if (window.size() >= maxConc) {
+                        String oldestStep = window.pollFirst();
+                        if (!deployDeps.contains(oldestStep)) {
+                            deployDeps.add(oldestStep);
+                        }
+                    }
+                }
+
+                Map<String, Object> config = buildConfiguration(element, trial, allInstances);
+
+                String deployId = "deploy_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
+                AtomicStep.DeployElement deploy = new AtomicStep.DeployElement(
+                    deployId,
+                    element.name(),
+                    instNum,
+                    config,
+                    deployDeps,
+                    Optional.empty(),
+                    AtomicStep.ResourceRequirements.minimal(),
+                    Optional.empty(),
+                    Map.of("scope", "PER_GROUP", "trial_index", trialIdx)
+                );
+                steps.add(deploy);
+                lastStepForElement.put(element.name(), deployId);
+
+                // ELEMENT_READY barrier after PER_GROUP deploy
+                if (element.healthCheck().isPresent()) {
+                    String readyBarrierId = "barrier_ready_" + element.name() + "_t" + trialIdx;
+                    String readyBarrierStepId = "barrier_ready_step_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
+                    AtomicStep.BarrierSync readyBarrierStep = new AtomicStep.BarrierSync(
+                        readyBarrierStepId,
+                        readyBarrierId,
+                        List.of(deployId),
+                        Optional.empty(),
+                        AtomicStep.ResourceRequirements.none(),
+                        Optional.empty(),
+                        Map.of("element", element.name(), "scope", "PER_GROUP", "trial_index", trialIdx)
+                    );
+                    steps.add(readyBarrierStep);
+                    lastStepForElement.put(element.name(), readyBarrierStepId);
+
+                    barriers.add(new DefaultBarrier(
+                        readyBarrierId,
+                        Barrier.BarrierType.ELEMENT_READY,
+                        element.name() + " ready after group redeploy at trial " + trialIdx,
+                        List.of(deployId),
+                        List.of(),
+                        null,
+                        Barrier.TimeoutAction.FAIL_FAST,
+                        Map.of("element", element.name(), "scope", "PER_GROUP", "trial_index", trialIdx)
+                    ));
+                }
+
+                if (maxConc > 0) {
+                    concurrencyWindows
+                            .computeIfAbsent(element.name(), k -> new ArrayDeque<>())
+                            .addLast(deployId);
+                }
+            }
+
+            // === 2b: Deploy PER_TRIAL elements (independent per trial) ===
+            // Build a merged dependency map: PER_RUN + PER_GROUP steps from
+            // lastStepForElement, plus this trial's PER_TRIAL deploys.
+            Map<String, String> trialDeployMap = new HashMap<>();
+            Map<String, String> mergedStepMap = new HashMap<>(lastStepForElement);
+
+            for (Element element : perTrialElements) {
+                int instNum = nextInstanceNumber.getOrDefault(element.name(), 0);
+                nextInstanceNumber.put(element.name(), instNum + 1);
+                currentInstanceNumber.put(element.name(), instNum);
+
+                List<String> deployDeps = computeDependencies(element, mergedStepMap);
+
+                // Enforce max concurrency: limit concurrent PER_TRIAL instances.
+                // The window tracks teardown step IDs so a new deploy waits for
+                // the oldest instance to finish tearing down.
+                int maxConc = getMaxConcurrency(element);
+                if (maxConc > 0) {
+                    Deque<String> window = concurrencyWindows
+                            .computeIfAbsent(element.name(), k -> new ArrayDeque<>());
+                    if (window.size() >= maxConc) {
+                        String oldestStep = window.pollFirst();
+                        if (!deployDeps.contains(oldestStep)) {
+                            deployDeps.add(oldestStep);
+                        }
+                    }
+                }
+
+                Map<String, Object> config = buildConfiguration(element, trial, allInstances);
+
+                String deployId = "deploy_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
+                AtomicStep.DeployElement deploy = new AtomicStep.DeployElement(
+                    deployId,
+                    element.name(),
+                    instNum,
+                    config,
+                    deployDeps,
+                    Optional.empty(),
+                    AtomicStep.ResourceRequirements.minimal(),
+                    Optional.empty(),
+                    Map.of("scope", "PER_TRIAL", "trial_index", trialIdx)
+                );
+                steps.add(deploy);
+                trialDeployMap.put(element.name(), deployId);
+                mergedStepMap.put(element.name(), deployId);
+            }
+
+            // === 2c: ExecuteTrial ===
             Map<String, String> elementBindings = new HashMap<>();
             for (Element element : elements) {
                 Optional<CompilationContext.ElementInstance> inst = findInstanceForTrial(element, trial, allInstances);
                 inst.ifPresent(i -> elementBindings.put(element.name(), i.instanceId()));
             }
 
-            // ExecuteTrial depends on all deploy steps for this trial
+            // Depend on PER_RUN + recycling deploy steps
             List<String> execDeps = new ArrayList<>();
             for (Element element : elements) {
+                if (isPerTrialScope(element)) continue;
                 String lastStep = lastStepForElement.get(element.name());
                 if (lastStep != null) {
                     execDeps.add(lastStep);
                 }
             }
+            // Depend on this trial's PER_TRIAL deploy steps
+            execDeps.addAll(trialDeployMap.values());
 
             String execId = "exec_trial_" + trialIdx + "_" + stepIndex++;
             AtomicStep.ExecuteTrial executeTrial = new AtomicStep.ExecuteTrial(
@@ -223,56 +396,121 @@ public class StepGenerationStage implements CompilationStage {
                 Map.of("trial_index", trialIdx)
             );
             steps.add(executeTrial);
+            lastSequentialExecId = execId;
+            allExecStepIds.add(execId);
             lastStepForElement.put("__trial_" + trialIdx, execId);
 
-            // Emit BarrierSync at trial boundary
-            String barrierId = "barrier_trial_" + trialIdx;
-            String barrierStepId = "barrier_step_" + trialIdx + "_" + stepIndex++;
-            AtomicStep.BarrierSync barrierStep = new AtomicStep.BarrierSync(
-                barrierStepId,
-                barrierId,
-                List.of(execId),
-                Optional.of(Duration.ZERO),
-                AtomicStep.ResourceRequirements.none(),
-                Optional.empty(),
-                Map.of("trial_index", trialIdx)
-            );
-            steps.add(barrierStep);
+            // === 2d: Eager teardown of PER_TRIAL elements in REVERSE topo (LIFO) order ===
+            for (Element element : perTrialReversed) {
+                int teardownInstNum = currentInstanceNumber.get(element.name());
+                String teardownId = "teardown_" + element.name() + "_t" + trialIdx + "_" + stepIndex++;
+                AtomicStep.TeardownElement teardown = new AtomicStep.TeardownElement(
+                    teardownId,
+                    element.name(),
+                    teardownInstNum,
+                    false,
+                    List.of(execId),
+                    Optional.empty(),
+                    AtomicStep.ResourceRequirements.none(),
+                    Optional.empty(),
+                    Map.of("reason", "per_trial_eager", "trial_index", trialIdx)
+                );
+                steps.add(teardown);
 
-            DefaultBarrier barrier = new DefaultBarrier(
-                barrierId,
-                Barrier.BarrierType.TRIAL_BATCH,
-                "Trial " + trialIdx + " completion barrier",
-                List.of(execId),
-                List.of(),
-                null,
-                Barrier.TimeoutAction.FAIL_FAST,
-                Map.of("trial_index", trialIdx)
-            );
-            barriers.add(barrier);
+                // Track teardown in concurrency window so future deploys respect the limit
+                int maxConc = getMaxConcurrency(element);
+                if (maxConc > 0) {
+                    concurrencyWindows
+                            .computeIfAbsent(element.name(), k -> new ArrayDeque<>())
+                            .addLast(teardownId);
+                }
+            }
+
+            // === 2e: Barrier at trial boundary ===
+            // Only emit barriers when PER_GROUP elements exist: the barrier
+            // marks the trial boundary that the next trial's group-boundary
+            // teardown-then-redeploy sequence synchronises against. When all
+            // non-global elements are PER_TRIAL (independent), each trial is
+            // fully self-contained and a trailing barrier would be a dangling leaf.
+            if (!perGroupElements.isEmpty()) {
+                String barrierId = "barrier_trial_" + trialIdx;
+                String barrierStepId = "barrier_step_" + trialIdx + "_" + stepIndex++;
+                AtomicStep.BarrierSync barrierStep = new AtomicStep.BarrierSync(
+                    barrierStepId,
+                    barrierId,
+                    List.of(execId),
+                    Optional.of(Duration.ZERO),
+                    AtomicStep.ResourceRequirements.none(),
+                    Optional.empty(),
+                    Map.of("trial_index", trialIdx)
+                );
+                steps.add(barrierStep);
+
+                DefaultBarrier barrier = new DefaultBarrier(
+                    barrierId,
+                    Barrier.BarrierType.TRIAL_BATCH,
+                    "Trial " + trialIdx + " completion barrier",
+                    List.of(execId),
+                    List.of(),
+                    null,
+                    Barrier.TimeoutAction.FAIL_FAST,
+                    Map.of("trial_index", trialIdx)
+                );
+                barriers.add(barrier);
+            }
         }
 
-        // Phase 3: Final teardown in reverse topological order
+        // Phase 3: Final teardown in reverse topological order.
+        // PER_TRIAL elements are already torn down eagerly in phase 2.
+        // An ELEMENT_SCOPE_END barrier is emitted before each final teardown
+        // to signal that all trials using this element have completed.
         List<Element> reversedElements = new ArrayList<>(sortedElements);
         Collections.reverse(reversedElements);
 
         for (Element element : reversedElements) {
+            if (isPerTrialScope(element)) {
+                continue; // Already torn down eagerly after each trial
+            }
+
             String lastStep = lastStepForElement.get(element.name());
             if (lastStep == null) {
                 continue;
             }
 
-            // Collect all execution step dependencies
-            List<String> teardownDeps = new ArrayList<>();
-            teardownDeps.add(lastStep);
-
-            // Also depend on all trial execution steps that used this element
-            for (int i = 0; i < trials.size(); i++) {
-                String trialExecStep = lastStepForElement.get("__trial_" + i);
-                if (trialExecStep != null) {
-                    teardownDeps.add(trialExecStep);
+            // Depend on the element's own last step plus all trial execution
+            // steps. PER_RUN and PER_GROUP elements may be used by parallel
+            // PER_TRIAL trials so they must wait for every execution to complete.
+            List<String> scopeEndDeps = new ArrayList<>();
+            scopeEndDeps.add(lastStep);
+            for (String execStepId : allExecStepIds) {
+                if (!scopeEndDeps.contains(execStepId)) {
+                    scopeEndDeps.add(execStepId);
                 }
             }
+
+            // ELEMENT_SCOPE_END barrier before final teardown
+            String scopeEndBarrierId = "barrier_scope_end_final_" + element.name();
+            String scopeEndStepId = "barrier_scope_end_final_step_" + element.name() + "_" + stepIndex++;
+            AtomicStep.BarrierSync scopeEndStep = new AtomicStep.BarrierSync(
+                scopeEndStepId,
+                scopeEndBarrierId,
+                scopeEndDeps,
+                Optional.empty(),
+                AtomicStep.ResourceRequirements.none(),
+                Optional.empty(),
+                Map.of("element", element.name(), "phase", "cleanup")
+            );
+            steps.add(scopeEndStep);
+            barriers.add(new DefaultBarrier(
+                scopeEndBarrierId,
+                Barrier.BarrierType.ELEMENT_SCOPE_END,
+                element.name() + " final scope ended",
+                scopeEndDeps,
+                List.of(),
+                null,
+                Barrier.TimeoutAction.FAIL_FAST,
+                Map.of("element", element.name(), "phase", "cleanup")
+            ));
 
             int finalInstNum = currentInstanceNumber.getOrDefault(element.name(), 0);
             String teardownId = "teardown_final_" + element.name() + "_" + stepIndex++;
@@ -281,7 +519,7 @@ public class StepGenerationStage implements CompilationStage {
                 element.name(),
                 finalInstNum,
                 true,
-                teardownDeps,
+                List.of(scopeEndStepId),
                 Optional.empty(),
                 AtomicStep.ResourceRequirements.none(),
                 Optional.empty(),
@@ -310,6 +548,27 @@ public class StepGenerationStage implements CompilationStage {
         return Integer.parseInt(val);
     }
 
+    /// Returns {@code true} if the element has **explicitly** declared
+    /// {@link Element.InstancingScope#PER_TRIAL} scope, meaning it gets
+    /// a fresh independent instance for every trial with no cross-trial
+    /// dependencies.
+    ///
+    /// Elements with PER_GROUP scope (inferred from axis targeting) use
+    /// fingerprint-based group lifecycle instead — they persist for a
+    /// contiguous block of trials with constant configuration.
+    private boolean isPerTrialScope(Element element) {
+        if (element instanceof DefaultElement de) {
+            return de.instancingScope()
+                .map(s -> s == Element.InstancingScope.PER_TRIAL)
+                .orElse(false)
+                && de.isScopeExplicit();
+        }
+        // Non-DefaultElement (e.g. MockElement): treat PER_TRIAL as explicit
+        return element.instancingScope()
+            .map(s -> s == Element.InstancingScope.PER_TRIAL)
+            .orElse(false);
+    }
+
     private boolean isGlobalScope(Element element, List<CompilationContext.ElementInstance> allInstances) {
         // An element is global-scope if it has a single instance covering all trials
         // (i.e., its scope description is "global")
@@ -318,6 +577,22 @@ public class StepGenerationStage implements CompilationStage {
             .anyMatch(inst -> inst.scopeDescription().equals("global"));
     }
 
+    /// Computes a configuration fingerprint for the given element in the given
+    /// trial. PER_GROUP elements use this fingerprint for group-boundary
+    /// detection: when the fingerprint changes between adjacent trials, a
+    /// teardown-then-redeploy cycle is triggered.
+    ///
+    /// The fingerprint incorporates:
+    /// 1. The element's own formal parameter values from trial assignments
+    /// 2. Axis values targeting this element
+    /// 3. Dependency fingerprints — so that when a dependency's configuration
+    ///    changes at a group boundary, this element is also redeployed (it
+    ///    likely needs to reconnect/rebind to the new dependency instance)
+    ///
+    /// @param element the element to fingerprint
+    /// @param trial the trial providing parameter assignments
+    /// @param plan the test plan (for axis metadata)
+    /// @return a string fingerprint for group-boundary comparison
     private String computeElementFingerprint(Element element, Trial trial, TestPlan plan) {
         // Concatenate sorted fingerprints of all parameter values for this element
         TreeMap<String, String> sortedFingerprints = new TreeMap<>();
@@ -338,6 +613,15 @@ public class StepGenerationStage implements CompilationStage {
                 trial.assignment(qualifiedKey).ifPresent(value ->
                     sortedFingerprints.put(axis.name(), value.fingerprint()));
             }
+        }
+
+        // Include dependency fingerprints so that when a dependency's
+        // configuration changes at a group boundary, this element is also
+        // redeployed. The dependency graph is acyclic (validated upstream),
+        // so recursion terminates.
+        for (Element dep : element.dependencies()) {
+            String depFingerprint = computeElementFingerprint(dep, trial, plan);
+            sortedFingerprints.put("__dep:" + dep.name(), depFingerprint);
         }
 
         if (sortedFingerprints.isEmpty()) {

@@ -51,7 +51,7 @@ class VirtualElementsTest {
         }
 
         @Test
-        @DisplayName("daemon has correct name, type, 4 parameters, depends on dataset, HTTP health check, PER_RUN")
+        @DisplayName("daemon has correct name, type, 4 parameters, depends on dataset, health check, PER_RUN")
         void testDaemonElement() {
             Element daemon = VirtualElements.daemon();
 
@@ -61,12 +61,11 @@ class VirtualElementsTest {
             assertThat(daemon.dependencies()).hasSize(1);
             assertThat(daemon.dependencies().get(0).name()).isEqualTo("dataset");
             assertThat(daemon.healthCheck()).isPresent();
-            assertThat(daemon.healthCheck().get().type()).isEqualTo("HTTP");
             assertThat(daemon.instancingScope()).contains(Element.InstancingScope.PER_RUN);
         }
 
         @Test
-        @DisplayName("node has correct name, type, 4 parameters, depends on daemon, TCP health check, PER_TRIAL")
+        @DisplayName("node has correct name, type, 4 parameters, depends on daemon, health check, PER_TRIAL")
         void testNodeElement() {
             Element node = VirtualElements.node();
 
@@ -76,7 +75,6 @@ class VirtualElementsTest {
             assertThat(node.dependencies()).hasSize(1);
             assertThat(node.dependencies().get(0).name()).isEqualTo("daemon");
             assertThat(node.healthCheck()).isPresent();
-            assertThat(node.healthCheck().get().type()).isEqualTo("TCP");
             assertThat(node.instancingScope()).contains(Element.InstancingScope.PER_TRIAL);
         }
 
@@ -240,24 +238,22 @@ class VirtualElementsTest {
     class HealthChecks {
 
         @Test
-        @DisplayName("daemon has HTTP health check with 30s timeout and 3 retries")
+        @DisplayName("daemon has health check with 30s timeout and 3 retries")
         void testDaemonHealthCheck() {
             Element daemon = VirtualElements.daemon();
             Element.HealthCheckSpec hc = daemon.healthCheck().orElseThrow();
 
-            assertThat(hc.type()).isEqualTo("HTTP");
             assertThat(hc.timeout()).isEqualTo(Duration.ofSeconds(30));
             assertThat(hc.maxRetries()).isEqualTo(3);
             assertThat(hc.retryInterval()).isEqualTo(Duration.ofSeconds(5));
         }
 
         @Test
-        @DisplayName("node has TCP health check with 15s timeout")
+        @DisplayName("node has health check with 15s timeout")
         void testNodeHealthCheck() {
             Element node = VirtualElements.node();
             Element.HealthCheckSpec hc = node.healthCheck().orElseThrow();
 
-            assertThat(hc.type()).isEqualTo("TCP");
             assertThat(hc.timeout()).isEqualTo(Duration.ofSeconds(15));
             assertThat(hc.maxRetries()).isEqualTo(3);
         }
@@ -433,21 +429,10 @@ class VirtualElementsTest {
     class HealthCheckSpecTests {
 
         @Test
-        @DisplayName("http factory produces HTTP spec with defaults")
-        void testHttpFactory() {
-            MockHealthCheckSpec spec = MockHealthCheckSpec.http(Duration.ofSeconds(20));
-            assertThat(spec.type()).isEqualTo("HTTP");
+        @DisplayName("withTimeout factory produces spec with defaults")
+        void testWithTimeoutFactory() {
+            MockHealthCheckSpec spec = MockHealthCheckSpec.withTimeout(Duration.ofSeconds(20));
             assertThat(spec.timeout()).isEqualTo(Duration.ofSeconds(20));
-            assertThat(spec.maxRetries()).isEqualTo(3);
-            assertThat(spec.retryInterval()).isEqualTo(Duration.ofSeconds(5));
-        }
-
-        @Test
-        @DisplayName("tcp factory produces TCP spec with defaults")
-        void testTcpFactory() {
-            MockHealthCheckSpec spec = MockHealthCheckSpec.tcp(Duration.ofSeconds(10));
-            assertThat(spec.type()).isEqualTo("TCP");
-            assertThat(spec.timeout()).isEqualTo(Duration.ofSeconds(10));
             assertThat(spec.maxRetries()).isEqualTo(3);
             assertThat(spec.retryInterval()).isEqualTo(Duration.ofSeconds(5));
         }
@@ -456,8 +441,7 @@ class VirtualElementsTest {
         @DisplayName("custom constructor allows full configuration")
         void testCustomConstructor() {
             MockHealthCheckSpec spec = new MockHealthCheckSpec(
-                "COMMAND", Duration.ofSeconds(60), 5, Duration.ofSeconds(10));
-            assertThat(spec.type()).isEqualTo("COMMAND");
+                Duration.ofSeconds(60), 5, Duration.ofSeconds(10));
             assertThat(spec.timeout()).isEqualTo(Duration.ofSeconds(60));
             assertThat(spec.maxRetries()).isEqualTo(5);
             assertThat(spec.retryInterval()).isEqualTo(Duration.ofSeconds(10));
@@ -467,16 +451,8 @@ class VirtualElementsTest {
         @DisplayName("constructor rejects negative maxRetries")
         void testRejectsNegativeRetries() {
             assertThatThrownBy(() -> new MockHealthCheckSpec(
-                "HTTP", Duration.ofSeconds(30), -1, Duration.ofSeconds(5)))
+                Duration.ofSeconds(30), -1, Duration.ofSeconds(5)))
                 .isInstanceOf(IllegalArgumentException.class);
-        }
-
-        @Test
-        @DisplayName("constructor rejects null type")
-        void testRejectsNullType() {
-            assertThatThrownBy(() -> new MockHealthCheckSpec(
-                null, Duration.ofSeconds(30), 3, Duration.ofSeconds(5)))
-                .isInstanceOf(NullPointerException.class);
         }
     }
 

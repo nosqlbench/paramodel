@@ -158,11 +158,12 @@ class TestPlanComposerTest {
         // 4 thread values = 4 trials
         assertThat(plan.size()).isEqualTo(4);
 
-        // Server should be PER_TRIAL scope (has axis)
+        // Server should be PER_GROUP scope (has axis — persists for contiguous
+        // group of trials with constant config, redeployed at group boundaries)
         Element server = plan.element("server").orElseThrow();
-        assertThat(server.instancingScope()).hasValue(InstancingScope.PER_TRIAL);
+        assertThat(server.instancingScope()).hasValue(InstancingScope.PER_GROUP);
 
-        // Server should be deployed 4 times
+        // Server should be deployed 4 times (4 distinct thread values = 4 groups)
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
         assertThat(deploysFor(execPlan, "server")).isEqualTo(4);
     }
@@ -306,13 +307,14 @@ class TestPlanComposerTest {
         assertThat(plan.element("shared-db").orElseThrow().instancingScope())
                 .hasValue(InstancingScope.PER_RUN);
 
-        // server: has axis → PER_TRIAL scope
+        // server: has axis → PER_GROUP scope (persists for contiguous group
+        // of trials with constant config, redeployed at group boundaries)
         assertThat(plan.element("server").orElseThrow().instancingScope())
-                .hasValue(InstancingScope.PER_TRIAL);
+                .hasValue(InstancingScope.PER_GROUP);
 
-        // client: COMMAND → always PER_TRIAL scope
+        // client: depends on PER_GROUP server → PER_GROUP scope (taint propagation)
         assertThat(plan.element("client").orElseThrow().instancingScope())
-                .hasValue(InstancingScope.PER_TRIAL);
+                .hasValue(InstancingScope.PER_GROUP);
     }
 
     /// Test: Bindings section applies cross-element parameters

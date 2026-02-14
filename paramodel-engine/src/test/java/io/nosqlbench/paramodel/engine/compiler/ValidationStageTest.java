@@ -862,6 +862,54 @@ class ValidationStageTest {
                 .anyMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSTANCED_PER_WITHOUT_CONCURRENT)));
     }
 
+    @Test
+    void testThreeElementCycle() {
+        ElementDefinition a = new ElementDefinition(
+                "a", "service", Map.of(),
+                List.of(new DependencyDefinition("b", RelationshipType.SHARED)),
+                Map.of(), null, Map.of("image", "image:a"));
+
+        ElementDefinition b = new ElementDefinition(
+                "b", "service", Map.of(),
+                List.of(new DependencyDefinition("c", RelationshipType.SHARED)),
+                Map.of(), null, Map.of("image", "image:b"));
+
+        ElementDefinition c = new ElementDefinition(
+                "c", "service", Map.of(),
+                List.of(new DependencyDefinition("a", RelationshipType.SHARED)),
+                Map.of(), null, Map.of("image", "image:c"));
+
+        TestPlanDefinition def = new TestPlanDefinition(
+                "Study", null, List.of(a, b, c), List.of(), List.of(), null);
+
+        DefaultValidationResult report = validator.validate(def);
+
+        assertThat(report.hasErrors()).isTrue();
+        assertThat(report.errors())
+                .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_DEPENDENCY_CYCLE)));
+    }
+
+    @Test
+    void testScopeViolationPerRunDependsOnPerGroup() {
+        ElementDefinition perRunElem = new ElementDefinition(
+                "monitor", "service", Map.of(),
+                List.of(new DependencyDefinition("cache", RelationshipType.SHARED)),
+                Map.of(), InstancingScope.PER_RUN, Map.of("image", "image:monitor"));
+
+        ElementDefinition perGroupElem = new ElementDefinition(
+                "cache", "service", Map.of(), List.of(), Map.of(),
+                InstancingScope.PER_GROUP, Map.of("image", "image:cache"));
+
+        TestPlanDefinition def = new TestPlanDefinition(
+                "Study", null, List.of(perRunElem, perGroupElem), List.of(), List.of(), null);
+
+        DefaultValidationResult report = validator.validate(def);
+
+        assertThat(report.hasErrors()).isTrue();
+        assertThat(report.errors())
+                .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_SCOPE_VIOLATION)));
+    }
+
     // ── Helper methods ─────────────────────────────────────────────────
 
     /// Creates a simple service element definition for tests.

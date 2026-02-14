@@ -40,7 +40,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementHasCorrectType() {
         var step = new DeployElement(
-            "step-1", "db", 0, Map.of("port", 5432), List.of(),
+            "step-1", "db", 0, Map.of("port", 5432),
             List.of(), Optional.of(Duration.ofSeconds(30)),
             MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.type()).isEqualTo(StepType.DEPLOY_ELEMENT);
@@ -49,7 +49,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementDescription() {
         var step = new DeployElement(
-            "step-1", "redis", 0, Map.of(), List.of(),
+            "step-1", "redis", 0, Map.of(),
             List.of(), Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.description()).contains("redis");
     }
@@ -57,7 +57,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementAccessors() {
         var step = new DeployElement(
-            "step-1", "db", 0, Map.of("k", "v"), List.of(),
+            "step-1", "db", 0, Map.of("k", "v"),
             List.of("dep-1"), Optional.of(Duration.ofMinutes(1)),
             MINIMAL, Optional.empty(), Map.of("tag", "val"));
         assertThat(step.id()).isEqualTo("step-1");
@@ -73,7 +73,7 @@ class AtomicStepRecordsTest {
     @Test
     void deployElementExecuteThrows() {
         var step = new DeployElement(
-            "step-1", "db", 0, Map.of(), List.of(),
+            "step-1", "db", 0, Map.of(),
             List.of(), Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThatThrownBy(() -> step.execute(null))
             .isInstanceOf(UnsupportedOperationException.class);
@@ -238,32 +238,6 @@ class AtomicStepRecordsTest {
         assertThat(rr.networkGbps()).isEqualTo(1.0);
     }
 
-    // ── HealthCheck record ──────────────────────────────────────────
-
-    @Test
-    void healthCheckAccessors() {
-        var hc = new HealthCheck(
-            "http-check", HealthCheckType.HTTP, "http://localhost:8080/health",
-            Duration.ofSeconds(5), Duration.ofSeconds(1), 3);
-        assertThat(hc.name()).isEqualTo("http-check");
-        assertThat(hc.type()).isEqualTo(HealthCheckType.HTTP);
-        assertThat(hc.target()).isEqualTo("http://localhost:8080/health");
-        assertThat(hc.timeout()).isEqualTo(Duration.ofSeconds(5));
-        assertThat(hc.interval()).isEqualTo(Duration.ofSeconds(1));
-        assertThat(hc.requiredConsecutivePasses()).isEqualTo(3);
-    }
-
-    // ── HealthCheckType enum ────────────────────────────────────────
-
-    @Test
-    void healthCheckTypeValues() {
-        assertThat(HealthCheckType.values()).containsExactlyInAnyOrder(
-            HealthCheckType.HTTP,
-            HealthCheckType.TCP,
-            HealthCheckType.COMMAND,
-            HealthCheckType.CUSTOM);
-    }
-
     // ── InstanceStatus enum ─────────────────────────────────────────
 
     @Test
@@ -313,7 +287,7 @@ class AtomicStepRecordsTest {
     @Test
     void atomicStepSealedSubtypes() {
         AtomicStep deploy = new DeployElement(
-            "1", "e", 0, Map.of(), List.of(), List.of(),
+            "1", "e", 0, Map.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         AtomicStep execute = new ExecuteTrial(
             "2", "t", Map.of(), List.of(),

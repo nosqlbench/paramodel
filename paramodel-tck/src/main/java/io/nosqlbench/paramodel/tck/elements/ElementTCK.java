@@ -110,11 +110,10 @@ public abstract class ElementTCK {
     @Test
     public void testElementWithHealthCheck() {
         Element.HealthCheckSpec healthCheck = getProvider().createHealthCheckSpec(
-            "HTTP", java.time.Duration.ofSeconds(30));
+            java.time.Duration.ofSeconds(30));
         Element element = getProvider().createElementWithHealthCheck("service", healthCheck);
 
         assertThat(element.healthCheck()).isPresent();
-        assertThat(element.healthCheck().get().type()).isEqualTo("HTTP");
         assertThat(element.healthCheck().get().timeout()).isEqualTo(java.time.Duration.ofSeconds(30));
         assertThat(element.healthCheck().get().maxRetries()).isGreaterThanOrEqualTo(0);
         assertThat(element.healthCheck().get().retryInterval()).isNotNull();

@@ -57,7 +57,6 @@ public final class MockAtomicStep {
             instanceNumber,
             Map.of(),
             List.of(),
-            List.of(),
             Optional.empty(),
             AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(),

@@ -22,9 +22,9 @@ import java.util.Set;
 /// The virtual elements form a directed acyclic graph:
 ///
 /// ```
-///   node (PER_TRIAL, TCP health check)
+///   node (PER_TRIAL, health check)
 ///     │
-///     └──depends on──▶ daemon (PER_RUN, HTTP health check)
+///     └──depends on──▶ daemon (PER_RUN, health check)
 ///                         │
 ///                         └──depends on──▶ dataset (no scope, no health check)
 /// ```
@@ -86,7 +86,7 @@ public final class VirtualElements {
     /// - `debug` — debug mode on/off
     /// - `heap_gb` — JVM heap size in GB, range [0.5, 32.0]
     ///
-    /// @return daemon element depending on a default dataset, with HTTP health check and PER_RUN scope
+    /// @return daemon element depending on a default dataset, with health check and PER_RUN scope
     ///
     public static MockElement daemon() {
         return daemon(dataset());
@@ -96,7 +96,7 @@ public final class VirtualElements {
     /// Creates a daemon element that depends on the specified dataset.
     ///
     /// @param dataset the dataset element this daemon reads from
-    /// @return daemon element depending on specified dataset, with HTTP health check and PER_RUN scope
+    /// @return daemon element depending on specified dataset, with health check and PER_RUN scope
     ///
     public static MockElement daemon(Element dataset) {
         return MockElement.builder("daemon")
@@ -106,7 +106,7 @@ public final class VirtualElements {
             .parameter(BooleanParameter.of("debug"))
             .parameter(DoubleParameter.range("heap_gb", 0.5, 32.0))
             .dependency(dataset)
-            .healthCheck(MockHealthCheckSpec.http(Duration.ofSeconds(30)))
+            .healthCheck(MockHealthCheckSpec.withTimeout(Duration.ofSeconds(30)))
             .instancingScope(Element.InstancingScope.PER_RUN)
             .build();
     }
@@ -120,7 +120,7 @@ public final class VirtualElements {
     /// - `memory_gb` — RAM in GB, range [1.0, 256.0]
     /// - `spot_instance` — use spot pricing on/off
     ///
-    /// @return node element depending on a default daemon, with TCP health check and PER_TRIAL scope
+    /// @return node element depending on a default daemon, with health check and PER_TRIAL scope
     ///
     public static MockElement node() {
         return node(daemon());
@@ -130,7 +130,7 @@ public final class VirtualElements {
     /// Creates a node element that depends on the specified daemon.
     ///
     /// @param daemon the daemon element this node hosts
-    /// @return node element depending on specified daemon, with TCP health check and PER_TRIAL scope
+    /// @return node element depending on specified daemon, with health check and PER_TRIAL scope
     ///
     public static MockElement node(Element daemon) {
         return MockElement.builder("node")
@@ -141,7 +141,7 @@ public final class VirtualElements {
             .parameter(DoubleParameter.range("memory_gb", 1.0, 256.0))
             .parameter(BooleanParameter.of("spot_instance"))
             .dependency(daemon)
-            .healthCheck(MockHealthCheckSpec.tcp(Duration.ofSeconds(15)))
+            .healthCheck(MockHealthCheckSpec.withTimeout(Duration.ofSeconds(15)))
             .instancingScope(Element.InstancingScope.PER_TRIAL)
             .build();
     }

@@ -164,32 +164,37 @@ import java.util.Optional;
 ///
 /// ## Instancing Scopes
 ///
-/// For {@link RelationshipType#INSTANCED_PER} relationships, specify scope:
+/// Scopes form a containment hierarchy derived from axis nesting:
 ///
 /// ```
-/// PER_TRIAL:
-///   New instance for each trial
-///   Lifecycle: start before trial, stop after trial
-///
-/// PER_GROUP:
-///   New instance for each group of trials
-///   Lifecycle: start before group, stop after group
+/// PER_RUN  ⊇  PER_GROUP  ⊇  PER_TRIAL
 ///
 /// PER_RUN:
-///   New instance for each run
-///   Lifecycle: start before run, stop after run
+///   Outermost group — no varying axis.
+///   Deploys once at start, tears down once at end.
+///
+/// PER_GROUP:
+///   Default for axis-targeted elements.
+///   Persists for a contiguous group of trials with constant config.
+///   Redeploys at group boundaries when config fingerprint changes.
+///   Group size determined by axis nesting order.
+///
+/// PER_TRIAL:
+///   Explicit override only — never inferred.
+///   Fresh independent instance per trial with eager teardown.
 /// ```
 ///
 /// ## Health Checks
 ///
-/// Elements define how to verify readiness:
+/// Elements define readiness verification timing. The host system owns
+/// the health check mechanism (protocol, endpoint, acceptance criteria).
+/// Paramodel only needs timing parameters for coordination:
 ///
 /// ```
-/// HealthCheck Types:
-/// ├── TCP Connection  — check if port is open
-/// ├── HTTP GET        — check endpoint returns 200
-/// ├── Command         — run shell command, check exit code
-/// └── Custom          — user-defined readiness predicate
+/// HealthCheckSpec:
+/// ├── timeout        — maximum time to wait for readiness
+/// ├── maxRetries     — number of retry attempts
+/// └── retryInterval  — pause between retries
 /// ```
 ///
 /// ## Live Status Checks
@@ -470,51 +475,103 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     }
 
     ///
-    /// Instancing scope for INSTANCED_PER relationships.
+    /// Instancing scope for element lifecycle management.
+    ///
+    /// Scopes form a containment hierarchy derived from axis nesting:
+    ///
+    /// ```
+    /// PER_RUN  ⊇  PER_GROUP  ⊇  PER_TRIAL
+    /// ```
+    ///
+    /// - **PER_RUN** is the outermost group — logically equivalent to
+    ///   PER_GROUP where the group encompasses the entire run. An element
+    ///   with no varying axis parameter is PER_RUN: it deploys once at
+    ///   the start and tears down once at the end.
+    ///
+    /// - **PER_GROUP** is the default scope for axis-targeted elements.
+    ///   A group is a contiguous block of trials where the element's
+    ///   configuration fingerprint is constant. The element deploys at
+    ///   group start, persists across all trials in the group, and tears
+    ///   down at the group boundary when the fingerprint changes. The
+    ///   axis nesting order determines group size: an element on the
+    ///   outermost axis has larger groups than one on an inner axis.
+    ///
+    /// - **PER_TRIAL** is an explicit override: the element gets a fresh
+    ///   independent instance for every trial, with eager teardown after
+    ///   the trial completes — regardless of whether the configuration
+    ///   changed. Only applies when explicitly declared.
+    ///
+    /// Enum ordinal encodes lifetime: PER_TRIAL (0) < PER_GROUP (1) <
+    /// PER_RUN (2). Scope validation enforces that a longer-lived element
+    /// cannot depend on a shorter-lived one.
     ///
     enum InstancingScope {
-        /// One instance per trial
+        /// Fresh independent instance per trial with eager teardown.
+        /// Only assigned when explicitly declared, never inferred.
         PER_TRIAL,
 
-        /// One instance per group of trials
+        /// Persists for a contiguous group of trials with constant
+        /// configuration. Redeployed at group boundaries when the
+        /// configuration fingerprint changes. Default for axis-targeted
+        /// elements.
         PER_GROUP,
 
-        /// One instance per run
+        /// Outermost group — deploys once, persists for the entire run.
+        /// Logically equivalent to PER_GROUP where the group is the full
+        /// set of trials. Default for elements with no varying axis.
         PER_RUN
     }
 
     ///
     /// Health check specification for determining element readiness.
     ///
+    /// The host system owns the health check mechanism (protocol, endpoint,
+    /// acceptance criteria). Paramodel only needs timing parameters for
+    /// coordination — specifically, how long to wait and how often to retry.
+    ///
+    /// An element whose {@link #healthCheck()} returns a spec transitions
+    /// through {@link OperationalState#HEALTH_CHECK} before reaching
+    /// {@link OperationalState#READY}. An element without a health check
+    /// spec transitions directly to {@code READY} after starting.
+    ///
     interface HealthCheckSpec {
-        /// Type of health check (TCP, HTTP, COMMAND, CUSTOM)
-        String type();
-
-        /// Maximum time to wait for health check to pass
+        /// Maximum time to wait for health check to pass.
         java.time.Duration timeout();
 
-        /// Maximum number of retry attempts
+        /// Maximum number of retry attempts.
         int maxRetries();
 
-        /// Interval between retry attempts
+        /// Interval between retry attempts.
         java.time.Duration retryInterval();
     }
 
     /// Operational lifecycle state of an element at runtime.
     ///
-    /// Progresses through: INACTIVE -> PROVISIONING -> STARTING -> HEALTH_CHECK ->
-    /// READY -> RUNNING -> STOPPING -> STOPPED -> TERMINATED.
-    /// FAILED and UNKNOWN are non-sequential states.
+    /// Normal progression: INACTIVE → PROVISIONING → STARTING → HEALTH_CHECK →
+    /// READY → RUNNING → STOPPING → STOPPED → TERMINATED.
+    ///
+    /// - **INACTIVE** stands for "not yet started" — the element has not been
+    ///   provisioned or deployed.
+    /// - **PROVISIONING** stands for "starting" — infrastructure is being
+    ///   allocated (e.g. VM creation, container start).
+    /// - **READY** is reached as a side-effect of successful health checks
+    ///   (when the element has a {@link HealthCheckSpec} defined), or
+    ///   entered directly after STARTING when no health checks are defined.
+    /// - **FAILED** and **UNKNOWN** are non-sequential states that can be
+    ///   entered from any other state.
+    ///
     enum OperationalState {
         /// Not yet started or provisioned.
         INACTIVE,
-        /// Infrastructure being allocated (e.g. VM creation).
+        /// Infrastructure being allocated (e.g. VM creation, container start).
         PROVISIONING,
         /// Process starting up.
         STARTING,
         /// Verifying readiness via health check.
         HEALTH_CHECK,
-        /// Ready for use but not yet active in a trial.
+        /// Ready for use but not yet active in a trial. Reached as a
+        /// side-effect of successful health checks, or directly after
+        /// STARTING when the element defines no health checks.
         READY,
         /// Actively in use by one or more trials.
         RUNNING,

@@ -26,13 +26,20 @@ import java.util.Set;
 ///
 /// - {@code "per_run"}   → {@link Element.InstancingScope#PER_RUN}
 /// - {@code "per_trial"} → {@link Element.InstancingScope#PER_TRIAL}
+/// - {@code "per_group"} → {@link Element.InstancingScope#PER_GROUP}
 /// - absent              → infer from axis targeting and dependency graph
 ///
 /// Inference rules (when no hint is present):
 ///
-/// 1. If any axis targets this element → PER_TRIAL
-/// 2. If this element depends on a PER_TRIAL element → PER_TRIAL (taint propagation)
-/// 3. Otherwise → PER_RUN
+/// 1. If any axis targets this element → PER_GROUP (persists for a
+///    contiguous block of trials with constant config, redeployed at
+///    group boundaries when the configuration fingerprint changes)
+/// 2. If this element depends on a PER_GROUP element → PER_GROUP
+///    (taint propagation)
+/// 3. Otherwise → PER_RUN (outermost group — entire run)
+///
+/// PER_TRIAL is only assigned when explicitly declared (via hint or
+/// builder). It is never inferred from axis targeting.
 ///
 public class NormalizationStage implements CompilationStage {
     public NormalizationStage() {}
@@ -124,6 +131,14 @@ public class NormalizationStage implements CompilationStage {
     /// The algorithm is purely generic — it reads an optional "instancing_hint"
     /// tag on each element and infers scope from axis targeting and dependency
     /// graphs when no hint is present.
+    ///
+    /// Axis-targeted elements receive PER_GROUP scope (not PER_TRIAL).
+    /// PER_GROUP means the element persists for a contiguous block of trials
+    /// with constant configuration and redeploys at group boundaries. The
+    /// axis nesting order determines the group size.
+    ///
+    /// PER_RUN is the degenerate outermost group — the element has no
+    /// varying axis, so its "group" spans the entire run.
     private void deriveScopes(TestPlan plan) {
         // First pass: set scopes from hints and axis targeting
         Set<String> variedElements = new HashSet<>();
@@ -137,7 +152,8 @@ public class NormalizationStage implements CompilationStage {
                 Element.InstancingScope scope = switch (hint) {
                     case "per_run" -> Element.InstancingScope.PER_RUN;
                     case "per_trial" -> Element.InstancingScope.PER_TRIAL;
-                    default -> inferScope(element, variedElements, plan);
+                    case "per_group" -> Element.InstancingScope.PER_GROUP;
+                    default -> inferScope(element, variedElements);
                 };
                 if (scope != null) {
                     de.setInstancingScope(scope);
@@ -145,24 +161,32 @@ public class NormalizationStage implements CompilationStage {
             }
         }
 
-        // Second pass: taint propagation — if any dependency is PER_TRIAL,
-        // then this element must also be PER_TRIAL
+        // Second pass: taint propagation — scope must be monotonically
+        // non-decreasing along the dependency chain.
+        //
+        // If a dependency has a shorter-lived scope, the dependent element
+        // must be promoted to match:
+        //   PER_RUN element depending on PER_GROUP → promote to PER_GROUP
+        //   PER_RUN element depending on PER_TRIAL → promote to PER_TRIAL
+        //   PER_GROUP element depending on PER_TRIAL → promote to PER_TRIAL
         boolean changed = true;
         while (changed) {
             changed = false;
             for (Element element : plan.elements()) {
-                if (element instanceof DefaultElement de
-                        && element.instancingScope()
-                            .map(s -> s != Element.InstancingScope.PER_TRIAL)
-                            .orElse(false)) {
-                    for (Element dep : element.dependencies()) {
-                        if (dep.instancingScope()
-                                .map(s -> s == Element.InstancingScope.PER_TRIAL)
-                                .orElse(false)) {
-                            de.setInstancingScope(Element.InstancingScope.PER_TRIAL);
-                            changed = true;
-                            break;
-                        }
+                if (!(element instanceof DefaultElement de)) continue;
+                Element.InstancingScope currentScope = element.instancingScope().orElse(null);
+                if (currentScope == null) continue;
+
+                for (Element dep : element.dependencies()) {
+                    Element.InstancingScope depScope = dep.instancingScope().orElse(null);
+                    if (depScope == null) continue;
+
+                    // If dependency has shorter lifetime (lower ordinal),
+                    // promote this element to match
+                    if (depScope.ordinal() < currentScope.ordinal()) {
+                        de.setInstancingScope(depScope);
+                        changed = true;
+                        break;
                     }
                 }
             }
@@ -171,13 +195,14 @@ public class NormalizationStage implements CompilationStage {
 
     /// Infers scope from axis targeting when no hint is present.
     ///
-    /// @return PER_TRIAL if any axis targets this element, PER_RUN otherwise
+    /// @return PER_GROUP if any axis targets this element (the element
+    ///         varies across trials within groups defined by axis nesting),
+    ///         PER_RUN otherwise (outermost group — entire run)
     private Element.InstancingScope inferScope(
             Element element,
-            Set<String> variedElements,
-            TestPlan plan) {
+            Set<String> variedElements) {
         if (variedElements.contains(element.name())) {
-            return Element.InstancingScope.PER_TRIAL;
+            return Element.InstancingScope.PER_GROUP;
         }
         return Element.InstancingScope.PER_RUN;
     }

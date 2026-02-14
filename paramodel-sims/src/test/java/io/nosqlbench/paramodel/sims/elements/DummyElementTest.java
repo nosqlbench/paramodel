@@ -220,13 +220,11 @@ class DummyElementTest {
     class HealthCheck {
 
         @Test
-        @DisplayName("health check spec is present with CUSTOM type")
+        @DisplayName("health check spec is present")
         void testHealthCheckPresent() {
             Element template = DummyElement.template();
 
             assertThat(template.healthCheck()).isPresent();
-            Element.HealthCheckSpec hc = template.healthCheck().get();
-            assertThat(hc.type()).isEqualTo("CUSTOM");
         }
 
         @Test

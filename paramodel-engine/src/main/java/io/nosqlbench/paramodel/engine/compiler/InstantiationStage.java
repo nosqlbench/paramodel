@@ -45,7 +45,8 @@ public class InstantiationStage implements CompilationStage {
              // using a three-tier strategy:
              boolean dependsOnAxes;
 
-             // Tier 1: Explicit scope (set by hyperplane ScopeDeriver)
+             // Tier 1: Explicit scope (set by normalization or builder)
+             // Both PER_TRIAL and PER_GROUP elements vary across trials
              Optional<Element.InstancingScope> explicitScope = element.instancingScope();
              if (explicitScope.isPresent()) {
                  dependsOnAxes = explicitScope.get() != Element.InstancingScope.PER_RUN;

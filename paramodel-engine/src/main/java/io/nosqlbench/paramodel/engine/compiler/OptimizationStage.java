@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
 ///
 /// ## Optimization Passes
 ///
-/// - **PruneRedundantPass**: Ported from SectionScopeOptimizer. For PER_GROUP-scoped
+/// - **PruneRedundantPass**: For PER_GROUP-scoped
 ///   elements, detects adjacent trials where the element's parameter fingerprints are
 ///   identical. Removes the redundant teardown/deploy pairs, keeping the element
 ///   running across trials with unchanged configuration.
@@ -73,8 +73,6 @@ public class OptimizationStage implements CompilationStage {
     /// Prunes redundant deploy/teardown pairs for elements whose configuration
     /// is unchanged between adjacent trials.
     ///
-    /// Ported from the SectionScopeOptimizer algorithm in hyperplane-study.
-    ///
     /// For each element with per-trial scope:
     /// 1. Collect all DeployElement steps ordered by trial sequence
     /// 2. For adjacent pairs, compare the element's configuration map
@@ -103,7 +101,7 @@ public class OptimizationStage implements CompilationStage {
                 if (step instanceof AtomicStep.DeployElement deploy) {
                     // Only consider per-trial deploys (not PER_RUN setup)
                     Object scope = deploy.metadata().get("scope");
-                    if ("PER_TRIAL".equals(scope)) {
+                    if ("PER_GROUP".equals(scope)) {
                         deploysByElement.computeIfAbsent(deploy.elementId(), k -> new ArrayList<>())
                             .add(deploy);
                     }
@@ -130,7 +128,7 @@ public class OptimizationStage implements CompilationStage {
                         for (AtomicStep step : steps) {
                             if (step instanceof AtomicStep.TeardownElement teardown) {
                                 if (teardown.elementId().equals(entry.getKey())
-                                    && "parameter_change".equals(teardown.metadata().get("reason"))) {
+                                    && "group_boundary".equals(teardown.metadata().get("reason"))) {
                                     // Check if this teardown is between the two deploys by trial index
                                     Object teardownTrialIdx = teardown.metadata().get("trial_index");
                                     Object currTrialIdx = curr.metadata().get("trial_index");
