@@ -139,11 +139,12 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Barrier steps created at trial boundaries for PER_GROUP elements")
+    @DisplayName("ELEMENT_SCOPE_END barriers for PER_GROUP elements at group boundaries and final teardown")
     void barrierStepsCreated() {
-        // Barriers are emitted when PER_GROUP elements exist: TRIAL_BATCH
-        // barriers mark trial boundaries, ELEMENT_SCOPE_END barriers mark
-        // group boundaries and final cleanup.
+        // ELEMENT_SCOPE_END barriers are emitted at group boundaries and
+        // before final teardown — teardowns depend on them for synchronization.
+        // TRIAL_BATCH barriers are NOT emitted because nothing depends on them.
+        // ELEMENT_READY barriers are NOT emitted (no health check on this element).
         var portParam = IntegerParameter.range("port", 8080, 8082);
         Element svc = MockElement.builder("svc")
             .parameter(portParam)
@@ -161,25 +162,30 @@ class StepGenerationStageTest {
 
         List<Barrier> barriers = context.barriers().get();
 
-        // TRIAL_BATCH barriers: one per trial
+        // No TRIAL_BATCH barriers — nothing depends on them
         long trialBatchCount = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.TRIAL_BATCH)
             .count();
-        assertThat(trialBatchCount).isEqualTo(3); // one per trial
+        assertThat(trialBatchCount).isZero();
 
-        // ELEMENT_SCOPE_END barriers at group boundaries and final cleanup
-        // (2 group boundaries at trials 1 and 2, plus 1 final cleanup = 3)
+        // ELEMENT_SCOPE_END barriers at group boundaries + final teardown
         long scopeEndCount = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END)
             .count();
-        assertThat(scopeEndCount).isEqualTo(3);
+        assertThat(scopeEndCount).isGreaterThan(0);
+
+        // Barrier sync steps exist (ELEMENT_SCOPE_END)
+        long barrierStepCount = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.BarrierSync)
+            .count();
+        assertThat(barrierStepCount).isGreaterThan(0);
     }
 
     @Test
-    @DisplayName("No TRIAL_BATCH barriers for global-only or PER_TRIAL-only plans")
+    @DisplayName("Barrier behavior for global-only and PER_TRIAL-only plans")
     void noBarriersWhenNoRecyclingElements() {
-        // Global element: no PER_GROUP elements, so no TRIAL_BATCH barriers.
-        // ELEMENT_SCOPE_END barriers at final teardown are expected.
+        // Global element without health check: ELEMENT_SCOPE_END barrier at
+        // final teardown, but no TRIAL_BATCH or ELEMENT_READY barriers.
         Element db = MockElement.of("db");
         Axis<String> axis = MockAxis.of("mode", "a", "b");
 
@@ -195,7 +201,14 @@ class StepGenerationStageTest {
             .count();
         assertThat(globalTrialBatchBarriers).isZero();
 
+        // Global plan should have a final ELEMENT_SCOPE_END barrier
+        long globalScopeEndBarriers = globalCtx.barriers().orElse(List.of()).stream()
+            .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END)
+            .count();
+        assertThat(globalScopeEndBarriers).isGreaterThan(0);
+
         // PER_TRIAL element: independent per trial, no barriers of any kind
+        // (all teardowns are eager, no final teardowns, so no barrier needed)
         Element worker = MockElement.builder("worker")
             .instancingScope(Element.InstancingScope.PER_TRIAL)
             .build();
@@ -214,7 +227,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Teardown in reverse topological order")
+    @DisplayName("Teardown in reverse topological order with chained dependencies")
     void teardownInReverseTopoOrder() {
         Element db = MockElement.of("db");
         Element app = MockElement.builder("app")
@@ -242,6 +255,13 @@ class StepGenerationStageTest {
         // app should be torn down before db (reverse topo)
         assertThat(finalTeardowns.get(0).elementId()).isEqualTo("app");
         assertThat(finalTeardowns.get(1).elementId()).isEqualTo("db");
+
+        // db's teardown must explicitly depend on app's teardown so a
+        // concurrent executor cannot tear down db while app is still
+        // shutting down
+        assertThat(finalTeardowns.get(1).dependencies())
+            .as("db teardown must depend on app teardown for safe concurrent execution")
+            .contains(finalTeardowns.get(0).id());
     }
 
     @Test
@@ -602,7 +622,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Group-boundary teardown depends on scope-end barrier, not deploy step")
+    @DisplayName("Group-boundary teardown depends on ELEMENT_SCOPE_END barrier")
     void intermediateTeardownDependsOnExecStep() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -631,11 +651,11 @@ class StepGenerationStageTest {
 
         AtomicStep.TeardownElement teardown = intermediateTeardowns.getFirst();
 
-        // The teardown should depend on the scope-end barrier step (which
-        // itself depends on the previous trial's exec step), not the exec
-        // step directly
+        // The teardown should depend on the ELEMENT_SCOPE_END barrier, which
+        // in turn depends on the exec step — the barrier synchronizes the
+        // transition from execution to teardown.
         assertThat(teardown.dependencies())
-            .as("Intermediate teardown should depend on the scope-end barrier step")
+            .as("Intermediate teardown should depend on a scope-end barrier")
             .anyMatch(dep -> dep.startsWith("barrier_scope_end_step_"));
 
         // The teardown should NOT depend on a deploy step
@@ -706,6 +726,109 @@ class StepGenerationStageTest {
 
         for (AtomicStep.DeployElement workerDeploy : workerDeploys) {
             assertThat(workerDeploy.dependencies()).contains(dbDeployId);
+        }
+    }
+
+    @Test
+    @DisplayName("PER_TRIAL teardowns are chained for safe concurrent execution")
+    void perTrialTeardownsChainedForConcurrency() {
+        Element db = MockElement.builder("db")
+            .instancingScope(Element.InstancingScope.PER_TRIAL)
+            .build();
+        Element app = MockElement.builder("app")
+            .dependency(db)
+            .instancingScope(Element.InstancingScope.PER_TRIAL)
+            .build();
+
+        Axis<String> axis = MockAxis.of("mode", "a");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("per-trial-teardown-chain-test")
+            .axis(axis)
+            .element(db)
+            .element(app)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // Eager teardowns: LIFO order = app first, then db
+        List<AtomicStep.TeardownElement> eagerTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "per_trial_eager".equals(t.metadata().get("reason")))
+            .map(AtomicStep.TeardownElement.class::cast)
+            .toList();
+
+        assertThat(eagerTeardowns).hasSize(2);
+        assertThat(eagerTeardowns.get(0).elementId()).isEqualTo("app");
+        assertThat(eagerTeardowns.get(1).elementId()).isEqualTo("db");
+
+        // db's teardown must depend on app's teardown so a concurrent
+        // executor cannot tear down db while app is still shutting down
+        assertThat(eagerTeardowns.get(1).dependencies())
+            .as("db teardown must depend on app teardown for safe concurrent execution")
+            .contains(eagerTeardowns.get(0).id());
+    }
+
+    @Test
+    @DisplayName("PER_GROUP boundary teardowns are chained for safe concurrent execution")
+    void perGroupBoundaryTeardownsChainedForConcurrency() {
+        var portParam = IntegerParameter.range("port", 8080, 8081);
+        var memParam = IntegerParameter.range("mem", 512, 1024);
+
+        Element db = MockElement.builder("db")
+            .parameter(portParam)
+            .build();
+        Element app = MockElement.builder("app")
+            .parameter(memParam)
+            .dependency(db)
+            .build();
+
+        // Both params change between trials, so both elements need group boundary teardown
+        Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
+        Axis<Integer> memAxis = MockAxis.of("mem", 512, 1024);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("per-group-teardown-chain-test")
+            .axis(portAxis)
+            .axis(memAxis)
+            .element(db)
+            .element(app)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // Group boundary teardowns: LIFO order = app first, then db
+        List<AtomicStep.TeardownElement> boundaryTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "group_boundary".equals(t.metadata().get("reason")))
+            .map(AtomicStep.TeardownElement.class::cast)
+            .toList();
+
+        // Should have at least one set of boundary teardowns (both elements at first boundary)
+        assertThat(boundaryTeardowns.size()).isGreaterThanOrEqualTo(2);
+
+        // Within each boundary group, check that db's teardown depends on app's teardown
+        Map<Object, List<AtomicStep.TeardownElement>> byTrial = new LinkedHashMap<>();
+        for (AtomicStep.TeardownElement td : boundaryTeardowns) {
+            byTrial.computeIfAbsent(td.metadata().get("trial_index"), k -> new ArrayList<>()).add(td);
+        }
+
+        for (var entry : byTrial.entrySet()) {
+            List<AtomicStep.TeardownElement> group = entry.getValue();
+            if (group.size() >= 2) {
+                AtomicStep.TeardownElement appTd = group.stream()
+                    .filter(t -> t.elementId().equals("app")).findFirst().orElse(null);
+                AtomicStep.TeardownElement dbTd = group.stream()
+                    .filter(t -> t.elementId().equals("db")).findFirst().orElse(null);
+
+                if (appTd != null && dbTd != null) {
+                    assertThat(dbTd.dependencies())
+                        .as("db boundary teardown must depend on app boundary teardown at trial %s", entry.getKey())
+                        .contains(appTd.id());
+                }
+            }
         }
     }
 

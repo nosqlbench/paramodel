@@ -7,6 +7,7 @@ import io.nosqlbench.paramodel.mock.plan.MockElement;
 import io.nosqlbench.paramodel.mock.plan.MockTestPlan;
 import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
 import io.nosqlbench.paramodel.plan.AtomicStep;
+import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import org.junit.jupiter.api.DisplayName;
@@ -60,8 +61,12 @@ class FullPipelineIntegrationTest {
             .count();
         assertThat(trialSteps).isEqualTo(2);
 
-        // Verify barriers exist
+        // ELEMENT_SCOPE_END barrier exists at final teardown (synchronizing
+        // all trial completions).  No ELEMENT_READY or TRIAL_BATCH barriers
+        // since neither element has a health check.
         assertThat(execPlan.barriers()).isNotEmpty();
+        assertThat(execPlan.barriers()).allMatch(
+            b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END);
 
         // Verify execution graph
         assertThat(execPlan.executionGraph()).isNotNull();

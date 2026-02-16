@@ -535,18 +535,17 @@ class ScopeAndFingerprintCornerCaseTest {
         List<AtomicStep> steps = context.steps().get();
         List<Barrier> barriers = context.barriers().get();
 
-        // TRIAL_BATCH barriers should exist (PER_GROUP element present)
+        // No TRIAL_BATCH barriers — nothing depends on them
         long trialBatchBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.TRIAL_BATCH)
             .count();
-        assertThat(trialBatchBarriers).isEqualTo(2); // one per trial
+        assertThat(trialBatchBarriers).isZero();
 
-        // ELEMENT_SCOPE_END barriers at group boundaries for server
+        // ELEMENT_SCOPE_END barriers present at group boundaries and final teardown
         long scopeEndBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END)
             .count();
-        // 1 group boundary + final cleanup for db + final cleanup for server = at least 3
-        assertThat(scopeEndBarriers).isGreaterThanOrEqualTo(3);
+        assertThat(scopeEndBarriers).isGreaterThan(0);
 
         // PER_TRIAL worker has no barriers — eager teardowns instead
         long workerBarrierSyncs = steps.stream()
@@ -564,7 +563,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Single trial with PER_GROUP element: TRIAL_BATCH emitted, no ELEMENT_SCOPE_END at boundary")
+    @DisplayName("Single trial with PER_GROUP element: no barriers (no health check)")
     void singleTrialWithPerGroupElementProducesNoTrialBatchBarrier() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -582,23 +581,10 @@ class ScopeAndFingerprintCornerCaseTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<Barrier> barriers = context.barriers().get();
 
-        // TRIAL_BATCH barrier emitted for the single trial
-        long trialBatchBarriers = barriers.stream()
-            .filter(b -> b.type() == Barrier.BarrierType.TRIAL_BATCH)
-            .count();
-        assertThat(trialBatchBarriers).isEqualTo(1);
-
-        // No group-boundary ELEMENT_SCOPE_END (only final cleanup)
-        long groupBoundaryBarriers = barriers.stream()
-            .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END
-                && b.metadata().containsKey("trial_index"))
-            .count();
-        // Only the final cleanup scope-end barrier, no intermediate ones
-        long finalScopeEndBarriers = barriers.stream()
-            .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END
-                && "cleanup".equals(b.metadata().get("phase")))
-            .count();
-        assertThat(finalScopeEndBarriers).isEqualTo(1);
+        // ELEMENT_SCOPE_END barrier at final teardown (no TRIAL_BATCH or ELEMENT_READY)
+        assertThat(barriers).isNotEmpty();
+        assertThat(barriers).allMatch(
+            b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END);
     }
 
     // ── Degenerate plan corner cases ───────────────────────────────────

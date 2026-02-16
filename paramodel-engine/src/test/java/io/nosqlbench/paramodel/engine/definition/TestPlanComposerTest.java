@@ -539,7 +539,9 @@ class TestPlanComposerTest {
         // Client deployed 3 times (once per trial)
         assertThat(deploysFor(execPlan, "client")).isEqualTo(3);
 
-        // Should have barrier steps
+        // ELEMENT_SCOPE_END barriers are emitted at group boundaries and
+        // final teardown for synchronization.  No ELEMENT_READY barriers
+        // since neither element has a health check.
         long barrierCount = execPlan.steps().stream()
                 .filter(s -> s instanceof AtomicStep.BarrierSync)
                 .count();
