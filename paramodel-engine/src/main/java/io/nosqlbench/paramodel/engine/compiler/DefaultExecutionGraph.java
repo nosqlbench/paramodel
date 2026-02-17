@@ -222,11 +222,22 @@ public class DefaultExecutionGraph implements ExecutionGraph {
             .orElse(0);
     }
 
+    /// Returns the average parallelism across execution.
+    ///
+    /// Calculated as `totalDuration / criticalPathDuration`. When the critical
+    /// path duration is zero (e.g. all steps have zero duration), the method
+    /// falls back to a wave-based calculation: `steps.size() / waveCount`.
+    /// This correctly returns 1.0 for a fully sequential chain rather than
+    /// incorrectly implying all steps run in parallel.
     @Override
     public double averageParallelism() {
         Duration total = totalDuration();
         Duration critical = criticalPathDuration();
-        if (critical.isZero()) return steps.isEmpty() ? 0.0 : steps.size();
+        if (critical.isZero()) {
+            if (steps.isEmpty()) return 0.0;
+            int waveCount = parallelWaves().size();
+            return waveCount == 0 ? 1.0 : (double) steps.size() / waveCount;
+        }
         return (double) total.toMillis() / critical.toMillis();
     }
 
