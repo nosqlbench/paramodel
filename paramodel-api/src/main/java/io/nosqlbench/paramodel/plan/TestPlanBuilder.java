@@ -1,7 +1,6 @@
 package io.nosqlbench.paramodel.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
@@ -28,8 +27,7 @@ import java.util.function.Consumer;
 ///      ├─→ name()           ─┐
 ///      ├─→ withAxis()        │
 ///      ├─→ withElement()     ├─→ [Accumulation Phase]
-///      ├─→ relationship()    │   (Mutable State)
-///      ├─→ policies()       ─┘
+///      ├─→ policies()       ─┘   (Mutable State)
 ///      │
 ///      └─→ build()
 ///            │
@@ -74,13 +72,13 @@ import java.util.function.Consumer;
 ///
 ///           DB    Cache  API
 ///     DB    --    SHARED SHARED
-///     Cache --    --     INSTANCED_PER
+///     Cache --    --     SHARED
 ///     API   --    --     --
 ///
 /// Compilation yields:
 ///   - DB: Single shared instance across all trials
-///   - Cache: SHARED with DB, but INSTANCED_PER API
-///   - API: Fresh instance per (Cache instance)
+///   - Cache: SHARED with DB and API
+///   - API: Lifecycle determined by fingerprint-based grouping (parameter-axis overlap)
 ///
 /// Concurrency Graph:
 ///   Trials using same (DB, Cache) → Can run concurrently
@@ -147,7 +145,7 @@ import java.util.function.Consumer;
 ///     .withAxis(Axis.of("concurrency", List.of(10, 50, 100)))
 ///     .withElement(cacheElement)   // "cache" with maxmemory parameter
 ///     .withElement(loadElement)    // "load" with threads parameter
-///     .relationship("load", "cache", RelationshipType.SHARED)
+///     // Relationship types are on Element dependency edges
 ///     .policies(ExecutionPolicies.builder()
 ///         .trialTimeout(Duration.ofMinutes(5))
 ///         .trialRetryPolicy(RetryPolicy.exponentialBackoff(3))
@@ -169,9 +167,7 @@ import java.util.function.Consumer;
 ///     .withElement(databaseElement)     // "database"
 ///     .withElement(authElement)         // "auth-service"
 ///     .withElement(apiGatewayElement)   // "api-gateway"
-///     .relationship("auth-service", "database", RelationshipType.SHARED)
-///     .relationship("api-gateway", "database", RelationshipType.SHARED)
-///     .relationship("api-gateway", "auth-service", RelationshipType.INSTANCED_PER)
+///     // Relationship types are on Element dependency edges
 ///     .policies(ExecutionPolicies.defaultPolicies())
 ///     .build();
 ///
@@ -219,8 +215,7 @@ import java.util.function.Consumer;
 ///     .withElement(appElement)        // "app" with feature flag parameters
 ///     .withElement(analyticsElement)  // "analytics" (conditional deployment)
 ///     .withElement(mlElement)         // "ml-service" (conditional deployment)
-///     .relationship("app", "analytics", RelationshipType.SHARED)
-///     .relationship("app", "ml-service", RelationshipType.SHARED)
+///     // Relationship types are on Element dependency edges
 ///     .policies(ExecutionPolicies.builder()
 ///         .partialRunBehavior(PartialRunBehavior.SKIP_TRIAL)
 ///         .build())
@@ -256,7 +251,6 @@ import java.util.function.Consumer;
 /// @see ExecutionPlan
 /// @see Axis
 /// @see Element
-/// @see RelationshipType
 /// @see ExecutionPolicies
 ///
 public interface TestPlanBuilder {
@@ -344,31 +338,6 @@ public interface TestPlanBuilder {
     /// @throws IllegalArgumentException if any element is null or duplicates existing names
     ///
     TestPlanBuilder withElements(List<Element> elements);
-
-    ///
-    /// Defines a relationship between two elements.
-    ///
-    /// Relationships determine concurrency constraints, instance sharing, and
-    /// deployment strategies during execution planning.
-    ///
-    /// @param element1 Name of first element (must reference existing element)
-    /// @param element2 Name of second element (must reference existing element)
-    /// @param type The relationship type
-    /// @return This builder for method chaining
-    /// @throws IllegalArgumentException if elements don't exist or relationship creates cycle
-    ///
-    TestPlanBuilder relationship(String element1, String element2, RelationshipType type);
-
-    ///
-    /// Defines a relationship between two elements using Element references.
-    ///
-    /// @param element1 First element (must exist in builder)
-    /// @param element2 Second element (must exist in builder)
-    /// @param type The relationship type
-    /// @return This builder for method chaining
-    /// @throws IllegalArgumentException if elements don't exist or relationship creates cycle
-    ///
-    TestPlanBuilder relationship(Element element1, Element element2, RelationshipType type);
 
     ///
     /// Sets execution policies for the test plan.
@@ -478,15 +447,6 @@ public interface TestPlanBuilder {
     /// @return Current elements (unmodifiable)
     ///
     List<Element> currentElements();
-
-    ///
-    /// Retrieves current relationships.
-    ///
-    /// Returns unmodifiable view of current relationship map.
-    ///
-    /// @return Current relationships (unmodifiable)
-    ///
-    Map<TestPlan.ElementPair, RelationshipType> currentRelationships();
 
     ///
     /// Retrieves current execution policies.

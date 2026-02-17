@@ -48,9 +48,8 @@ We are implementing a comprehensive contract-first study execution system follow
 - ✅ `Axis<T>` - Named parameter dimension in study
 - ✅ `Element` - Instantiable/deployable resource
   - `ElementType` enum
-  - `InstancingScope` enum
   - `HealthCheckSpec` interface
-- ✅ `RelationshipType` - Enum (MUTUALLY_EXCLUSIVE, SHARED, INSTANCED_PER)
+- ✅ `RelationshipType` - Enum (MUTUALLY_EXCLUSIVE, SHARED)
 - ✅ `ExecutionPolicies` - Retry and error handling policies
   - `RetryPolicy` interface
   - `BackoffStrategy` interface

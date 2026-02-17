@@ -5,6 +5,7 @@
 package io.nosqlbench.paramodel.engine.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.Parameter;
 
 import java.util.ArrayList;
@@ -17,18 +18,16 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 /// A production implementation of {@link Element} with builder, tag-based metadata,
-/// fixed configuration bindings, export definitions, and mutable instancing scope.
+/// fixed configuration bindings, and export definitions.
 ///
 /// Follows the same pattern as {@link DefaultAxis} — immutable fields set via a
 /// builder, with adopter-specific metadata conveyed through {@link #tags()}.
 ///
 /// ## Mutable Fields
 ///
-/// Two fields are intentionally mutable (volatile) because they are set after
-/// construction during different lifecycle phases:
+/// One field is intentionally mutable (volatile) because it is set after
+/// construction during a different lifecycle phase:
 ///
-/// - **instancingScope**: Set by the compiler's normalization/scope derivation
-///   stage, which runs after all elements are constructed.
 /// - **statusSummary**: Set at runtime by the execution engine as the element
 ///   progresses through its lifecycle.
 ///
@@ -40,7 +39,6 @@ import java.util.OptionalInt;
 ///     .tag("image", "postgres:16")
 ///     .configuration(Map.of("port", 5432, "max_connections", 100))
 ///     .exports(Map.of("jdbc_url", "${self.host}:${self.port}/mydb"))
-///     .instancingScope(InstancingScope.PER_RUN)
 ///     .build();
 /// ```
 public class DefaultElement implements Element {
@@ -49,12 +47,11 @@ public class DefaultElement implements Element {
     private final Map<String, String> tags;
     private final List<Parameter<?>> parameters;
     private final List<Parameter<?>> resultParameters;
-    private final List<Element> dependencies;
+    private final List<Dependency> dependencies;
     private final Map<String, Object> configuration;
     private final Map<String, String> exports;
     private final HealthCheckSpec healthCheck;
-    private volatile InstancingScope instancingScope;
-    private volatile boolean scopeExplicit;
+    private final ShutdownSemantics shutdownSemantics;
     private volatile LiveStatusSummary statusSummary;
 
     private DefaultElement(Builder builder) {
@@ -68,8 +65,8 @@ public class DefaultElement implements Element {
         this.configuration = Collections.unmodifiableMap(new LinkedHashMap<>(builder.configuration));
         this.exports = Collections.unmodifiableMap(new LinkedHashMap<>(builder.exports));
         this.healthCheck = builder.healthCheck;
-        this.instancingScope = builder.instancingScope;
-        this.scopeExplicit = builder.instancingScope != null;
+        this.shutdownSemantics = builder.shutdownSemantics != null
+                ? builder.shutdownSemantics : ShutdownSemantics.SERVICE;
         this.statusSummary = builder.statusSummary != null
                 ? builder.statusSummary
                 : LiveStatusSummary.inactive();
@@ -96,7 +93,7 @@ public class DefaultElement implements Element {
     }
 
     @Override
-    public List<Element> dependencies() {
+    public List<Dependency> dependencies() {
         return dependencies;
     }
 
@@ -111,13 +108,13 @@ public class DefaultElement implements Element {
     }
 
     @Override
-    public Optional<HealthCheckSpec> healthCheck() {
-        return Optional.ofNullable(healthCheck);
+    public ShutdownSemantics shutdownSemantics() {
+        return shutdownSemantics;
     }
 
     @Override
-    public Optional<InstancingScope> instancingScope() {
-        return Optional.ofNullable(instancingScope);
+    public Optional<HealthCheckSpec> healthCheck() {
+        return Optional.ofNullable(healthCheck);
     }
 
     @Override
@@ -136,26 +133,6 @@ public class DefaultElement implements Element {
         String val = tags.get("max_concurrency");
         if (val == null || val.isBlank()) return OptionalInt.empty();
         return OptionalInt.of(Integer.parseInt(val));
-    }
-
-    /// Returns {@code true} if the instancing scope was set explicitly by the
-    /// user (in the plan definition or builder) rather than inferred by the
-    /// compilation pipeline. Only explicitly scoped {@code PER_TRIAL} elements
-    /// receive independent concurrent instances per trial; inferred scopes
-    /// (typically {@code PER_GROUP}) use fingerprint-based group lifecycle.
-    public boolean isScopeExplicit() {
-        return scopeExplicit;
-    }
-
-    /// Sets the instancing scope. Called during compilation by scope derivation
-    /// stages after all elements are constructed and dependency analysis is
-    /// complete. Scopes set via this method are considered **inferred** (not
-    /// explicit); only scopes provided at construction time via the builder
-    /// are marked as explicit (see {@link #isScopeExplicit()}).
-    ///
-    /// @param scope the derived instancing scope
-    public void setInstancingScope(InstancingScope scope) {
-        this.instancingScope = scope;
     }
 
     /// Sets the live status summary. Called at runtime by the execution engine
@@ -184,11 +161,11 @@ public class DefaultElement implements Element {
         private final Map<String, String> tags = new LinkedHashMap<>();
         private final List<Parameter<?>> parameters = new ArrayList<>();
         private final List<Parameter<?>> resultParameters = new ArrayList<>();
-        private final List<Element> dependencies = new ArrayList<>();
+        private final List<Dependency> dependencies = new ArrayList<>();
         private final Map<String, Object> configuration = new LinkedHashMap<>();
         private final Map<String, String> exports = new LinkedHashMap<>();
         private HealthCheckSpec healthCheck;
-        private InstancingScope instancingScope;
+        private ShutdownSemantics shutdownSemantics;
         private LiveStatusSummary statusSummary;
 
         private Builder(String name) {
@@ -223,12 +200,31 @@ public class DefaultElement implements Element {
             return this;
         }
 
-        /// Adds a dependency on another element.
+        /// Adds a typed dependency edge.
         ///
-        /// @param dependency the element this depends on
+        /// @param dep the dependency to add
         /// @return this builder
-        public Builder dependency(Element dependency) {
-            this.dependencies.add(dependency);
+        public Builder dependency(Dependency dep) {
+            this.dependencies.add(dep);
+            return this;
+        }
+
+        /// Adds a dependency on another element with a specific relationship type.
+        ///
+        /// @param target the element this depends on
+        /// @param type   the relationship type
+        /// @return this builder
+        public Builder dependency(Element target, RelationshipType type) {
+            this.dependencies.add(new Dependency(target, type));
+            return this;
+        }
+
+        /// Adds a SHARED dependency on another element (convenience).
+        ///
+        /// @param target the element this depends on
+        /// @return this builder
+        public Builder dependency(Element target) {
+            this.dependencies.add(Dependency.shared(target));
             return this;
         }
 
@@ -269,12 +265,12 @@ public class DefaultElement implements Element {
             return this;
         }
 
-        /// Sets the initial instancing scope.
+        /// Sets the shutdown semantics for this element.
         ///
-        /// @param instancingScope the instancing scope
+        /// @param shutdownSemantics the shutdown semantics
         /// @return this builder
-        public Builder instancingScope(InstancingScope instancingScope) {
-            this.instancingScope = instancingScope;
+        public Builder shutdownSemantics(ShutdownSemantics shutdownSemantics) {
+            this.shutdownSemantics = shutdownSemantics;
             return this;
         }
 
@@ -300,7 +296,6 @@ public class DefaultElement implements Element {
         return "DefaultElement{" +
                 "name='" + name + '\'' +
                 ", type=" + tags.getOrDefault("type", "unknown") +
-                ", scope=" + instancingScope +
                 '}';
     }
 }

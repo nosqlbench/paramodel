@@ -89,15 +89,11 @@ checks are applied in order:
 
 9. **Cost warnings**
    - Trial count > 100 triggers a warning (`LARGE_TRIAL_COUNT`).
-   - MUTUALLY_EXCLUSIVE edges with > 10 downstream invocations trigger a
-     high-cost warning (`MUTUALLY_EXCLUSIVE_HIGH_COST`).
+   - EXCLUSIVE dependency edges with > 10 downstream invocations trigger a
+     high-cost warning (`EXCLUSIVE_HIGH_COST`).
 
-10. **INSTANCED_PER edge warnings**
-    - INSTANCED_PER without a CONCURRENT axis on the downstream element
-      triggers a warning (`INSTANCED_PER_WITHOUT_CONCURRENT`).
-
-11. **Node sufficiency warnings**
-    - INSTANCED_PER + CONCURRENT axes require infrastructure capacity.
+10. **Node sufficiency warnings**
+    - CONCURRENT axes require infrastructure capacity.
       A warning is issued if no infrastructure-providing element is defined,
       or if capacity should be verified (`INSUFFICIENT_NODES`).
 
@@ -133,7 +129,7 @@ When running as stage 1 of the compiler pipeline, validation:
 
 **Input**: `TestPlan` (from context)
 **Output**: `SamplingConfig` in context as `"samplingConfig"`, derived
-instancing scopes on `DefaultElement` instances
+scopes on `DefaultElement` instances
 
 ### Sampling Configuration Extraction
 
@@ -163,17 +159,11 @@ PER_RUN   (ordinal 2)  — longest lifetime, outermost group = entire run
 PER_RUN is a logical placeholder for the outermost group — the element has
 no varying axis, so its "group" spans the entire run.
 
-For each `DefaultElement` without an explicit instancing scope:
+For each `DefaultElement` without an explicit scope:
 
 **Pass 1 — Direct assignment:**
 
-1. Read the `instancing_hint` tag on the element.
-   - `"per_run"` → `PER_RUN`
-   - `"per_trial"` → `PER_TRIAL`
-   - `"per_group"` → `PER_GROUP`
-   - absent → infer from axis targeting
-
-2. Inference (when no hint is present):
+1. Inference from axis targeting:
    - If any axis declares `targetElement()` matching this element's name
      → `PER_GROUP` (persists for a contiguous group of trials with constant
      config, redeployed at group boundaries when the configuration
@@ -264,15 +254,12 @@ its sequence index, generation method, and group.
 Elements are topologically sorted (dependencies first).
 
 For each element, determine whether its configuration varies across trials
-using a three-tier strategy:
+using a two-tier strategy:
 
-**Tier 1 — Explicit scope**: If `instancingScope()` is present, the
-element varies iff scope ≠ `PER_RUN`.
-
-**Tier 2 — Axis targeting**: If any axis's `targetElement()` matches
+**Tier 1 — Axis targeting**: If any axis's `targetElement()` matches
 this element's name, the element varies.
 
-**Tier 3 — Parameter matching**: If any axis matches an element parameter
+**Tier 2 — Parameter matching**: If any axis matches an element parameter
 (by underlying parameter equality, qualified name, or simple name), the
 element varies.
 
@@ -309,13 +296,15 @@ After topological sorting, non-global elements are classified:
 
 ### Barrier Types
 
-Three barrier types are used for lifecycle coordination:
+Two barrier types are used for lifecycle coordination:
 
 | Barrier Type         | Emitted when                                    | Purpose                                        |
 |----------------------|-------------------------------------------------|------------------------------------------------|
 | `ELEMENT_READY`      | After deploy of element with health check       | Downstream steps await element readiness       |
-| `ELEMENT_SCOPE_END`  | At group boundaries and before final teardown   | All trials using this instance have completed  |
 | `TRIAL_BATCH`        | At each trial boundary (when PER_GROUP elements exist) | Marks trial completion for group-boundary sync |
+
+> **Note:** `ELEMENT_SCOPE_END` barriers are no longer emitted. Teardown
+> steps depend directly on execution steps, reducing plan complexity.
 
 ### Three-Phase Algorithm
 
@@ -344,12 +333,10 @@ For each PER_GROUP element in topological order:
 2. If the fingerprint differs from the previous trial (or is absent):
    a. **Teardown** the previous instance (if any):
       - In REVERSE topological (LIFO) order.
-      - Emit `ELEMENT_SCOPE_END` barrier before each teardown (signals
-        that all trials using this element instance have completed).
-        The barrier depends on `lastSequentialExecId`.
-      - Each teardown depends on the `ELEMENT_SCOPE_END` barrier step
-        (not the exec step directly), preventing race with in-progress
-        trials.
+      - Each teardown depends directly on the last execution step
+        (`lastSequentialExecId`), preventing race with in-progress trials.
+      - Teardowns are chained: each depends on the previous one in the
+        LIFO sequence, preventing concurrent teardown of dependent elements.
       - Metadata: `reason=group_boundary, trial_index=N`.
    b. **Deploy** the new instance:
       - In FORWARD topological order.
@@ -399,12 +386,11 @@ trial is self-contained).
 In reverse topological order, for elements that are NOT PER_TRIAL
 (PER_TRIAL elements were already torn down eagerly in Phase 2):
 
-1. Dependencies: the element's own last step PLUS all trial execution
-   steps (PER_RUN and PER_GROUP elements may be used by parallel trials).
-2. Emit `ELEMENT_SCOPE_END` barrier before each final teardown, depending
-   on the above dependencies.
-3. Emit `TeardownElement` depending on the barrier step, with
-   `phase=cleanup` and `collectArtifacts=true`.
+1. The **first** final teardown depends on all trial execution steps AND
+   all PER_TRIAL eager teardown steps, plus the element's own last step.
+2. Subsequent teardowns depend on the previous teardown (LIFO chaining),
+   inheriting the synchronization transitively.
+3. `TeardownElement` steps carry `phase=cleanup` and `collectArtifacts=true`.
 
 ### Configuration Fingerprint
 
@@ -435,10 +421,10 @@ element is also redeployed.
 | Deploy (PER_TRIAL)     | Merged map (PER_RUN + PER_GROUP + this trial's deploys) + max_concurrency window |
 | ExecuteTrial           | All PER_RUN/PER_GROUP last steps + this trial's PER_TRIAL deploys |
 | Teardown (eager)       | This trial's ExecuteTrial                                 |
-| Teardown (group boundary)| `ELEMENT_SCOPE_END` barrier step (which depends on exec step) |
-| Teardown (final)       | `ELEMENT_SCOPE_END` barrier step (which depends on own last step + ALL exec steps) |
+| Teardown (group boundary)| Last execution step (`lastSequentialExecId`) + previous teardown in LIFO chain |
+| Teardown (final, first)| All exec steps + all PER_TRIAL eager teardowns + own last step |
+| Teardown (final, chain)| Previous final teardown + own last step                    |
 | `ELEMENT_READY` barrier| The deploy step it follows                                |
-| `ELEMENT_SCOPE_END` barrier| Previous trial's exec step (group boundary) or all exec steps (final) |
 
 ### Max Concurrency Enforcement
 
@@ -630,17 +616,42 @@ An `ExecuteTrial` step depends on:
 - All PER_GROUP element last steps for the current trial.
 - All PER_TRIAL element deploy steps for the current trial.
 
-### Rule 10: Final Teardown Waits For All Trials
+### Rule 10: Final Teardown Waits For All Trials and Dependent Teardowns
 
-PER_RUN and PER_GROUP elements' final teardowns are preceded by an
-`ELEMENT_SCOPE_END` barrier that depends on ALL trial execution steps,
-ensuring no in-flight trial is using the element when teardown begins.
+The first final teardown step depends on ALL trial execution steps AND
+all PER_TRIAL eager teardown steps. This ensures both that no in-flight
+trial is using the element when teardown begins AND that all dependent
+PER_TRIAL elements have finished tearing down first. Subsequent final
+teardowns are chained, inheriting these dependencies transitively
+(e.g. a service finishes teardown before its underlying node does).
 
-### Rule 11: Group-Boundary Teardowns Are Barrier-Sequenced
+### Rule 10a: Lifeline Dependencies Skip Teardown
 
-A PER_GROUP group-boundary teardown depends on an `ELEMENT_SCOPE_END`
-barrier step (which in turn depends on the previous trial's execution
-step), preventing teardown from racing with an in-progress trial.
+When ALL of an element's dependencies are marked as lifeline, the
+element's teardown step is omitted in Phase 3 final teardown and in
+Phase 2 PER_GROUP group-boundary teardown. The upstream element's
+teardown implicitly destroys the downstream. This only applies to
+final and group-boundary teardowns — PER_TRIAL eager teardowns in
+Phase 2 still occur because the upstream remains alive between trials
+and the downstream instance needs recycling.
+
+If an element has a mix of lifeline and non-lifeline dependencies,
+it still receives its own explicit teardown (a validation warning is
+emitted in this case).
+
+In hyperplane, Docker containers (SERVICE and COMMAND elements) have an
+automatic lifeline dependency on their compute node. Tearing down the
+node implicitly destroys all containers running on it, so no explicit
+container teardown steps are emitted during final cleanup. Lifecycle
+status for all lifeline-dependent elements is updated transactionally
+with the upstream element across any number of lifeline levels.
+
+### Rule 11: Group-Boundary Teardowns Depend on Execution Steps
+
+A PER_GROUP group-boundary teardown depends directly on the last
+execution step (`lastSequentialExecId`), preventing teardown from
+racing with an in-progress trial. Teardowns in the same group boundary
+are LIFO-chained to prevent concurrent teardown of dependent elements.
 
 ### Rule 12: Scope Derivation Propagates Through Dependencies
 
@@ -699,3 +710,94 @@ emitted after its deploy step.  The barrier is satisfied at runtime when
 the element reports readiness via `OperationalStateObservable`.
 Downstream steps depend on the barrier step, not the deploy step
 directly.
+
+### Rule 21: Trial Element
+
+The most interior element (leaf node with no dependents) is the
+trial element — it defines the trial's start/stop timing boundary.
+When multiple leaf elements share the same trial scope, the
+last-defined one is nominal.  Stored as `trial_element` metadata
+on `ExecuteTrial` steps.
+
+### Rule 22: Lifeline Clusters
+
+A lifeline cluster is a connected component where all internal edges
+are lifeline dependencies.  The cluster root (outermost member in
+topological order) defines the transactional lifecycle boundary.
+When the root tears down, all members are implicitly destroyed.
+The root's teardown step carries `lifeline_cluster` metadata listing
+all member element names.
+
+Cluster computation uses union-find on lifeline edges:
+
+1. For each element E with a dependency D where the E→D edge is a
+   lifeline, union(E, D).
+2. Group by representative to form connected components.
+3. Discard singletons (no lifeline connections).
+4. For each cluster, the root is the member that appears earliest in
+   topological order (most exterior / fewest dependencies).
+
+### Rule 23: Trial Lifecycle Notifications
+
+Two notification steps bracket each trial's execution:
+
+**NotifyTrialStart** — emitted just before the trial element is
+deployed (if PER_TRIAL) or just before `ExecuteTrial` (if the trial
+element is already deployed). All elements in the trial scope
+receive `onTrialStarting`. Dependencies: all deploy/ready steps
+that precede the trial element's deployment. The trial element's
+deploy (or `ExecuteTrial`) depends on this step.
+
+**NotifyTrialEnd** — emitted just after the trial element is torn
+down (if PER_TRIAL) or just after `ExecuteTrial` (if the trial
+element has no eager teardown). All elements receive `onTrialEnding`
+with a `ShutdownReason` (`NORMAL`, `MANAGED`, or `ERROR`). At
+compile time the planned reason is `NORMAL`; the executor overrides
+at runtime based on actual outcome. Subsequent teardowns chain
+through this step, and `lastSequentialExecId` is updated to point
+to it so group-boundary teardowns wait for the notification.
+
+**Placement in the step DAG:**
+
+```
+(deploys) → NotifyTrialStart → (trial element deploy) → ExecuteTrial
+    → (trial element teardown) → NotifyTrialEnd → (other teardowns)
+```
+
+When the trial element is PER_RUN or PER_GROUP (already deployed):
+
+```
+(deploys) → NotifyTrialStart → ExecuteTrial → NotifyTrialEnd → (teardowns)
+```
+
+### Rule 24: Minimal Execution Dependencies
+
+By default, `ExecuteTrial` and `NotifyTrialStart` steps depend only on
+**leaf deploy steps** — elements whose steps are not transitively
+reachable through the deploy dependency chain of other elements in the
+dependency list. This produces cleaner graphs with fewer edges.
+
+For example, given `node → db → app`, the `ExecuteTrial` step only
+depends on `deploy_app`, since `deploy_app` already transitively
+depends on `deploy_db` and `deploy_node`.
+
+The `explicitTransitiveDeps` compiler option (custom option key:
+`explicitTransitiveDeps`, value: `true`) restores the previous behavior
+of including every upstream deploy step as a direct dependency of the
+execution step. This can be useful for debugging or visualization when
+explicit edges are desired.
+
+### Rule 25: Shutdown Semantics (COMMAND vs SERVICE)
+
+Elements declare shutdown semantics via `Element.shutdownSemantics()`:
+
+- **SERVICE** (default): Long-running process requiring explicit teardown.
+  The planner emits `ExecuteTrial` + `TeardownElement` for the trial element.
+
+- **COMMAND**: Self-terminating process that runs to completion. The planner
+  emits `AwaitElement` instead of `ExecuteTrial`, and skips the trial
+  element's teardown step (the element exits on its own).
+
+Only the trial element's semantics affect step generation. Non-trial elements
+always use the standard deploy/teardown lifecycle regardless of their
+declared shutdown semantics.

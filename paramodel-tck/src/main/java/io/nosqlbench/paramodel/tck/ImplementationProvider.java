@@ -59,7 +59,6 @@ public interface ImplementationProvider {
     Element createTypedElement(String name, String type);
     Element createElementWithDependencies(String name, List<Element> dependencies);
     Element createElementWithHealthCheck(String name, Element.HealthCheckSpec healthCheck);
-    Element createElementWithScope(String name, Element.InstancingScope scope);
     Element.HealthCheckSpec createHealthCheckSpec(Duration timeout);
 
     // Typed axis contract

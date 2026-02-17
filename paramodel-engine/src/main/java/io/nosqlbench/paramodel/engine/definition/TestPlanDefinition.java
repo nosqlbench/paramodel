@@ -15,7 +15,6 @@
  */
 package io.nosqlbench.paramodel.engine.definition;
 
-import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.SamplingStrategy;
 
@@ -60,7 +59,6 @@ public record TestPlanDefinition(
     /// @param parameters fixed parameter bindings
     /// @param dependsOn list of dependency definitions
     /// @param exports exported values available to downstream elements
-    /// @param scope optional explicit scope override
     /// @param properties type-specific optional fields (e.g., image, node_role, output)
     public record ElementDefinition(
             String id,
@@ -68,7 +66,6 @@ public record TestPlanDefinition(
             Map<String, Object> parameters,
             List<DependencyDefinition> dependsOn,
             Map<String, String> exports,
-            Element.InstancingScope scope,
             Map<String, Object> properties
     ) {
         /// Returns true if the named property has a non-null value.
@@ -93,6 +90,9 @@ public record TestPlanDefinition(
     }
 
     /// A dependency definition from YAML.
+    ///
+    /// The lifeline concept is now expressed via {@link RelationshipType#LIFELINE}
+    /// on the dependency edge rather than a separate boolean field.
     ///
     /// @param element the upstream element ID
     /// @param relationship the {@link RelationshipType} for this dependency edge

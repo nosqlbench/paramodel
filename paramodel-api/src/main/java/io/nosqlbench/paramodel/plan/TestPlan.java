@@ -1,7 +1,6 @@
 package io.nosqlbench.paramodel.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.policies.ExecutionPolicies;
 
@@ -16,8 +15,7 @@ import java.util.Optional;
 ///
 /// {@code TestPlan} is the "WHAT to test" specification in Simplica. It declares:
 /// - **Axes**: Parameter dimensions to explore
-/// - **Elements**: Resources needed for execution
-/// - **Relationships**: How elements interact
+/// - **Elements**: Resources needed for execution (with typed dependency edges)
 /// - **Policies**: Retry strategies and error handling
 ///
 /// ## TestPlan Lifecycle
@@ -27,7 +25,6 @@ import java.util.Optional;
 ///   TestPlan.builder()
 ///     .withAxis(...)
 ///     .withElement(...)
-///     .relationship(...)
 ///     .policies(...)
 ///     .build()
 ///          ↓
@@ -93,10 +90,7 @@ import java.util.Optional;
 /// │   └── Parameter dimensions (ordered)
 /// │
 /// ├── elements: List<Element>
-/// │   └── Required resources
-/// │
-/// ├── relationships: Map<(Element, Element), RelationshipType>
-/// │   └── How elements relate
+/// │   └── Required resources (with typed dependency edges)
 /// │
 /// ├── policies: ExecutionPolicies
 /// │   └── Retry, timeout, error handling
@@ -143,11 +137,11 @@ import java.util.Optional;
 /// ## Usage Example: Complex Dependencies
 ///
 /// ```java
-/// // Elements with dependencies (types are system-specific)
+/// // Elements with typed dependency edges (types are system-specific)
 /// Element storage = ...;    // "storage-volume"
-/// Element database = ...;   // "postgres", depends on storage
+/// Element database = ...;   // "postgres", depends on storage (SHARED)
 /// Element cache = ...;      // "redis"
-/// Element appServer = ...;  // "app-server", depends on database and cache
+/// Element appServer = ...;  // "app-server", depends on database (EXCLUSIVE) and cache (SHARED)
 ///
 /// TestPlan plan = TestPlan.builder()
 ///     .name("performance-study")
@@ -156,14 +150,10 @@ import java.util.Optional;
 ///     .withElement(database)
 ///     .withElement(cache)
 ///     .withElement(appServer)
-///     // Database cannot be used concurrently
-///     .relationship(database, appServer, RelationshipType.MUTUALLY_EXCLUSIVE)
-///     // Cache can be shared
-///     .relationship(cache, appServer, RelationshipType.SHARED)
 ///     .policies(ExecutionPolicies.defaults())
 ///     .build();
 ///
-/// // Planner will serialize database access, allow cache sharing
+/// // Relationship types are on the dependency edges of each element
 /// ExecutionPlan execPlan = plan.commit();
 /// ```
 ///
@@ -239,7 +229,7 @@ import java.util.Optional;
 ///      - Topological sort for start order
 ///
 ///   4. Insert Barriers
-///      - For MUTUALLY_EXCLUSIVE relationships
+///      - For EXCLUSIVE dependency edges
 ///      - Ensure no concurrent access
 ///
 ///   5. Generate Atomic Steps
@@ -296,7 +286,6 @@ import java.util.Optional;
 /// @see ExecutionPlan
 /// @see Axis
 /// @see Element
-/// @see RelationshipType
 /// @see ExecutionPolicies
 /// @see io.nosqlbench.paramodel.compilation.Compiler
 /// @since 0.1.0
@@ -379,43 +368,6 @@ public interface TestPlan {
             .filter(e -> e.name().equals(name))
             .findFirst();
     }
-
-    ///
-    /// Returns all relationships between elements.
-    ///
-    /// ## Relationship Map Structure
-    ///
-    /// ```
-    /// Map<ElementPair, RelationshipType>
-    ///
-    /// ElementPair: (elementA, elementB)
-    /// RelationshipType: MUTUALLY_EXCLUSIVE | SHARED | INSTANCED_PER
-    /// ```
-    ///
-    /// ## Example
-    ///
-    /// ```java
-    /// Map<ElementPair, RelationshipType> rels = plan.relationships();
-    /// for (var entry : rels.entrySet()) {
-    ///     ElementPair pair = entry.getKey();
-    ///     RelationshipType type = entry.getValue();
-    ///     System.out.printf("%s ←%s→ %s%n",
-    ///         pair.first().name(), type, pair.second().name());
-    /// }
-    /// ```
-    ///
-    /// @return immutable relationship map, never null
-    ///
-    Map<ElementPair, RelationshipType> relationships();
-
-    ///
-    /// Returns the relationship type between two elements.
-    ///
-    /// @param element1 first element
-    /// @param element2 second element
-    /// @return relationship type if defined
-    ///
-    Optional<RelationshipType> relationshipBetween(Element element1, Element element2);
 
     ///
     /// Returns execution policies for this plan.
@@ -506,9 +458,9 @@ public interface TestPlan {
     ///      - No cycles
     ///      - All dependencies satisfiable
     ///
-    ///   3. Check relationships
-    ///      - All elements in relationships exist
-    ///      - Relationships are consistent
+    ///   3. Check dependency edges
+    ///      - All dependency targets exist
+    ///      - Relationship types are valid
     ///
     ///   4. Check schedulability
     ///      - Resources can be allocated
@@ -659,43 +611,6 @@ public interface TestPlan {
     /// @return plan metadata, never null
     ///
     TestPlanMetadata metadata();
-
-    ///
-    /// Pair of elements for relationship mapping.
-    ///
-    /// ## Symmetry
-    ///
-    /// ElementPair treats relationships as symmetric:
-    /// ```
-    /// (A, B) == (B, A)
-    /// ```
-    ///
-    /// @param first first element
-    /// @param second second element
-    ///
-    record ElementPair(Element first, Element second) {
-        public ElementPair {
-            if (first == null || second == null) {
-                throw new IllegalArgumentException("Elements cannot be null");
-            }
-        }
-
-        ///
-        /// Checks if this pair contains the given element.
-        ///
-        public boolean contains(Element element) {
-            return first.equals(element) || second.equals(element);
-        }
-
-        ///
-        /// Returns the other element in the pair.
-        ///
-        public Element other(Element element) {
-            if (first.equals(element)) return second;
-            if (second.equals(element)) return first;
-            throw new IllegalArgumentException("Element not in pair");
-        }
-    }
 
     ///
     /// Metadata about a test plan.

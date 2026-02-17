@@ -81,14 +81,6 @@ public abstract class ElementTCK {
     }
 
     @Test
-    public void testElementInstancingScope() {
-        Element element = getProvider().createElement("worker");
-
-        // instancingScope() should return a non-null Optional
-        assertThat(element.instancingScope()).isNotNull();
-    }
-
-    @Test
     public void testElementWithType() {
         Element element = getProvider().createTypedElement("postgres", "service");
 
@@ -128,15 +120,6 @@ public abstract class ElementTCK {
         assertThat(status.state()).isNotNull();
         assertThat(status.summary()).isNotNull();
         assertThat(status.summary()).isNotEmpty();
-    }
-
-    @Test
-    public void testElementWithInstancingScope() {
-        Element element = getProvider().createElementWithScope("container",
-            Element.InstancingScope.PER_TRIAL);
-
-        assertThat(element.instancingScope()).isPresent();
-        assertThat(element.instancingScope().get()).isEqualTo(Element.InstancingScope.PER_TRIAL);
     }
 
     // -----------------------------------------------------------------------

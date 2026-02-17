@@ -15,7 +15,6 @@
  */
 package io.nosqlbench.paramodel.engine.compiler;
 
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.engine.plan.DefaultElement;
 import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,7 +91,7 @@ class ExportResolverTest {
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command")
                 .tag("image", "benchmark:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .configuration("input", "${output_of:nonexistent}")
                 .build();
 
@@ -116,7 +115,7 @@ class ExportResolverTest {
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command")
                 .tag("image", "benchmark:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .dependency(server)
                 .configuration("input", "${output_of:server}")
                 .build();
@@ -125,7 +124,6 @@ class ExportResolverTest {
                 .name("Test Study")
                 .element(server)
                 .element(client)
-                .relationship(server, client, RelationshipType.SHARED)
                 .build();
 
         Map<String, String> issues = resolver.validateOutputOfReferences(plan);
@@ -140,12 +138,12 @@ class ExportResolverTest {
         DefaultElement indexer = DefaultElement.builder("indexer")
                 .tag("type", "command")
                 .tag("image", "indexer:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
                 .tag("type", "command")
                 .tag("image", "querier:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .configuration("input", "${output_of:indexer}")
                 .build();
 
@@ -167,18 +165,18 @@ class ExportResolverTest {
         DefaultElement indexer = DefaultElement.builder("indexer")
                 .tag("type", "command")
                 .tag("image", "indexer:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .build();
         DefaultElement processor = DefaultElement.builder("processor")
                 .tag("type", "command")
                 .tag("image", "processor:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .dependency(indexer)
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
                 .tag("type", "command")
                 .tag("image", "querier:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .dependency(processor)
                 .configuration("input", "${output_of:indexer}")
                 .build();
@@ -188,8 +186,6 @@ class ExportResolverTest {
                 .element(indexer)
                 .element(processor)
                 .element(querier)
-                .relationship(indexer, processor, RelationshipType.SHARED)
-                .relationship(processor, querier, RelationshipType.SHARED)
                 .build();
 
         Map<String, String> issues = resolver.validateOutputOfReferences(plan);
@@ -236,12 +232,12 @@ class ExportResolverTest {
         DefaultElement indexer = DefaultElement.builder("indexer")
                 .tag("type", "command")
                 .tag("image", "indexer:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
                 .tag("type", "command")
                 .tag("image", "querier:latest")
-                .tag("instancing_hint", "per_trial")
+
                 .dependency(indexer)
                 .configuration("input", "${output_of:indexer}")
                 .build();
@@ -250,7 +246,6 @@ class ExportResolverTest {
                 .name("Multi-Phase Study")
                 .element(indexer)
                 .element(querier)
-                .relationship(indexer, querier, RelationshipType.SHARED)
                 .build();
     }
 }

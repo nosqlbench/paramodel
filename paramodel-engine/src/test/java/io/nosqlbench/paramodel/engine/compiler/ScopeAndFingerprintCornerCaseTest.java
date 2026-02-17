@@ -22,6 +22,8 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.*;
 
+import static io.nosqlbench.paramodel.engine.compiler.NormalizationStage.EFFECTIVE_BINDINGS_KEY;
+
 import static org.assertj.core.api.Assertions.*;
 
 /// Corner case tests for scope derivation, fingerprint computation,
@@ -146,14 +148,18 @@ class ScopeAndFingerprintCornerCaseTest {
         assertThat(deployOrder.indexOf("c")).isLessThan(deployOrder.indexOf("b"));
         assertThat(deployOrder.indexOf("b")).isLessThan(deployOrder.indexOf("a"));
 
-        // Final teardowns should be in reverse topo order: a, b, c, d
-        List<String> finalTeardownOrder = steps.stream()
+        // With predictive eager teardown, the last trial eagerly tears down
+        // all bound elements in LIFO reverse topo order: a, b, c, d.
+        // There are no Phase 3 "cleanup" teardowns for bound elements because
+        // Phase 2c of the last trial already handles them.
+        List<String> lastTrialTeardownOrder = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
-                && "cleanup".equals(t.metadata().get("phase")))
+                && "predictive_eager".equals(t.metadata().get("reason"))
+                && Integer.valueOf(1).equals(t.metadata().get("trial_index")))
             .map(s -> ((AtomicStep.TeardownElement) s).elementId())
             .toList();
 
-        assertThat(finalTeardownOrder).containsExactly("a", "b", "c", "d");
+        assertThat(lastTrialTeardownOrder).containsExactly("a", "b", "c", "d");
     }
 
     @Test
@@ -165,8 +171,7 @@ class ScopeAndFingerprintCornerCaseTest {
             .parameter(portParam)
             .build(); // PER_GROUP: parameter matches axis
         Element worker = MockElement.builder("worker")
-            .instancingScope(Element.InstancingScope.PER_TRIAL)
-            .build(); // explicit PER_TRIAL
+            .build(); // PER_TRIAL via explicit binding override
 
         Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
 
@@ -178,7 +183,8 @@ class ScopeAndFingerprintCornerCaseTest {
             .element(worker)
             .build();
 
-        DefaultCompilationContext context = runPipeline(plan);
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of("worker", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
 
         // db: PER_RUN → single deploy, single final teardown
@@ -199,19 +205,21 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(serverDeploys).isEqualTo(2);
 
-        // worker: PER_TRIAL → 2 deploys (one per trial), eager teardowns
+        // worker: bound to "port" axis but has no parameter named "port", so its
+        // fingerprint is static ("static:worker"). It deploys once and is only
+        // torn down by predictive eager teardown on the last trial.
         long workerDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("worker"))
             .count();
-        assertThat(workerDeploys).isEqualTo(2);
+        assertThat(workerDeploys).isEqualTo(1);
 
         long workerEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
-                && t.elementId().equals("worker") && "per_trial_eager".equals(t.metadata().get("reason")))
+                && t.elementId().equals("worker") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(workerEagerTeardowns).isEqualTo(2);
+        assertThat(workerEagerTeardowns).isEqualTo(1);
 
-        // worker: no final teardown (PER_TRIAL elements are torn down eagerly)
+        // worker: no final "cleanup" teardown — predictive eager handles it
         long workerFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker") && "cleanup".equals(t.metadata().get("phase")))
@@ -232,7 +240,6 @@ class ScopeAndFingerprintCornerCaseTest {
         // but the dependency fingerprint for server changes, causing
         // gateway to also redeploy.
         Element gateway = MockElement.builder("gateway")
-            .instancingScope(Element.InstancingScope.PER_GROUP)
             .dependency(server)
             .build();
 
@@ -245,7 +252,8 @@ class ScopeAndFingerprintCornerCaseTest {
             .element(gateway)
             .build();
 
-        DefaultCompilationContext context = runPipeline(plan);
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of("gateway", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
 
         // server: PER_GROUP → 2 deploys (config changes)
@@ -297,12 +305,20 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(intermediateTeardowns).isZero();
 
-        // Exactly 1 final teardown
-        long finalTeardowns = steps.stream()
+        // No Phase 3 "cleanup" teardown — the last trial's Phase 2c eagerly
+        // tears down all bound elements (even if fingerprint didn't change).
+        long cleanupTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(finalTeardowns).isEqualTo(1);
+        assertThat(cleanupTeardowns).isZero();
+
+        // Exactly 1 predictive eager teardown on the last trial
+        long eagerTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
+            .count();
+        assertThat(eagerTeardowns).isEqualTo(1);
     }
 
     @Test
@@ -317,7 +333,6 @@ class ScopeAndFingerprintCornerCaseTest {
         // no own parameter matching the axis. Its own fingerprint is static,
         // but the dependency fingerprint for server changes between trials.
         Element app = MockElement.builder("app")
-            .instancingScope(Element.InstancingScope.PER_GROUP)
             .dependency(server)
             .build();
 
@@ -330,7 +345,8 @@ class ScopeAndFingerprintCornerCaseTest {
             .element(app)
             .build();
 
-        DefaultCompilationContext context = runPipeline(plan);
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of("app", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
 
         // server changes config → 2 deploys
@@ -372,16 +388,25 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(deploys).isEqualTo(3);
 
-        // 2 intermediate teardowns (at transitions 8080→8081 and 8081→8080)
-        long intermediateTeardowns = steps.stream()
+        // With predictive eager teardown, every trial where the fingerprint
+        // will change for the next trial triggers a "predictive_eager" teardown.
+        // All three trials produce predictive_eager teardowns (trial 0→1 change,
+        // trial 1→2 change, trial 2 is last). No "group_boundary" teardowns.
+        long predictiveEagerTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
+            .count();
+        assertThat(predictiveEagerTeardowns).isEqualTo(3);
+
+        long groupBoundaryTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "group_boundary".equals(t.metadata().get("reason")))
             .count();
-        assertThat(intermediateTeardowns).isEqualTo(2);
+        assertThat(groupBoundaryTeardowns).isZero();
     }
 
     @Test
-    @DisplayName("Single trial PER_GROUP element: 1 deploy, 0 intermediate teardowns, 1 final teardown")
+    @DisplayName("Single trial PER_GROUP element: 1 deploy, 0 intermediate teardowns, 1 predictive eager teardown")
     void singleTrialProducesNoGroupBoundaries() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -410,11 +435,19 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(intermediateTeardowns).isZero();
 
-        long finalTeardowns = steps.stream()
+        // Single trial is the last trial, so Phase 2c eagerly tears down.
+        // No Phase 3 "cleanup" teardown is emitted.
+        long cleanupTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(finalTeardowns).isEqualTo(1);
+        assertThat(cleanupTeardowns).isZero();
+
+        long eagerTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
+            .count();
+        assertThat(eagerTeardowns).isEqualTo(1);
     }
 
     // ── Barrier generation corner cases ────────────────────────────────
@@ -460,7 +493,7 @@ class ScopeAndFingerprintCornerCaseTest {
             }
             if (step instanceof AtomicStep.BarrierSync bs
                 && bs.metadata().getOrDefault("element", "").equals("db")
-                && bs.metadata().getOrDefault("scope", "").equals("PER_RUN")) {
+                && Integer.valueOf(0).equals(bs.metadata().get("binding_depth"))) {
                 readyBarrierIdx = i;
             }
             if (step instanceof AtomicStep.DeployElement de && de.elementId().equals("app")) {
@@ -501,10 +534,12 @@ class ScopeAndFingerprintCornerCaseTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<Barrier> barriers = context.barriers().get();
 
-        // Should have ELEMENT_READY barriers after each deploy
+        // Should have ELEMENT_READY barriers after each deploy.
+        // Per-trial redeploy barriers use buildDeployMeta which does not include
+        // an "element" key; identify them by the barrier ID prefix instead.
         long readyBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_READY
-                && b.metadata().get("element").equals("server"))
+                && b.id().startsWith("barrier_ready_server"))
             .count();
         assertThat(readyBarriers).isEqualTo(2); // one per deploy
     }
@@ -518,8 +553,7 @@ class ScopeAndFingerprintCornerCaseTest {
             .parameter(portParam)
             .build(); // PER_GROUP
         Element worker = MockElement.builder("worker")
-            .instancingScope(Element.InstancingScope.PER_TRIAL)
-            .build(); // PER_TRIAL
+            .build(); // PER_TRIAL via explicit binding override
 
         Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
 
@@ -531,7 +565,8 @@ class ScopeAndFingerprintCornerCaseTest {
             .element(worker)
             .build();
 
-        DefaultCompilationContext context = runPipeline(plan);
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of("worker", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
         List<Barrier> barriers = context.barriers().get();
 
@@ -541,11 +576,11 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(trialBatchBarriers).isZero();
 
-        // ELEMENT_SCOPE_END barriers present at group boundaries and final teardown
+        // No ELEMENT_SCOPE_END barriers (removed from planner)
         long scopeEndBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END)
             .count();
-        assertThat(scopeEndBarriers).isGreaterThan(0);
+        assertThat(scopeEndBarriers).isZero();
 
         // PER_TRIAL worker has no barriers — eager teardowns instead
         long workerBarrierSyncs = steps.stream()
@@ -554,12 +589,14 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(workerBarrierSyncs).isZero();
 
-        // PER_TRIAL worker has eager teardowns
+        // Worker is bound to "port" axis but has no parameter named "port", so
+        // its fingerprint is static. It deploys once and gets a single
+        // predictive_eager teardown on the last trial.
         long workerEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
-                && t.elementId().equals("worker") && "per_trial_eager".equals(t.metadata().get("reason")))
+                && t.elementId().equals("worker") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(workerEagerTeardowns).isEqualTo(2);
+        assertThat(workerEagerTeardowns).isEqualTo(1);
     }
 
     @Test
@@ -581,10 +618,8 @@ class ScopeAndFingerprintCornerCaseTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<Barrier> barriers = context.barriers().get();
 
-        // ELEMENT_SCOPE_END barrier at final teardown (no TRIAL_BATCH or ELEMENT_READY)
-        assertThat(barriers).isNotEmpty();
-        assertThat(barriers).allMatch(
-            b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END);
+        // No ELEMENT_SCOPE_END barriers (removed from planner)
+        assertThat(barriers).isEmpty();
     }
 
     // ── Degenerate plan corner cases ───────────────────────────────────
@@ -639,10 +674,8 @@ class ScopeAndFingerprintCornerCaseTest {
     @DisplayName("All PER_TRIAL elements: no barriers of any kind")
     void allPerTrialPlanProducesNoBarriers() {
         Element worker1 = MockElement.builder("worker1")
-            .instancingScope(Element.InstancingScope.PER_TRIAL)
             .build();
         Element worker2 = MockElement.builder("worker2")
-            .instancingScope(Element.InstancingScope.PER_TRIAL)
             .build();
 
         Axis<String> axis = MockAxis.of("mode", "a", "b");
@@ -654,7 +687,11 @@ class ScopeAndFingerprintCornerCaseTest {
             .element(worker2)
             .build();
 
-        DefaultCompilationContext context = runPipeline(plan);
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of(
+                "worker1", AxisBindingSet.of(Set.of("mode")),
+                "worker2", AxisBindingSet.of(Set.of("mode"))
+            ));
         List<AtomicStep> steps = context.steps().get();
 
         // Zero barriers of any kind
@@ -663,20 +700,21 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(barrierCount).isZero();
 
-        // Per-trial deploys: 2 elements × 2 trials = 4 deploys
+        // Workers are bound to "mode" axis but have no parameter named "mode",
+        // so their fingerprints are static. Each element deploys once (2 total).
         long deploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement)
             .count();
-        assertThat(deploys).isEqualTo(4);
+        assertThat(deploys).isEqualTo(2);
 
-        // Eager teardowns: 2 elements × 2 trials = 4 teardowns
+        // Predictive eager teardowns on the last trial: 1 per element = 2 total.
         long eagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
-                && "per_trial_eager".equals(t.metadata().get("reason")))
+                && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(eagerTeardowns).isEqualTo(4);
+        assertThat(eagerTeardowns).isEqualTo(2);
 
-        // No final teardowns
+        // No final "cleanup" teardowns — predictive eager handles them
         long finalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "cleanup".equals(t.metadata().get("phase")))
@@ -763,20 +801,46 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(deploys).isEqualTo(4);
 
-        // Group boundaries trigger at each config change → 3 intermediate teardowns
-        long intermediateTeardowns = steps.stream()
+        // With predictive eager teardown, every trial triggers a teardown
+        // because each trial has a unique config (the fingerprint always changes
+        // for the next trial). All 4 teardowns are "predictive_eager":
+        // trials 0-2 because next trial differs, trial 3 because it's last.
+        long predictiveEagerTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
+            .count();
+        assertThat(predictiveEagerTeardowns).isEqualTo(4);
+
+        // No group_boundary teardowns — predictive eager preempts them
+        long groupBoundaryTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "group_boundary".equals(t.metadata().get("reason")))
             .count();
-        assertThat(intermediateTeardowns).isEqualTo(3);
+        assertThat(groupBoundaryTeardowns).isZero();
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
 
     private DefaultCompilationContext runPipeline(TestPlan plan) {
+        return runPipeline(plan, Map.of());
+    }
+
+    @SuppressWarnings("unchecked")
+    private DefaultCompilationContext runPipeline(TestPlan plan,
+                                                  Map<String, AxisBindingSet> bindingOverrides) {
         DefaultCompilationContext context = new DefaultCompilationContext(plan, defaultOptions());
         new ValidationStage().execute(context);
         new NormalizationStage().execute(context);
+
+        // Merge binding overrides into the effective bindings computed by NormalizationStage
+        if (!bindingOverrides.isEmpty()) {
+            Map<String, AxisBindingSet> bindings = (Map<String, AxisBindingSet>) context
+                .get(EFFECTIVE_BINDINGS_KEY).orElse(new HashMap<>());
+            Map<String, AxisBindingSet> merged = new HashMap<>(bindings);
+            merged.putAll(bindingOverrides);
+            context.put(EFFECTIVE_BINDINGS_KEY, merged);
+        }
+
         new TrialEnumerationStage().execute(context);
         new InstantiationStage().execute(context);
         new StepGenerationStage().execute(context);

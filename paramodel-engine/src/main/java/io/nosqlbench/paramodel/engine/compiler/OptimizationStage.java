@@ -16,8 +16,8 @@ import java.util.stream.Collectors;
 ///
 /// ## Optimization Passes
 ///
-/// - **PruneRedundantPass**: For PER_GROUP-scoped
-///   elements, detects adjacent trials where the element's parameter fingerprints are
+/// - **PruneRedundantPass**: For bound elements,
+///   detects adjacent trials where the element's parameter fingerprints are
 ///   identical. Removes the redundant teardown/deploy pairs, keeping the element
 ///   running across trials with unchanged configuration.
 ///
@@ -99,9 +99,9 @@ public class OptimizationStage implements CompilationStage {
             Map<String, List<AtomicStep.DeployElement>> deploysByElement = new LinkedHashMap<>();
             for (AtomicStep step : steps) {
                 if (step instanceof AtomicStep.DeployElement deploy) {
-                    // Only consider per-trial deploys (not PER_RUN setup)
-                    Object scope = deploy.metadata().get("scope");
-                    if ("PER_GROUP".equals(scope)) {
+                    // Only consider bound deploys (not run-scoped setup)
+                    Object depth = deploy.metadata().get("binding_depth");
+                    if (depth instanceof Integer d && d > 0) {
                         deploysByElement.computeIfAbsent(deploy.elementId(), k -> new ArrayList<>())
                             .add(deploy);
                     }

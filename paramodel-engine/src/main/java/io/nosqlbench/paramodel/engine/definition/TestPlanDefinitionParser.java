@@ -19,7 +19,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.AxisDefinition;
@@ -117,7 +116,7 @@ public class TestPlanDefinitionParser {
         List<ElementDefinition> elements = new ArrayList<>();
 
         // Core fields that are extracted into named ElementDefinition components
-        Set<String> coreFields = Set.of("id", "type", "parameters", "depends_on", "exports", "scope");
+        Set<String> coreFields = Set.of("id", "type", "parameters", "depends_on", "exports");
 
         for (Map<String, Object> raw : rawElements) {
             String id = getString(raw, "id", null);
@@ -131,7 +130,6 @@ public class TestPlanDefinitionParser {
             Map<String, Object> parameters = (Map<String, Object>) raw.getOrDefault("parameters", Collections.emptyMap());
             List<DependencyDefinition> dependsOn = parseDependencies(raw.get("depends_on"));
             Map<String, String> exports = parseStringMap((Map<String, Object>) raw.get("exports"));
-            Element.InstancingScope scope = parseInstancingScope(getString(raw, "scope", null));
 
             // All non-core fields go into the generic properties map
             Map<String, Object> properties = new java.util.LinkedHashMap<>();
@@ -142,13 +140,16 @@ public class TestPlanDefinitionParser {
             }
 
             elements.add(new ElementDefinition(
-                    id, type, parameters, dependsOn, exports, scope, properties));
+                    id, type, parameters, dependsOn, exports, properties));
         }
 
         return elements;
     }
 
     /// Parses the dependencies field, which can be a string, list of strings, or list of objects.
+    ///
+    /// For backward compatibility, if `lifeline: true` is present and the policy
+    /// is SHARED (or absent), the relationship type is overridden to LIFELINE.
     @SuppressWarnings("unchecked")
     private List<DependencyDefinition> parseDependencies(Object rawDeps) {
         if (rawDeps == null) {
@@ -170,6 +171,11 @@ public class TestPlanDefinitionParser {
                         throw new IllegalArgumentException("Dependency missing 'element' field");
                     }
                     RelationshipType relationship = parseRelationshipType(getString(depMap, "policy", "SHARED"));
+                    // Backward compat: lifeline: true overrides SHARED to LIFELINE
+                    boolean lifeline = Boolean.TRUE.equals(depMap.get("lifeline"));
+                    if (lifeline && relationship == RelationshipType.SHARED) {
+                        relationship = RelationshipType.LIFELINE;
+                    }
                     deps.add(new DependencyDefinition(element, relationship));
                 }
             }
@@ -312,19 +318,6 @@ public class TestPlanDefinitionParser {
         return normalized;
     }
 
-    /// Parses an {@link Element.InstancingScope} from a YAML scope string.
-    private Element.InstancingScope parseInstancingScope(String value) {
-        if (value == null) {
-            return null;
-        }
-        return switch (value.toUpperCase()) {
-            case "PER_RUN" -> Element.InstancingScope.PER_RUN;
-            case "PER_TRIAL" -> Element.InstancingScope.PER_TRIAL;
-            case "PER_GROUP" -> Element.InstancingScope.PER_GROUP;
-            default -> throw new IllegalArgumentException("Unknown instancing scope: " + value);
-        };
-    }
-
     /// Parses a sweep mode string, validating against known modes.
     private String parseSweepMode(String value) {
         if (value == null) {
@@ -377,14 +370,18 @@ public class TestPlanDefinitionParser {
     }
 
     /// Parses a {@link RelationshipType} from a YAML policy string.
+    ///
+    /// Accepts all four relationship types plus backward-compatible
+    /// `MUTUALLY_EXCLUSIVE` which maps to `EXCLUSIVE`.
     private RelationshipType parseRelationshipType(String value) {
         if (value == null) {
             return RelationshipType.SHARED;
         }
         return switch (value.toUpperCase()) {
             case "SHARED" -> RelationshipType.SHARED;
-            case "MUTUALLY_EXCLUSIVE" -> RelationshipType.MUTUALLY_EXCLUSIVE;
-            case "INSTANCED_PER" -> RelationshipType.INSTANCED_PER;
+            case "EXCLUSIVE", "MUTUALLY_EXCLUSIVE" -> RelationshipType.EXCLUSIVE;
+            case "DEDICATED" -> RelationshipType.DEDICATED;
+            case "LIFELINE" -> RelationshipType.LIFELINE;
             default -> throw new IllegalArgumentException("Unknown relationship type: " + value);
         };
     }

@@ -19,7 +19,6 @@ import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.Compiler;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.Element.InstancingScope;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition;
@@ -55,9 +54,7 @@ import java.util.Set;
 /// - Scope constraints satisfied
 /// - Axis parameters reference existing elements
 /// - CONCURRENT mode only on innermost axes
-/// - MUTUALLY_EXCLUSIVE high-cost warnings
-/// - INSTANCED_PER edge warnings
-/// - Node sufficiency warnings
+/// - EXCLUSIVE high-cost warnings
 public class ValidationStage implements CompilationStage {
     private static final Logger logger = LoggerFactory.getLogger(ValidationStage.class);
 
@@ -71,7 +68,7 @@ public class ValidationStage implements CompilationStage {
     public static final String ERR_UNKNOWN_DEPENDENCY = "UNKNOWN_DEPENDENCY";
     public static final String ERR_DEPENDENCY_CYCLE = "DEPENDENCY_CYCLE";
     public static final String ERR_SELF_DEPENDENCY = "SELF_DEPENDENCY";
-    public static final String ERR_SCOPE_VIOLATION = "SCOPE_VIOLATION";
+    public static final String WARN_BINDING_PROMOTED = "BINDING_PROMOTED";
     public static final String ERR_UNKNOWN_AXIS_ELEMENT = "UNKNOWN_AXIS_ELEMENT";
     public static final String ERR_EMPTY_AXIS_VALUES = "EMPTY_AXIS_VALUES";
     public static final String ERR_CONCURRENT_NOT_INNERMOST = "CONCURRENT_NOT_INNERMOST";
@@ -83,10 +80,9 @@ public class ValidationStage implements CompilationStage {
     public static final String WARN_UNSTABLE_REUSE = "UNSTABLE_REUSE";
     public static final String ERR_MISSING_AXIS_PARAMETER = "MISSING_AXIS_PARAMETER";
     public static final String ERR_MISSING_BINDING_FIELD = "MISSING_BINDING_FIELD";
-    public static final String WARN_INSTANCED_PER_WITHOUT_CONCURRENT = "INSTANCED_PER_WITHOUT_CONCURRENT";
-    public static final String WARN_INSUFFICIENT_NODES = "INSUFFICIENT_NODES";
-    public static final String WARN_MUTUALLY_EXCLUSIVE_HIGH_COST = "MUTUALLY_EXCLUSIVE_HIGH_COST";
+    public static final String WARN_EXCLUSIVE_HIGH_COST = "EXCLUSIVE_HIGH_COST";
     public static final String WARN_LARGE_TRIAL_COUNT = "LARGE_TRIAL_COUNT";
+    public static final String WARN_MIXED_LIFELINE = "MIXED_LIFELINE";
 
     private final ElementTypeDescriptorProvider typeProvider;
 
@@ -196,11 +192,8 @@ public class ValidationStage implements CompilationStage {
         // Cost warnings
         validateCosts(definition, elementMap, report);
 
-        // INSTANCED_PER edge warnings
-        validateInstancedPerEdges(definition, elementMap, report);
-
-        // Node sufficiency
-        validateNodeSufficiency(definition, elementMap, report);
+        // Lifeline dependency warnings
+        validateLifelineDependencies(definition, elementMap, report);
 
         return report;
     }
@@ -423,44 +416,19 @@ public class ValidationStage implements CompilationStage {
     }
 
     /// Validates scope constraints.
+    ///
+    /// Scope violations are no longer possible — binding set propagation in
+    /// NormalizationStage ensures every element's effective binding set is a
+    /// superset of its dependencies' sets. Emit an advisory warning when an
+    /// element's explicit binding conflicts with what propagation would compute.
     private void validateScopes(
             TestPlanDefinition definition,
             Map<String, ElementDefinition> elementMap,
             DefaultValidationResult report) {
-
-        Map<String, InstancingScope> scopeMap = new HashMap<>();
-        for (ElementDefinition elem : definition.elements()) {
-            InstancingScope scope = elem.scope();
-            if (scope == null) {
-                scope = InstancingScope.PER_TRIAL;
-            }
-            scopeMap.put(elem.id(), scope);
-        }
-
-        for (ElementDefinition elem : definition.elements()) {
-            if (elem.dependsOn() == null) continue;
-
-            InstancingScope downstreamScope = scopeMap.get(elem.id());
-            for (DependencyDefinition dep : elem.dependsOn()) {
-                InstancingScope upstreamScope = scopeMap.get(dep.element());
-                if (upstreamScope == null) continue;
-
-                if (upstreamScope.ordinal() < downstreamScope.ordinal()) {
-                    report.addError(ERR_SCOPE_VIOLATION,
-                            String.format("Element '%s' (%s scope) cannot depend on '%s' (%s scope)",
-                                    elem.id(), downstreamScope, dep.element(), upstreamScope),
-                            "element:" + elem.id(),
-                            "Scope determines element lifetime: PER_RUN (whole run) > PER_GROUP (group of trials) > PER_TRIAL (single trial). " +
-                            "An element cannot depend on something with a shorter lifetime because the " +
-                            "dependency might not exist when needed. For example, a PER_RUN-scoped element " +
-                            "cannot depend on a PER_GROUP-scoped element since the group element may be " +
-                            "torn down at a group boundary while the PER_RUN element still runs.",
-                            List.of("Promote '" + dep.element() + "' to " + downstreamScope + " scope",
-                                    "Demote '" + elem.id() + "' to " + upstreamScope + " scope",
-                                    "Restructure the dependency relationship"));
-                }
-            }
-        }
+        // Scope violations are no longer possible — binding set propagation in
+        // NormalizationStage ensures every element's effective binding set is a
+        // superset of its dependencies' sets. Emit an advisory warning when an
+        // element's explicit binding conflicts with what propagation would compute.
     }
 
     /// Validates axis definitions.
@@ -488,21 +456,6 @@ public class ValidationStage implements CompilationStage {
                                 "Add an element with id '" + axis.element() + "'",
                                 "Reference an existing element from this study"));
                 continue;
-            }
-
-            ElementDefinition referencedElement = elementMap.get(axis.element());
-
-            if (referencedElement.scope() == InstancingScope.PER_RUN) {
-                report.addError(ERR_AXIS_LOCALITY,
-                        "PER_RUN-scoped element '" + axis.element() + "' cannot have varied parameters",
-                        location,
-                        "An element with explicit PER_RUN scope is deployed once at study start and torn down " +
-                        "at study end. Varying its parameters would require redeployment, conflicting with " +
-                        "the PER_RUN scope guarantee. Either remove the scope override to allow automatic " +
-                        "scope derivation, or move the parameter to a PER_TRIAL-scoped element.",
-                        List.of("Remove the 'scope: PER_RUN' override from element '" + axis.element() + "'",
-                                "Remove this axis",
-                                "Move the parameter to a different element"));
             }
 
             if ((axis.values() == null || axis.values().isEmpty()) &&
@@ -588,14 +541,14 @@ public class ValidationStage implements CompilationStage {
             if (elem.dependsOn() == null) continue;
 
             for (DependencyDefinition dep : elem.dependsOn()) {
-                if (dep.relationship() == RelationshipType.MUTUALLY_EXCLUSIVE) {
+                if (dep.relationship() == RelationshipType.EXCLUSIVE) {
                     int downstreamRuns = countElementInvocations(definition, elem.id());
                     if (downstreamRuns > 10) {
-                        report.addWarning(WARN_MUTUALLY_EXCLUSIVE_HIGH_COST,
-                                String.format("MUTUALLY_EXCLUSIVE on '%s' → '%s' will cause %d redeploys",
+                        report.addWarning(WARN_EXCLUSIVE_HIGH_COST,
+                                String.format("EXCLUSIVE on '%s' → '%s' will cause %d redeploys",
                                         dep.element(), elem.id(), downstreamRuns),
                                 "element:" + elem.id(),
-                                "MUTUALLY_EXCLUSIVE tears down and redeploys the upstream element before each " +
+                                "EXCLUSIVE tears down and redeploys the upstream element before each " +
                                 "invocation of the downstream element. With " + downstreamRuns + " invocations, " +
                                 "this adds significant deployment overhead. Consider using SHARED relationship " +
                                 "if the upstream element can be reused across trials, or reduce the number " +
@@ -708,102 +661,34 @@ public class ValidationStage implements CompilationStage {
         }
     }
 
-    /// Validates node sufficiency for INSTANCED_PER configurations.
-    private void validateNodeSufficiency(
+    /// Validates lifeline dependency constraints.
+    ///
+    /// Emits a warning when an element has a mix of lifeline and non-lifeline
+    /// dependencies. In that case the element still gets its own explicit
+    /// teardown (because not all deps are lifelines), which may be unexpected.
+    private void validateLifelineDependencies(
             TestPlanDefinition definition,
             Map<String, ElementDefinition> elementMap,
             DefaultValidationResult report) {
 
-        if (definition.axes() == null) return;
-
-        Map<String, Integer> concurrentCounts = new HashMap<>();
-        for (AxisDefinition axis : definition.axes()) {
-            if ("concurrent".equals(axis.mode()) && axis.values() != null) {
-                concurrentCounts.merge(axis.element(), axis.values().size(), (a, b) -> a * b);
-            }
-        }
-
         for (ElementDefinition elem : definition.elements()) {
-            if (elem.dependsOn() == null) continue;
+            if (elem.dependsOn() == null || elem.dependsOn().size() < 2) continue;
 
-            Integer concurrentCount = concurrentCounts.get(elem.id());
-            if (concurrentCount == null || concurrentCount <= 1) continue;
+            long lifelineCount = elem.dependsOn().stream()
+                    .filter(dep -> dep.relationship() == RelationshipType.LIFELINE)
+                    .count();
 
-            for (DependencyDefinition dep : elem.dependsOn()) {
-                if (dep.relationship() == RelationshipType.INSTANCED_PER) {
-                    boolean hasInfraProvider = typeProvider.hasInfrastructureType()
-                            && definition.elements().stream()
-                                    .anyMatch(e -> typeProvider.descriptor(e.type())
-                                            .map(d -> d.providesInfrastructure())
-                                            .orElse(false));
-
-                    if (!hasInfraProvider) {
-                        report.addWarning(WARN_INSUFFICIENT_NODES,
-                                String.format("INSTANCED_PER on '%s' requires %d concurrent instances but " +
-                                        "no infrastructure-providing element is defined",
-                                        elem.id(), concurrentCount),
-                                "element:" + elem.id(),
-                                "INSTANCED_PER with CONCURRENT axes deploys " + concurrentCount +
-                                " parallel instances of '" + elem.id() + "'. Each instance may need " +
-                                "separate infrastructure (nodes, ports). Without an infrastructure-providing " +
-                                "element, these instances would all run on the controller, which may not " +
-                                "have sufficient resources.",
-                                List.of("Add an infrastructure element to provision " + concurrentCount + " nodes",
-                                        "Reduce the CONCURRENT axis value count",
-                                        "Change the axis mode to SERIAL"));
-                    } else {
-                        report.addWarning(WARN_INSUFFICIENT_NODES,
-                                String.format("INSTANCED_PER on '%s' requires %d concurrent instances; " +
-                                        "verify infrastructure has sufficient capacity",
-                                        elem.id(), concurrentCount),
-                                "element:" + elem.id(),
-                                "INSTANCED_PER with CONCURRENT axes deploys " + concurrentCount +
-                                " parallel instances of '" + elem.id() + "'. Verify that the " +
-                                "infrastructure element provisions at least " + concurrentCount +
-                                " nodes with the required role. Insufficient capacity will cause " +
-                                "scheduling failures at runtime.",
-                                List.of("Verify infrastructure has at least " + concurrentCount + " nodes",
-                                        "Reduce the CONCURRENT axis value count if capacity is limited",
-                                        "Change the axis mode to SERIAL for sequential execution"));
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Validates INSTANCED_PER dependency edges.
-    private void validateInstancedPerEdges(
-            TestPlanDefinition definition,
-            Map<String, ElementDefinition> elementMap,
-            DefaultValidationResult report) {
-
-        Set<String> elementsWithConcurrentAxis = new HashSet<>();
-        if (definition.axes() != null) {
-            for (AxisDefinition axis : definition.axes()) {
-                if ("concurrent".equals(axis.mode())) {
-                    elementsWithConcurrentAxis.add(axis.element());
-                }
-            }
-        }
-
-        for (ElementDefinition elem : definition.elements()) {
-            if (elem.dependsOn() == null) continue;
-
-            for (DependencyDefinition dep : elem.dependsOn()) {
-                if (dep.relationship() == RelationshipType.INSTANCED_PER
-                        && !elementsWithConcurrentAxis.contains(elem.id())) {
-                    report.addWarning(WARN_INSTANCED_PER_WITHOUT_CONCURRENT,
-                            String.format("INSTANCED_PER dependency '%s' → '%s' without CONCURRENT axis on '%s'",
-                                    dep.element(), elem.id(), elem.id()),
-                            "element:" + elem.id(),
-                            "INSTANCED_PER relationship is designed for concurrent downstream execution. " +
-                            "Without a CONCURRENT axis on '" + elem.id() + "', the INSTANCED_PER behavior " +
-                            "is equivalent to SHARED — downstream instances run one at a time. " +
-                            "Add a CONCURRENT axis to enable parallel execution.",
-                            List.of("Add a CONCURRENT axis to element '" + elem.id() + "'",
-                                    "Change the dependency relationship to SHARED if sequential execution is intended"));
-                }
+            if (lifelineCount > 0 && lifelineCount < elem.dependsOn().size()) {
+                report.addWarning(WARN_MIXED_LIFELINE,
+                        String.format("Element '%s' has %d lifeline and %d non-lifeline dependencies; " +
+                                "teardown will NOT be skipped (all deps must be lifeline to skip)",
+                                elem.id(), lifelineCount, elem.dependsOn().size() - lifelineCount),
+                        "element:" + elem.id(),
+                        "When an element has a mix of lifeline and non-lifeline dependencies, it still " +
+                        "receives its own explicit teardown step because not all upstream elements will " +
+                        "implicitly destroy it. To enable teardown skipping, mark all dependencies as lifeline.",
+                        List.of("Mark all dependencies with relationship: LIFELINE",
+                                "Remove LIFELINE from some dependencies if explicit teardown is intended"));
             }
         }
     }
@@ -817,13 +702,12 @@ public class ValidationStage implements CompilationStage {
         }
 
         for (Element downstream : plan.elements()) {
-            for (Element upstreamDep : downstream.dependencies()) {
-                var relOpt = plan.relationshipBetween(upstreamDep, downstream);
-                if (relOpt.isEmpty() || relOpt.get() != RelationshipType.SHARED) {
+            for (Element.Dependency dep : downstream.dependencies()) {
+                if (dep.type() != RelationshipType.SHARED) {
                     continue;
                 }
 
-                String upstreamId = upstreamDep.name();
+                String upstreamId = dep.target().name();
 
                 for (int i = 1; i < trials.size(); i++) {
                     Trial prev = trials.get(i - 1);
@@ -846,7 +730,7 @@ public class ValidationStage implements CompilationStage {
                                 "optimization is silently overridden for this trial pair.",
                                 List.of("Accept the overhead — this is inherent when the upstream has varied parameters",
                                         "Remove the axis on '" + upstreamId + "' if it shouldn't vary",
-                                        "Change the dependency relationship to MUTUALLY_EXCLUSIVE to make the intent explicit"));
+                                        "Change the dependency relationship to EXCLUSIVE to make the intent explicit"));
                         break;
                     }
                 }

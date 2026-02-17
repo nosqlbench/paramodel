@@ -211,7 +211,29 @@ class TestPlanDefinitionParserTest {
     }
 
     @Test
-    void testParseResetEachPolicy() throws IOException {
+    void testParseExclusivePolicy() throws IOException {
+        String yaml = """
+            name: Study
+            elements:
+              - id: server
+                type: SERVICE
+                image: server:latest
+              - id: client
+                type: COMMAND
+                image: client:latest
+                depends_on:
+                  - element: server
+                    policy: EXCLUSIVE
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+
+        var client = def.elements().get(1);
+        assertThat(client.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.EXCLUSIVE);
+    }
+
+    @Test
+    void testParseMutuallyExclusiveMapsToExclusive() throws IOException {
         String yaml = """
             name: Study
             elements:
@@ -229,7 +251,7 @@ class TestPlanDefinitionParserTest {
         TestPlanDefinition def = parser.parseString(yaml);
 
         var client = def.elements().get(1);
-        assertThat(client.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.MUTUALLY_EXCLUSIVE);
+        assertThat(client.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.EXCLUSIVE);
     }
 
     @Test
@@ -440,5 +462,113 @@ class TestPlanDefinitionParserTest {
         assertThat(axis.mode()).isEqualTo("serial");
         assertThat(axis.nesting()).isEqualTo(0);
         assertThat(axis.repetitions()).isEqualTo(1);
+    }
+
+    @Test
+    void testParsesLifelineDependency() throws IOException {
+        String yaml = """
+            name: Lifeline Study
+            elements:
+              - id: infra
+                type: NODE
+                constellation: test-infra
+              - id: service
+                type: SERVICE
+                image: app:latest
+                depends_on:
+                  - element: infra
+                    lifeline: true
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+
+        var service = def.elements().get(1);
+        assertThat(service.dependsOn()).hasSize(1);
+        assertThat(service.dependsOn().getFirst().element()).isEqualTo("infra");
+        assertThat(service.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.LIFELINE);
+    }
+
+    @Test
+    void testParsesLifelinePolicyDirectly() throws IOException {
+        String yaml = """
+            name: Lifeline Policy Study
+            elements:
+              - id: infra
+                type: NODE
+                constellation: test-infra
+              - id: service
+                type: SERVICE
+                image: app:latest
+                depends_on:
+                  - element: infra
+                    policy: LIFELINE
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+
+        var service = def.elements().get(1);
+        assertThat(service.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.LIFELINE);
+    }
+
+    @Test
+    void testParsesDedicatedPolicy() throws IOException {
+        String yaml = """
+            name: Dedicated Study
+            elements:
+              - id: infra
+                type: NODE
+                constellation: test-infra
+              - id: service
+                type: SERVICE
+                image: app:latest
+                depends_on:
+                  - element: infra
+                    policy: DEDICATED
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+
+        var service = def.elements().get(1);
+        assertThat(service.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.DEDICATED);
+    }
+
+    @Test
+    void testDefaultsToSharedRelationship() throws IOException {
+        String yaml = """
+            name: No Lifeline Study
+            elements:
+              - id: infra
+                type: NODE
+                constellation: test-infra
+              - id: service_string
+                type: SERVICE
+                image: app:latest
+                depends_on: infra
+              - id: service_list
+                type: SERVICE
+                image: app:latest
+                depends_on:
+                  - infra
+              - id: service_map
+                type: SERVICE
+                image: app:latest
+                depends_on:
+                  - element: infra
+                    policy: SHARED
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+
+        // String format defaults to SHARED
+        var serviceString = def.elements().get(1);
+        assertThat(serviceString.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.SHARED);
+
+        // List-of-strings format defaults to SHARED
+        var serviceList = def.elements().get(2);
+        assertThat(serviceList.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.SHARED);
+
+        // Map format with explicit SHARED
+        var serviceMap = def.elements().get(3);
+        assertThat(serviceMap.dependsOn().getFirst().relationship()).isEqualTo(RelationshipType.SHARED);
     }
 }

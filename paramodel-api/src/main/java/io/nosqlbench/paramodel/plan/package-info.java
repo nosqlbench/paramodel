@@ -56,10 +56,6 @@
 /// │   └── Instantiable/deployable resource
 /// │       (database, service, cache, dataset)
 /// │
-/// ├── RelationshipType
-/// │   └── How elements relate
-/// │       (MUTUALLY_EXCLUSIVE, SHARED, INSTANCED_PER)
-/// │
 /// └── ExecutionPolicies
 ///     └── Retry strategies, error handling
 /// ```
@@ -83,14 +79,16 @@
 ///
 /// ## Relationship Semantics
 ///
-/// Dependencies between elements determine concurrency:
+/// Relationship types are carried on each directed dependency edge
+/// ({@link io.nosqlbench.paramodel.elements.Element.Dependency}), not on the plan:
 ///
 /// ```
-/// RelationshipType          Concurrency          Use Case
-/// ─────────────────────────────────────────────────────────────────
-/// MUTUALLY_EXCLUSIVE        Serialize all        Same database instance
-/// SHARED                    Allow concurrent     Read-only cache
-/// INSTANCED_PER             Fresh per scope      Per-trial containers
+/// RelationshipType    Meaning                                     Use Case
+/// ──────────────────────────────────────────────────────────────────────────────
+/// SHARED              Concurrent access allowed (default)          Read-only cache
+/// EXCLUSIVE           Serialize access among dependents            Same database instance
+/// DEDICATED           Dedicated instance per dependent             Per-tenant isolation
+/// LIFELINE            Target's teardown subsumes dependent         Containers on a node
 /// ```
 ///
 /// ## Plan Lifecycle
@@ -159,7 +157,6 @@
 ///     .withAxis(tempAxis)
 ///     .withElement(apiService)
 ///     .withElement(cache)
-///     .relationship(apiService, cache, RelationshipType.SHARED)
 ///     .policies(ExecutionPolicies.defaults())
 ///     .build();
 ///
@@ -190,18 +187,12 @@
 ///     .withElement(database)
 ///     .withElement(appServer)
 ///     .withElement(loadBalancer)
-///     // Database cannot be shared by concurrent trials
-///     .relationship(database, appServer, RelationshipType.MUTUALLY_EXCLUSIVE)
-///     // Load balancer can be shared
-///     .relationship(loadBalancer, appServer, RelationshipType.SHARED)
-///     // App server instanced per trial
-///     .instancingScope(appServer, InstancingScope.PER_TRIAL)
+///     // Relationship types are on the dependency edges, not the plan:
+///     // appServer depends on database with EXCLUSIVE relationship
+///     // appServer depends on loadBalancer with SHARED relationship
 ///     .build();
 ///
-/// // Compiler inserts barriers to enforce mutual exclusion
 /// ExecutionPlan execPlan = plan.commit();
-/// List<Barrier> barriers = execPlan.barriers();
-/// // Barriers ensure database not accessed concurrently
 /// ```
 ///
 /// @see TestPlan

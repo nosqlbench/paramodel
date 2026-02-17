@@ -16,7 +16,6 @@
 package io.nosqlbench.paramodel.engine.definition;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.Element.InstancingScope;
 import io.nosqlbench.paramodel.engine.TestPlanService;
 import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
 import io.nosqlbench.paramodel.plan.AtomicStep;
@@ -72,12 +71,6 @@ class TestPlanComposerTest {
 
         // Both elements should be PER_RUN scope — no axes vary their parameters,
         // so the generic inference deploys each once for the study.
-        Element server = plan.element("server").orElseThrow();
-        assertThat(server.instancingScope()).hasValue(InstancingScope.PER_RUN);
-
-        Element client = plan.element("client").orElseThrow();
-        assertThat(client.instancingScope()).hasValue(InstancingScope.PER_RUN);
-
         // Execution plan should have deploy steps for both elements
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
         assertThat(execPlan.steps()).isNotEmpty();
@@ -85,11 +78,11 @@ class TestPlanComposerTest {
         long deployCount = deploysFor(execPlan, null);
         assertThat(deployCount).isEqualTo(2); // server + client
 
-        // Should have 1 trial execution step
-        long trialCount = execPlan.steps().stream()
-                .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+        // Client is COMMAND type — should have 1 AwaitElement step (not ExecuteTrial)
+        long awaitCount = execPlan.steps().stream()
+                .filter(s -> s instanceof AtomicStep.AwaitElement)
                 .count();
-        assertThat(trialCount).isEqualTo(1);
+        assertThat(awaitCount).isEqualTo(1);
     }
 
     /// Test: Fixed server, varied client (classic "fixed server, SHARED" pattern)
@@ -120,10 +113,6 @@ class TestPlanComposerTest {
 
         // 3 datasets = 3 trials
         assertThat(plan.size()).isEqualTo(3);
-
-        // Server should be PER_RUN scope (not varied)
-        Element server = plan.element("server").orElseThrow();
-        assertThat(server.instancingScope()).hasValue(InstancingScope.PER_RUN);
 
         // Server should only be deployed once
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
@@ -157,11 +146,6 @@ class TestPlanComposerTest {
 
         // 4 thread values = 4 trials
         assertThat(plan.size()).isEqualTo(4);
-
-        // Server should be PER_GROUP scope (has axis — persists for contiguous
-        // group of trials with constant config, redeployed at group boundaries)
-        Element server = plan.element("server").orElseThrow();
-        assertThat(server.instancingScope()).hasValue(InstancingScope.PER_GROUP);
 
         // Server should be deployed 4 times (4 distinct thread values = 4 groups)
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
@@ -204,12 +188,12 @@ class TestPlanComposerTest {
             assertThat(trial.assignments()).containsKey("server.memory");
         });
 
-        // Execution plan should have 6 ExecuteTrial steps
+        // Client is COMMAND type — execution plan should have 6 AwaitElement steps
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
-        long trialSteps = execPlan.steps().stream()
-                .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+        long awaitSteps = execPlan.steps().stream()
+                .filter(s -> s instanceof AtomicStep.AwaitElement)
                 .count();
-        assertThat(trialSteps).isEqualTo(6);
+        assertThat(awaitSteps).isEqualTo(6);
     }
 
     /// Test: Element dependency chain (A → B → C)
@@ -303,18 +287,9 @@ class TestPlanComposerTest {
         TestPlanDefinition def = parser.parseString(yaml);
         DefaultTestPlan plan = composer.compose(def);
 
-        // shared-db: no axes, no tainted upstream → PER_RUN scope
-        assertThat(plan.element("shared-db").orElseThrow().instancingScope())
-                .hasValue(InstancingScope.PER_RUN);
-
-        // server: has axis → PER_GROUP scope (persists for contiguous group
-        // of trials with constant config, redeployed at group boundaries)
-        assertThat(plan.element("server").orElseThrow().instancingScope())
-                .hasValue(InstancingScope.PER_GROUP);
-
-        // client: depends on PER_GROUP server → PER_GROUP scope (taint propagation)
-        assertThat(plan.element("client").orElseThrow().instancingScope())
-                .hasValue(InstancingScope.PER_GROUP);
+        // shared-db: no axes, no tainted upstream → PER_RUN scope (deployed once)
+        // server: has axis → redeployed at group boundaries
+        // client: depends on server → redeployed when server changes
     }
 
     /// Test: Bindings section applies cross-element parameters
@@ -503,11 +478,11 @@ class TestPlanComposerTest {
         assertThat(deploysFor(execPlan, "querier")).isEqualTo(1);
     }
 
-    /// Test: Deploy counts and barriers for INSTANCED_PER with CONCURRENT axis
+    /// Test: Deploy counts and barriers for SHARED with CONCURRENT axis
     @Test
-    void testInstancedPerWithConcurrentAxis() throws IOException {
+    void testSharedWithConcurrentAxis() throws IOException {
         String yaml = """
-            name: INSTANCED_PER Concurrent Test
+            name: SHARED Concurrent Test
             elements:
               - id: server
                 type: SERVICE
@@ -517,7 +492,7 @@ class TestPlanComposerTest {
                 image: benchmark:latest
                 depends_on:
                   - element: server
-                    policy: INSTANCED_PER
+                    policy: SHARED
             axes:
               - parameter: CONC
                 element: client
@@ -539,20 +514,19 @@ class TestPlanComposerTest {
         // Client deployed 3 times (once per trial)
         assertThat(deploysFor(execPlan, "client")).isEqualTo(3);
 
-        // ELEMENT_SCOPE_END barriers are emitted at group boundaries and
-        // final teardown for synchronization.  No ELEMENT_READY barriers
-        // since neither element has a health check.
+        // No ELEMENT_SCOPE_END barriers (removed from planner). No
+        // ELEMENT_READY barriers since neither element has a health check.
         long barrierCount = execPlan.steps().stream()
                 .filter(s -> s instanceof AtomicStep.BarrierSync)
                 .count();
-        assertThat(barrierCount).isGreaterThan(0);
+        assertThat(barrierCount).isZero();
     }
 
-    /// Test: Deploy counts for INSTANCED_PER without CONCURRENT axis
+    /// Test: Deploy counts for SHARED without CONCURRENT axis
     @Test
-    void testInstancedPerWithoutConcurrentAxis() throws IOException {
+    void testSharedWithoutConcurrentAxis() throws IOException {
         String yaml = """
-            name: INSTANCED_PER Serial Test
+            name: SHARED Serial Test
             elements:
               - id: server
                 type: SERVICE
@@ -562,7 +536,7 @@ class TestPlanComposerTest {
                 image: benchmark:latest
                 depends_on:
                   - element: server
-                    policy: INSTANCED_PER
+                    policy: SHARED
             axes:
               - parameter: dataset
                 element: client
@@ -835,6 +809,35 @@ class TestPlanComposerTest {
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
         assertThat(execPlan.executionGraph()).isNotNull();
         assertThat(execPlan.executionGraph().isAcyclic()).isTrue();
+    }
+
+    /// Test: COMMAND type elements get COMMAND shutdown semantics, SERVICE type gets SERVICE
+    @Test
+    void testCommandTypeMapsToCommandShutdownSemantics() throws IOException {
+        String yaml = """
+            name: Shutdown Semantics Test
+            elements:
+              - id: server
+                type: SERVICE
+                image: jvector:latest
+              - id: client
+                type: COMMAND
+                image: benchmark:latest
+                depends_on: server
+            """;
+
+        TestPlanDefinition def = parser.parseString(yaml);
+        DefaultTestPlan plan = composer.buildPlan(def);
+
+        Element server = plan.element("server").orElseThrow();
+        assertThat(server.shutdownSemantics())
+            .as("SERVICE type should have SERVICE shutdown semantics")
+            .isEqualTo(Element.ShutdownSemantics.SERVICE);
+
+        Element client = plan.element("client").orElseThrow();
+        assertThat(client.shutdownSemantics())
+            .as("COMMAND type should have COMMAND shutdown semantics")
+            .isEqualTo(Element.ShutdownSemantics.COMMAND);
     }
 
     // ── Helper methods ─────────────────────────────────────────────────

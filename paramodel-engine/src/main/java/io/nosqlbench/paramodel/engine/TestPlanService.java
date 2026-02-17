@@ -195,8 +195,11 @@ public class TestPlanService {
                 }
                 case AtomicStep.TeardownElement ignored -> teardownSteps++;
                 case AtomicStep.ExecuteTrial ignored -> trialSteps++;
+                case AtomicStep.AwaitElement ignored -> trialSteps++;
                 case AtomicStep.BarrierSync ignored -> barrierSteps++;
                 case AtomicStep.CheckpointState ignored -> checkpointSteps++;
+                case AtomicStep.NotifyTrialStart ignored -> {} // lifecycle notification
+                case AtomicStep.NotifyTrialEnd ignored -> {} // lifecycle notification
             }
         }
 
@@ -210,18 +213,9 @@ public class TestPlanService {
             }
         }
 
-        // Estimate SHARED savings: compare actual deploys vs worst-case (MUTUALLY_EXCLUSIVE) deploys.
-        // Worst case: each non-PER_RUN element deploys once per trial.
-        int worstCaseDeploys = 0;
-        for (Element element : plan.elements()) {
-            if (element.instancingScope()
-                    .map(s -> s == Element.InstancingScope.PER_RUN)
-                    .orElse(false)) {
-                worstCaseDeploys += 1;
-            } else {
-                worstCaseDeploys += plan.size();
-            }
-        }
+        // Estimate SHARED savings: compare actual deploys vs worst-case deploys.
+        // Worst case: every element deploys once per trial (no fingerprint reuse).
+        int worstCaseDeploys = plan.elements().size() * Math.max(1, plan.size());
         int sharedSavings = Math.max(0, worstCaseDeploys - deploySteps);
 
         return new PlanPreview(

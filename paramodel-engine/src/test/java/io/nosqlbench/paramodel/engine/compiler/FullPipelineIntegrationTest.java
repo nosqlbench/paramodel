@@ -61,12 +61,10 @@ class FullPipelineIntegrationTest {
             .count();
         assertThat(trialSteps).isEqualTo(2);
 
-        // ELEMENT_SCOPE_END barrier exists at final teardown (synchronizing
-        // all trial completions).  No ELEMENT_READY or TRIAL_BATCH barriers
-        // since neither element has a health check.
-        assertThat(execPlan.barriers()).isNotEmpty();
-        assertThat(execPlan.barriers()).allMatch(
-            b -> b.type() == Barrier.BarrierType.ELEMENT_SCOPE_END);
+        // No ELEMENT_SCOPE_END barriers (removed from planner). No
+        // ELEMENT_READY or TRIAL_BATCH barriers since neither element
+        // has a health check.
+        assertThat(execPlan.barriers()).isEmpty();
 
         // Verify execution graph
         assertThat(execPlan.executionGraph()).isNotNull();

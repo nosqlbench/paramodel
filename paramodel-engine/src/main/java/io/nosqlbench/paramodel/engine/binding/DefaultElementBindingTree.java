@@ -197,8 +197,8 @@ public class DefaultElementBindingTree implements ElementBindingTree {
 
                 // Merge dependency cascades
                 List<BindingNode> parentNodes = new ArrayList<>();
-                for (Element dep : elem.dependencies()) {
-                    DefaultBindingNode depNode = nodesByName.get(dep.name());
+                for (Element.Dependency dep : elem.dependencies()) {
+                    DefaultBindingNode depNode = nodesByName.get(dep.target().name());
                     if (depNode != null) {
                         cascaded.putAll(depNode.cascadedInputs());
                         parentNodes.add(depNode);
@@ -269,10 +269,10 @@ public class DefaultElementBindingTree implements ElementBindingTree {
                 inDegree.putIfAbsent(e.name(), 0);
                 adjacency.putIfAbsent(e.name(), new ArrayList<>());
 
-                for (Element dep : e.dependencies()) {
-                    inDegree.putIfAbsent(dep.name(), 0);
-                    adjacency.putIfAbsent(dep.name(), new ArrayList<>());
-                    adjacency.get(dep.name()).add(e.name());
+                for (Element.Dependency dep : e.dependencies()) {
+                    inDegree.putIfAbsent(dep.target().name(), 0);
+                    adjacency.putIfAbsent(dep.target().name(), new ArrayList<>());
+                    adjacency.get(dep.target().name()).add(e.name());
                     inDegree.merge(e.name(), 1, Integer::sum);
                 }
             }

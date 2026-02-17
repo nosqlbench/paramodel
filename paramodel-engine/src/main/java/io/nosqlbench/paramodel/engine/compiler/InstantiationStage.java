@@ -41,44 +41,17 @@ public class InstantiationStage implements CompilationStage {
         List<Element> sortedElements = topologicalSort(plan.elements());
 
         for (Element element : sortedElements) {
-             // Determine if element configuration varies across trials
-             // using a three-tier strategy:
-             boolean dependsOnAxes;
+             // Use the definitive binding set from NormalizationStage
+             AxisBindingSet binding = NormalizationStage.resolveBinding(context, element);
 
-             // Tier 1: Explicit scope (set by normalization or builder)
-             // Both PER_TRIAL and PER_GROUP elements vary across trials
-             Optional<Element.InstancingScope> explicitScope = element.instancingScope();
-             if (explicitScope.isPresent()) {
-                 dependsOnAxes = explicitScope.get() != Element.InstancingScope.PER_RUN;
-             } else {
-                 dependsOnAxes = false;
-                 // Tier 2: Axis targeting via targetElement()
-                 for (Axis<?> axis : plan.axes()) {
-                     if (axis.targetElement().map(t -> t.equals(element.name())).orElse(false)) {
-                         dependsOnAxes = true;
-                         break;
-                     }
-                 }
-                 // Tier 3: Parameter matching (existing heuristic)
-                 if (!dependsOnAxes) {
-                     for (Parameter<?> param : element.parameters()) {
-                         for (Axis<?> axis : plan.axes()) {
-                             if (matches(axis, param, element)) {
-                                 dependsOnAxes = true;
-                                 break;
-                             }
-                         }
-                         if (dependsOnAxes) break;
-                     }
-                 }
-             }
+             boolean dependsOnAxes = binding.depth() > 0;
 
              if (dependsOnAxes) {
                  // Per-Trial Scope
                  for (Trial trial : trials) {
                      Set<String> depIds = new HashSet<>();
-                     for (Element dep : element.dependencies()) {
-                         context.getInstanceForTrial(dep.name(), trial)
+                     for (Element.Dependency dep : element.dependencies()) {
+                         context.getInstanceForTrial(dep.target().name(), trial)
                              .map(CompilationContext.ElementInstance::instanceId)
                              .ifPresent(depIds::add);
                      }
@@ -91,8 +64,8 @@ public class InstantiationStage implements CompilationStage {
                      // Resolve dependencies using a representative trial
                      // (Assuming dependencies are available globally or compatible)
                      Trial representative = trials.get(0);
-                     for (Element dep : element.dependencies()) {
-                         context.getInstanceForTrial(dep.name(), representative)
+                     for (Element.Dependency dep : element.dependencies()) {
+                         context.getInstanceForTrial(dep.target().name(), representative)
                              .map(CompilationContext.ElementInstance::instanceId)
                              .ifPresent(depIds::add);
                      }
@@ -124,12 +97,12 @@ public class InstantiationStage implements CompilationStage {
         // Initialize graph
         for (Element e : elements) {
             inDegree.putIfAbsent(e, 0);
-            for (Element dep : e.dependencies()) {
-                // Dependency dep must precede e
-                // Edge: dep -> e
-                adj.computeIfAbsent(dep, k -> new ArrayList<>()).add(e);
+            for (Element.Dependency dep : e.dependencies()) {
+                // Dependency target must precede e
+                // Edge: dep.target() -> e
+                adj.computeIfAbsent(dep.target(), k -> new ArrayList<>()).add(e);
                 inDegree.merge(e, 1, Integer::sum);
-                inDegree.putIfAbsent(dep, 0);
+                inDegree.putIfAbsent(dep.target(), 0);
             }
         }
         

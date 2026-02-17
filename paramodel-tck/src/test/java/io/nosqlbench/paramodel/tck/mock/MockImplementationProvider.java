@@ -159,13 +159,6 @@ public class MockImplementationProvider implements ImplementationProvider {
     }
 
     @Override
-    public Element createElementWithScope(String name, Element.InstancingScope scope) {
-        return MockElement.builder(name)
-            .instancingScope(scope)
-            .build();
-    }
-
-    @Override
     public Element.HealthCheckSpec createHealthCheckSpec(Duration timeout) {
         return new MockHealthCheckSpec(timeout, 3, Duration.ofSeconds(5));
     }
@@ -468,16 +461,6 @@ public class MockImplementationProvider implements ImplementationProvider {
         }
 
         @Override
-        public TestPlanBuilder relationship(String element1, String element2, RelationshipType type) {
-            return this;
-        }
-
-        @Override
-        public TestPlanBuilder relationship(Element element1, Element element2, RelationshipType type) {
-            return this;
-        }
-
-        @Override
         public TestPlanBuilder policies(io.nosqlbench.paramodel.plan.policies.ExecutionPolicies policies) {
             delegate.policies(policies);
             return this;
@@ -532,11 +515,6 @@ public class MockImplementationProvider implements ImplementationProvider {
         @Override
         public List<Element> currentElements() {
             return List.of();
-        }
-
-        @Override
-        public java.util.Map<TestPlan.ElementPair, RelationshipType> currentRelationships() {
-            return java.util.Map.of();
         }
 
         @Override

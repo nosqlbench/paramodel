@@ -105,17 +105,17 @@ than at runtime wherever possible.
   exactly three permitted subtypes: `Passed`, `Failed`, and `Warning`.
   Pattern matching over these subtypes is exhaustive -- the compiler
   ensures every case is handled.
-- **Records.** `Value<T>`, `TestPlan.ElementPair`, and numerous result
+- **Records.** `Value<T>`, `Element.Dependency`, and numerous result
   types are records, giving them automatic immutability, `equals`,
   `hashCode`, and `toString`. Records make the "value object" pattern
   zero-cost to express.
 - **Generics.** `Parameter<T>`, `Constraint<T>`, `Domain<T>`, and
   `Value<T>` are all generic, preventing type-confusion bugs where an
   `Integer` constraint is accidentally applied to a `String` parameter.
-- **Enums.** `RelationshipType` (`MUTUALLY_EXCLUSIVE`, `SHARED`,
-  `INSTANCED_PER`), `TrialOrdering`, `TrialStatus`, and compilation
-  strategy types are enums, giving a closed set of legal values that the
-  compiler can check exhaustively.
+- **Enums.** `RelationshipType` (`SHARED`, `EXCLUSIVE`, `DEDICATED`,
+  `LIFELINE`), `TrialOrdering`, `TrialStatus`, and compilation strategy
+  types are enums, giving a closed set of legal values that the compiler
+  can check exhaustively.
 
 The principle is: if a constraint can be expressed in the type system, it
 should be. A `Constraint<Integer>` cannot accidentally validate a `String`.

@@ -129,7 +129,8 @@ for common value types.
 | Type | Responsibility |
 |------|---------------|
 | `Element` | A deployable resource with lifecycle (deploy, ready, teardown). Extends `Tagged`. |
-| `RelationshipType` | Enum defining how elements relate: `MUTUALLY_EXCLUSIVE`, `SHARED`, `INSTANCED_PER`. |
+| `RelationshipType` | Enum defining how a dependent element relates to its dependency: `SHARED`, `EXCLUSIVE`, `DEDICATED`, `LIFELINE`. |
+| `Element.Dependency` | Record representing a directed dependency edge with target element and relationship type. |
 
 ---
 

@@ -137,34 +137,40 @@ assert plan.elements().size() == 3;
 
 ## Define relationships between elements
 
-Relationships determine how elements interact during execution. There are
-three relationship types:
+Relationship types are a **directional property of each dependency edge**.
+When element A depends on element B, A declares how it relates to B via
+the `RelationshipType` on the `Element.Dependency` record.
 
-| Type | Concurrency | Instances |
-|---|---|---|
-| `MUTUALLY_EXCLUSIVE` | Serialized | Single |
-| `SHARED` | Concurrent | Single |
-| `INSTANCED_PER` | Concurrent | Per scope |
+| Type | Concurrency | Instance Sharing | Best For |
+|---|---|---|---|
+| `SHARED` (default) | Concurrent | Shared | Read-heavy / thread-safe |
+| `EXCLUSIVE` | Serialized | Shared | Safety-critical resources |
+| `DEDICATED` | N/A | Dedicated per dependent | Per-tenant isolation |
+| `LIFELINE` | Concurrent | Shared | Container-on-node lifecycle |
 
-Relationships are set through the `TestPlanBuilder` interface.
+Element lifecycle (when instances are redeployed vs. persisted) is determined
+by the fingerprint-based group mechanism in the compilation pipeline, not by
+relationship type. If an element's parameters change between trials, it is
+redeployed automatically; if not, it persists.
+
+Relationships are declared on the element's dependency edges via the builder.
 
 ```java
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.mock.plan.MockElement;
 
 var database = MockElement.of("postgres");
-var appServer = MockElement.of("api-server");
-var container = MockElement.of("test-container");
 
-// Using the TestPlanBuilder (from ImplementationProvider)
 // Exclusive access: only one trial uses the database at a time
-// builder.relationship(database, appServer, RelationshipType.MUTUALLY_EXCLUSIVE);
+var appServer = MockElement.builder("api-server")
+    .dependency(database, RelationshipType.EXCLUSIVE)
+    .build();
 
-// Shared: all trials share the same cache instance
-// builder.relationship(cache, appServer, RelationshipType.SHARED);
-
-// Per-trial isolation: each trial gets its own container
-// builder.relationship(container, appServer, RelationshipType.INSTANCED_PER);
+// Shared (default): all trials share the same cache instance
+var cache = MockElement.of("redis-cache");
+var worker = MockElement.builder("worker")
+    .dependency(cache)  // defaults to SHARED
+    .build();
 ```
 
 ---
@@ -190,7 +196,7 @@ var appServer = MockElement.builder("api-server")
 // Start order: storage -> database -> appServer
 // Stop order:  appServer -> database -> storage
 assert database.dependencies().size() == 1;
-assert appServer.dependencies().get(0).name().equals("postgres");
+assert appServer.dependencies().get(0).target().name().equals("postgres");
 ```
 
 ---

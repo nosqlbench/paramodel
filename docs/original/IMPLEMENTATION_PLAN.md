@@ -99,7 +99,7 @@ paramodel/
    - `TestPlan` - Declarative study specification
    - `Axis<T>` - Named parameter dimension
    - `Element` - Instantiable/deployable unit
-   - `RelationshipType` - Enum (MUTUALLY_EXCLUSIVE, SHARED, INSTANCED_PER)
+   - `RelationshipType` - Enum (MUTUALLY_EXCLUSIVE, SHARED)
    - `ExecutionPolicies` - Retry and error policies
    - `TestPlanBuilder` - Fluent API
    - `TestPlanMetadata`

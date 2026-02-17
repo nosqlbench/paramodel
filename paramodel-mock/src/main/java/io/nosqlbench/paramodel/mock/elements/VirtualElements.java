@@ -1,17 +1,14 @@
 package io.nosqlbench.paramodel.mock.elements;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.mock.plan.MockElement;
 import io.nosqlbench.paramodel.parameters.types.BooleanParameter;
 import io.nosqlbench.paramodel.parameters.types.DoubleParameter;
 import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
 import io.nosqlbench.paramodel.parameters.types.SelectionParameter;
-import io.nosqlbench.paramodel.plan.TestPlan;
 
 import java.time.Duration;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 ///
@@ -22,11 +19,11 @@ import java.util.Set;
 /// The virtual elements form a directed acyclic graph:
 ///
 /// ```
-///   node (PER_TRIAL, health check)
+///   node (health check)
 ///     │
-///     └──depends on──▶ daemon (PER_RUN, health check)
+///     └──depends on──▶ daemon (health check)
 ///                         │
-///                         └──depends on──▶ dataset (no scope, no health check)
+///                         └──depends on──▶ dataset (no health check)
 /// ```
 ///
 /// ## Elements
@@ -45,9 +42,6 @@ import java.util.Set;
 ///
 /// // All elements in dependency order
 /// List<Element> all = VirtualElements.all();
-///
-/// // Full study specification with relationships
-/// VirtualElements.StudySpec spec = VirtualElements.withRelationships();
 /// ```
 ///
 /// @see MockElement
@@ -66,7 +60,7 @@ public final class VirtualElements {
     /// - `format` — storage format: parquet, csv, or json
     /// - `region` — deployment region: us-east-1, us-west-2, or eu-west-1
     ///
-    /// @return dataset element with no dependencies, no health check, no instancing scope
+    /// @return dataset element with no dependencies, no health check, no binding
     ///
     public static MockElement dataset() {
         return MockElement.builder("dataset")
@@ -86,7 +80,7 @@ public final class VirtualElements {
     /// - `debug` — debug mode on/off
     /// - `heap_gb` — JVM heap size in GB, range [0.5, 32.0]
     ///
-    /// @return daemon element depending on a default dataset, with health check and PER_RUN scope
+    /// @return daemon element depending on a default dataset, with health check
     ///
     public static MockElement daemon() {
         return daemon(dataset());
@@ -96,7 +90,7 @@ public final class VirtualElements {
     /// Creates a daemon element that depends on the specified dataset.
     ///
     /// @param dataset the dataset element this daemon reads from
-    /// @return daemon element depending on specified dataset, with health check and PER_RUN scope
+    /// @return daemon element depending on specified dataset, with health check
     ///
     public static MockElement daemon(Element dataset) {
         return MockElement.builder("daemon")
@@ -107,7 +101,6 @@ public final class VirtualElements {
             .parameter(DoubleParameter.range("heap_gb", 0.5, 32.0))
             .dependency(dataset)
             .healthCheck(MockHealthCheckSpec.withTimeout(Duration.ofSeconds(30)))
-            .instancingScope(Element.InstancingScope.PER_RUN)
             .build();
     }
 
@@ -120,7 +113,7 @@ public final class VirtualElements {
     /// - `memory_gb` — RAM in GB, range [1.0, 256.0]
     /// - `spot_instance` — use spot pricing on/off
     ///
-    /// @return node element depending on a default daemon, with health check and PER_TRIAL scope
+    /// @return node element depending on a default daemon, with health check
     ///
     public static MockElement node() {
         return node(daemon());
@@ -130,7 +123,7 @@ public final class VirtualElements {
     /// Creates a node element that depends on the specified daemon.
     ///
     /// @param daemon the daemon element this node hosts
-    /// @return node element depending on specified daemon, with health check and PER_TRIAL scope
+    /// @return node element depending on specified daemon, with health check
     ///
     public static MockElement node(Element daemon) {
         return MockElement.builder("node")
@@ -142,7 +135,6 @@ public final class VirtualElements {
             .parameter(BooleanParameter.of("spot_instance"))
             .dependency(daemon)
             .healthCheck(MockHealthCheckSpec.withTimeout(Duration.ofSeconds(15)))
-            .instancingScope(Element.InstancingScope.PER_TRIAL)
             .build();
     }
 
@@ -161,42 +153,4 @@ public final class VirtualElements {
         return List.of(ds, dm, nd);
     }
 
-    ///
-    /// Returns a full study specification with elements and relationship types.
-    ///
-    /// Relationships:
-    /// - dataset ↔ daemon: {@link RelationshipType#SHARED} (static data, shared by all)
-    /// - daemon ↔ node: {@link RelationshipType#INSTANCED_PER} (each node gets its own daemon view)
-    ///
-    /// @return study specification with elements in dependency order and relationship map
-    ///
-    public static StudySpec withRelationships() {
-        List<Element> elements = all();
-        Element ds = elements.get(0);
-        Element dm = elements.get(1);
-        Element nd = elements.get(2);
-
-        Map<TestPlan.ElementPair, RelationshipType> relationships = Map.of(
-            new TestPlan.ElementPair(ds, dm), RelationshipType.SHARED,
-            new TestPlan.ElementPair(dm, nd), RelationshipType.INSTANCED_PER
-        );
-
-        return new StudySpec(elements, relationships);
-    }
-
-    ///
-    /// A complete study specification containing elements and their relationships.
-    ///
-    /// @param elements      elements in dependency order (leaf nodes first)
-    /// @param relationships map of element pairs to relationship types
-    ///
-    public record StudySpec(
-        List<Element> elements,
-        Map<TestPlan.ElementPair, RelationshipType> relationships
-    ) {
-        public StudySpec {
-            elements = List.copyOf(elements);
-            relationships = Map.copyOf(relationships);
-        }
-    }
 }

@@ -51,7 +51,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t0", "server", 0, sameConfig, List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 0)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_0", "trial_0", Map.of("server", "inst_0"), List.of("deploy_server_t0"),
@@ -66,7 +66,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t1", "server", 1, sameConfig, List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 1)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_1", "trial_1", Map.of("server", "inst_1"), List.of("deploy_server_t1"),
@@ -116,7 +116,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t0", "server", 0, Map.of("port", 8080), List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 0)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_0", "trial_0", Map.of("server", "inst_0"), List.of("deploy_server_t0"),
@@ -131,7 +131,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t1", "server", 1, Map.of("port", 8081), List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 1)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_1", "trial_1", Map.of("server", "inst_1"), List.of("deploy_server_t1"),
@@ -179,7 +179,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t0", "server", 0, sameConfig, List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 0)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.TeardownElement(
             "teardown_server_t1", "server", 0, false, List.of("deploy_server_t0"),
@@ -189,7 +189,7 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t1", "server", 1, sameConfig, List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 1)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
 
         context.setSteps(injectedSteps);
@@ -236,12 +236,12 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t0", "server", 0, serverConfig, List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 0)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_cache_t0", "cache", 0, cacheConfig0, List.of(),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 0)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_0", "trial_0", Map.of("server", "inst_s0", "cache", "inst_c0"),
@@ -266,12 +266,12 @@ class PruneRedundantPassTest {
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_server_t1", "server", 1, serverConfig, List.of("teardown_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 1)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.DeployElement(
             "deploy_cache_t1", "cache", 1, cacheConfig1, List.of("teardown_cache_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
-            Optional.empty(), Map.of("scope", "PER_GROUP", "trial_index", 1)
+            Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
         injectedSteps.add(new AtomicStep.ExecuteTrial(
             "exec_trial_1", "trial_1", Map.of("server", "inst_s1", "cache", "inst_c1"),

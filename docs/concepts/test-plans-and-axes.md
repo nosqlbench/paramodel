@@ -38,7 +38,6 @@ Both types live in `io.nosqlbench.paramodel.plan`.
 | `name()`                | `String`                                | Study identifier                               |
 | `axes()`                | `List<Axis<?>>`                         | Ordered parameter dimensions                   |
 | `elements()`            | `List<Element>`                         | Resources required for execution               |
-| `relationships()`       | `Map<ElementPair, RelationshipType>`    | How elements interact                          |
 | `policies()`            | `ExecutionPolicies`                     | Retry, timeout, ordering policies              |
 | `optimizationStrategy()`| `OptimizationStrategy`                  | Compilation aggressiveness                     |
 | `trialSpaceSize()`      | `long`                                  | Total trials (product of axis cardinalities)   |

@@ -1,7 +1,6 @@
 package io.nosqlbench.paramodel.mock.elements;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.mock.plan.MockAxis;
 import io.nosqlbench.paramodel.mock.plan.MockElement;
 import io.nosqlbench.paramodel.mock.plan.MockTestPlan;
@@ -13,8 +12,6 @@ import io.nosqlbench.paramodel.parameters.types.IntegerParameter;
 import io.nosqlbench.paramodel.parameters.types.SelectionParameter;
 import io.nosqlbench.paramodel.parameters.types.StringParameter;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
-import io.nosqlbench.paramodel.plan.TestPlan;
-
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -47,11 +44,10 @@ class VirtualElementsTest {
             assertThat(dataset.parameters()).hasSize(3);
             assertThat(dataset.dependencies()).isEmpty();
             assertThat(dataset.healthCheck()).isEmpty();
-            assertThat(dataset.instancingScope()).isEmpty();
         }
 
         @Test
-        @DisplayName("daemon has correct name, type, 4 parameters, depends on dataset, health check, PER_RUN")
+        @DisplayName("daemon has correct name, type, 4 parameters, depends on dataset, health check")
         void testDaemonElement() {
             Element daemon = VirtualElements.daemon();
 
@@ -59,13 +55,12 @@ class VirtualElementsTest {
             assertThat(daemon.tags()).containsEntry("type", "daemon");
             assertThat(daemon.parameters()).hasSize(4);
             assertThat(daemon.dependencies()).hasSize(1);
-            assertThat(daemon.dependencies().get(0).name()).isEqualTo("dataset");
+            assertThat(daemon.dependencies().get(0).target().name()).isEqualTo("dataset");
             assertThat(daemon.healthCheck()).isPresent();
-            assertThat(daemon.instancingScope()).contains(Element.InstancingScope.PER_RUN);
         }
 
         @Test
-        @DisplayName("node has correct name, type, 4 parameters, depends on daemon, health check, PER_TRIAL")
+        @DisplayName("node has correct name, type, 4 parameters, depends on daemon, health check")
         void testNodeElement() {
             Element node = VirtualElements.node();
 
@@ -73,9 +68,8 @@ class VirtualElementsTest {
             assertThat(node.tags()).containsEntry("type", "node");
             assertThat(node.parameters()).hasSize(4);
             assertThat(node.dependencies()).hasSize(1);
-            assertThat(node.dependencies().get(0).name()).isEqualTo("daemon");
+            assertThat(node.dependencies().get(0).target().name()).isEqualTo("daemon");
             assertThat(node.healthCheck()).isPresent();
-            assertThat(node.instancingScope()).contains(Element.InstancingScope.PER_TRIAL);
         }
 
         @Test
@@ -184,12 +178,12 @@ class VirtualElementsTest {
 
             assertThat(ds.dependencies()).isEmpty();
             assertThat(dm.dependencies()).hasSize(1);
-            assertThat(dm.dependencies().get(0).name()).isEqualTo("dataset");
+            assertThat(dm.dependencies().get(0).target().name()).isEqualTo("dataset");
             assertThat(nd.dependencies()).hasSize(1);
-            assertThat(nd.dependencies().get(0).name()).isEqualTo("daemon");
+            assertThat(nd.dependencies().get(0).target().name()).isEqualTo("daemon");
 
             // Transitive: node's daemon's dataset is the same dataset
-            Element transitiveDep = nd.dependencies().get(0).dependencies().get(0);
+            Element transitiveDep = nd.dependencies().get(0).target().dependencies().get(0).target();
             assertThat(transitiveDep.name()).isEqualTo("dataset");
         }
 
@@ -202,7 +196,7 @@ class VirtualElementsTest {
             Element dm = VirtualElements.daemon(customDs);
 
             assertThat(dm.dependencies()).hasSize(1);
-            assertThat(dm.dependencies().get(0).name()).isEqualTo("custom-dataset");
+            assertThat(dm.dependencies().get(0).target().name()).isEqualTo("custom-dataset");
         }
 
         @Test
@@ -223,8 +217,8 @@ class VirtualElementsTest {
             }
             globalVisited.add(name);
             path.add(name);
-            for (Element dep : element.dependencies()) {
-                assertNoCycles(dep, globalVisited, new LinkedHashSet<>(path));
+            for (Element.Dependency dep : element.dependencies()) {
+                assertNoCycles(dep.target(), globalVisited, new LinkedHashSet<>(path));
             }
         }
     }
@@ -296,24 +290,6 @@ class VirtualElementsTest {
 
             ValidationResult result = plan.validate();
             assertThat(result.isPassed()).isTrue();
-        }
-
-        @Test
-        @DisplayName("withRelationships provides SHARED and INSTANCED_PER relationship types")
-        void testRelationships() {
-            VirtualElements.StudySpec spec = VirtualElements.withRelationships();
-
-            assertThat(spec.elements()).hasSize(3);
-            assertThat(spec.relationships()).hasSize(2);
-
-            Element ds = spec.elements().get(0);
-            Element dm = spec.elements().get(1);
-            Element nd = spec.elements().get(2);
-
-            assertThat(spec.relationships().get(new TestPlan.ElementPair(ds, dm)))
-                .isEqualTo(RelationshipType.SHARED);
-            assertThat(spec.relationships().get(new TestPlan.ElementPair(dm, nd)))
-                .isEqualTo(RelationshipType.INSTANCED_PER);
         }
 
         @Test

@@ -84,8 +84,9 @@ import java.util.Set;
 ///
 /// TestPlan:
 ///   - Axes: cache_size={128,256}, concurrency={10,50}
-///   - Elements: db (SHARED), cache (INSTANCED_PER concurrency), app (INSTANCED_PER trial)
-///   - Relationships: db←SHARED→cache, cache←INSTANCED_PER→app
+///   - Elements: db (SHARED), cache (SHARED), app (SHARED)
+///   - Relationships: db←SHARED→cache, cache←SHARED→app
+///   - Lifecycle determined by fingerprint-based grouping (parameter-axis overlap)
 ///
 /// Compiled ExecutionPlan Graph:
 ///

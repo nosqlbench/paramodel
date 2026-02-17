@@ -128,12 +128,12 @@ import java.util.Optional;
 ///   - Elements: db, cache, app
 ///   - Relationships:
 ///       db ←SHARED→ cache
-///       cache ←INSTANCED_PER→ app
+///       cache ←SHARED→ app
 ///
-/// Analysis:
-///   - db: SHARED by all → 1 instance total
-///   - cache: INSTANCED_PER concurrency → 2 instances (one per concurrency value)
-///   - app: INSTANCED_PER trial → 4 instances (one per trial)
+/// Analysis (fingerprint-based grouping determines instance lifecycle):
+///   - db: No parameter-axis binding → 1 instance total
+///   - cache: Bound to concurrency axis → 2 instances (one per concurrency value)
+///   - app: Bound to all axes → 4 instances (one per trial)
 ///
 /// Instance Plan:
 ///   db_instance_1:

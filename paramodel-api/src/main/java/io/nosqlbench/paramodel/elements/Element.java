@@ -86,17 +86,14 @@ import java.util.Optional;
 /// ├── resultParameters: List<Parameter<?>>
 /// │   └── Optional deployment outputs this element can publish
 /// │
-/// ├── dependencies: List<Element>
-/// │   └── Other elements this depends on (DAG)
+/// ├── dependencies: List<Dependency>
+/// │   └── Typed dependency edges (target + RelationshipType)
 /// │
 /// ├── healthCheck: Optional<HealthCheckSpec>
 /// │   └── Readiness verification strategy
 /// │
 /// ├── statusCheck: LiveStatusSummary
 /// │   └── Current operational state + one-line evidence
-/// │
-/// ├── instancingScope: Optional<InstancingScope>
-/// │   └── PER_TRIAL | PER_GROUP | PER_RUN
 /// │
 /// ├── trial lifecycle (via TrialLifecycleParticipant)
 /// │   ├── onTrialStarting(TrialContext)
@@ -108,7 +105,18 @@ import java.util.Optional;
 ///
 /// ## Dependency Semantics
 ///
-/// Elements form a directed acyclic graph (DAG) through dependencies:
+/// Elements form a directed acyclic graph (DAG) through typed dependencies.
+/// Each dependency edge is a {@link Dependency} record carrying the target
+/// element and a {@link RelationshipType} that describes how the dependent
+/// relates to its upstream:
+///
+/// ```
+/// Element
+/// └── dependencies: List<Dependency>
+///     └── Dependency(target: Element, type: RelationshipType)
+/// ```
+///
+/// Ordering rules:
 ///
 /// ```
 /// If A depends on B:
@@ -130,20 +138,18 @@ import java.util.Optional;
 /// Stop order:  LoadBalancer → AppServer → Database → StorageVolume
 /// ```
 ///
-/// ## Relationship Types
+/// ## Relationship Types (on the dependency edge)
 ///
-/// Elements relate via {@link RelationshipType}:
+/// | Type | Meaning |
+/// |------|---------|
+/// | SHARED | Target can be concurrently used by multiple dependents (default) |
+/// | EXCLUSIVE | During dependent's lifetime, no other dependent of target can be active |
+/// | DEDICATED | Target gets a dedicated instance for the dependent |
+/// | LIFELINE | Target's teardown subsumes the dependent's teardown |
 ///
-/// ```
-/// Database <──MUTUALLY_EXCLUSIVE──> AppServer
-///   (Only one trial uses database at a time)
-///
-/// Cache <──SHARED──> AppServer
-///   (All trials share cache instance)
-///
-/// Container <──INSTANCED_PER──> TestRunner
-///   (Each trial gets its own container)
-/// ```
+/// When all of an element's dependencies are LIFELINE, the element's
+/// final teardown step is omitted — the upstream teardowns implicitly
+/// destroy it.
 ///
 /// ## Usage Examples
 ///
@@ -158,31 +164,28 @@ import java.util.Optional;
 /// // Dependencies
 /// Element storage = ...;
 /// Element db = ...; // depends on storage
-/// List<Element> deps = db.dependencies();
-/// // [storage]
+/// List<Dependency> deps = db.dependencies();
+/// // [Dependency(storage, SHARED)]
 /// ```
 ///
-/// ## Instancing Scopes
+/// ## Element Lifecycle Derivation
 ///
-/// Scopes form a containment hierarchy derived from axis nesting:
+/// An element's lifecycle is derived by the compilation pipeline from
+/// parameter-axis overlap. Elements do not declare their own lifecycle:
 ///
 /// ```
-/// PER_RUN  ⊇  PER_GROUP  ⊇  PER_TRIAL
+/// Depth 0 (no axes target this element's parameters):
+///   Run-scoped — deploys once at start, tears down once at end.
 ///
-/// PER_RUN:
-///   Outermost group — no varying axis.
-///   Deploys once at start, tears down once at end.
-///
-/// PER_GROUP:
-///   Default for axis-targeted elements.
-///   Persists for a contiguous group of trials with constant config.
-///   Redeploys at group boundaries when config fingerprint changes.
-///   Group size determined by axis nesting order.
-///
-/// PER_TRIAL:
-///   Explicit override only — never inferred.
-///   Fresh independent instance per trial with eager teardown.
+/// Depth K (K axes target this element's parameters):
+///   Grouped — persists for contiguous trial blocks where all K
+///   bound axis values are constant. Redeployed at group boundaries
+///   when the configuration fingerprint changes.
 /// ```
+///
+/// The fingerprint includes recursive dependency fingerprints, so if
+/// an upstream element's configuration changes, downstream elements
+/// are also redeployed.
 ///
 /// ## Health Checks
 ///
@@ -336,7 +339,34 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     }
 
     ///
-    /// Returns elements this element depends on.
+    /// A directed dependency edge from this element to an upstream target element.
+    ///
+    /// Each dependency carries a {@link RelationshipType} that describes how
+    /// the dependent relates to its upstream target.
+    ///
+    /// @param target the upstream element this element depends on
+    /// @param type   how this element relates to the dependency
+    ///
+    record Dependency(Element target, RelationshipType type) {
+        public Dependency {
+            java.util.Objects.requireNonNull(target, "target");
+            java.util.Objects.requireNonNull(type, "type");
+        }
+
+        /// Creates a SHARED dependency (the default).
+        ///
+        /// @param target the upstream element
+        /// @return a new SHARED dependency edge
+        public static Dependency shared(Element target) {
+            return new Dependency(target, RelationshipType.SHARED);
+        }
+    }
+
+    ///
+    /// Returns the typed dependency edges for this element.
+    ///
+    /// Each dependency is a {@link Dependency} record carrying the target
+    /// element and a {@link RelationshipType}.
     ///
     /// ## Dependency Semantics
     ///
@@ -360,7 +390,7 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     ///
     /// @return unmodifiable list of dependencies, never null (may be empty)
     ///
-    List<Element> dependencies();
+    List<Dependency> dependencies();
 
     ///
     /// Returns the health check specification for this element.
@@ -423,22 +453,6 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
         return Map.of();
     }
 
-    ///
-    /// Returns the instancing scope for this element.
-    ///
-    /// For {@link RelationshipType#INSTANCED_PER} relationships, the scope
-    /// determines how frequently new instances are created:
-    ///
-    /// ```
-    /// PER_TRIAL: new instance for each trial
-    /// PER_GROUP: new instance for each group of trials
-    /// PER_RUN:   new instance for each run
-    /// ```
-    ///
-    /// @return instancing scope if this element is instanced per scope
-    ///
-    Optional<InstancingScope> instancingScope();
-
     // -----------------------------------------------------------------------
     // State observation (default implementation)
     // -----------------------------------------------------------------------
@@ -475,51 +489,31 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     }
 
     ///
-    /// Instancing scope for element lifecycle management.
+    /// Shutdown behavior for this element.
     ///
-    /// Scopes form a containment hierarchy derived from axis nesting:
+    /// - **SERVICE**: Long-running process that requires explicit shutdown.
+    ///   The scheduler issues a stop signal and waits for graceful termination.
+    ///   This is the default when no semantics are specified.
     ///
-    /// ```
-    /// PER_RUN  ⊇  PER_GROUP  ⊇  PER_TRIAL
-    /// ```
-    ///
-    /// - **PER_RUN** is the outermost group — logically equivalent to
-    ///   PER_GROUP where the group encompasses the entire run. An element
-    ///   with no varying axis parameter is PER_RUN: it deploys once at
-    ///   the start and tears down once at the end.
-    ///
-    /// - **PER_GROUP** is the default scope for axis-targeted elements.
-    ///   A group is a contiguous block of trials where the element's
-    ///   configuration fingerprint is constant. The element deploys at
-    ///   group start, persists across all trials in the group, and tears
-    ///   down at the group boundary when the fingerprint changes. The
-    ///   axis nesting order determines group size: an element on the
-    ///   outermost axis has larger groups than one on an inner axis.
-    ///
-    /// - **PER_TRIAL** is an explicit override: the element gets a fresh
-    ///   independent instance for every trial, with eager teardown after
-    ///   the trial completes — regardless of whether the configuration
-    ///   changed. Only applies when explicitly declared.
-    ///
-    /// Enum ordinal encodes lifetime: PER_TRIAL (0) < PER_GROUP (1) <
-    /// PER_RUN (2). Scope validation enforces that a longer-lived element
-    /// cannot depend on a shorter-lived one.
-    ///
-    enum InstancingScope {
-        /// Fresh independent instance per trial with eager teardown.
-        /// Only assigned when explicitly declared, never inferred.
-        PER_TRIAL,
+    /// - **COMMAND**: Self-terminating process that runs to completion.
+    ///   The scheduler awaits natural completion instead of issuing a shutdown.
+    ///   The trial element's step becomes {@code AwaitElement} instead of
+    ///   {@code ExecuteTrial} + {@code TeardownElement}.
+    enum ShutdownSemantics {
+        /// Long-running; requires explicit stop signal. Default.
+        SERVICE,
+        /// Self-terminating; scheduler awaits natural completion.
+        COMMAND
+    }
 
-        /// Persists for a contiguous group of trials with constant
-        /// configuration. Redeployed at group boundaries when the
-        /// configuration fingerprint changes. Default for axis-targeted
-        /// elements.
-        PER_GROUP,
-
-        /// Outermost group — deploys once, persists for the entire run.
-        /// Logically equivalent to PER_GROUP where the group is the full
-        /// set of trials. Default for elements with no varying axis.
-        PER_RUN
+    /// Returns the shutdown semantics for this element.
+    ///
+    /// SERVICE elements require explicit teardown. COMMAND elements are
+    /// self-terminating and are awaited rather than stopped.
+    ///
+    /// @return shutdown semantics, defaults to SERVICE when not specified
+    default ShutdownSemantics shutdownSemantics() {
+        return ShutdownSemantics.SERVICE;
     }
 
     ///

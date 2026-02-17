@@ -60,13 +60,6 @@ public abstract class TestPlanTCK {
     }
 
     @Test
-    public void testTestPlanHasRelationships() {
-        TestPlan plan = getProvider().createTestPlan();
-
-        assertThat(plan.relationships()).isNotNull();
-    }
-
-    @Test
     public void testTestPlanHasOptimizationStrategy() {
         TestPlan plan = getProvider().createTestPlan();
 

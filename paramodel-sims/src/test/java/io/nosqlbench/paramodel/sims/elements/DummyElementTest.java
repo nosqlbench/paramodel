@@ -72,14 +72,6 @@ class DummyElementTest {
         }
 
         @Test
-        @DisplayName("template has no instancing scope")
-        void testNoInstancingScope() {
-            Element template = DummyElement.template();
-
-            assertThat(template.instancingScope()).isEmpty();
-        }
-
-        @Test
         @DisplayName("status check returns inactive at model level")
         void testStatusCheckInactive() {
             Element template = DummyElement.template();

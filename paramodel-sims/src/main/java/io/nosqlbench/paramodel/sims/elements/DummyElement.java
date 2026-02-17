@@ -188,7 +188,7 @@ public class DummyElement implements Element {
     }
 
     @Override
-    public List<Element> dependencies() {
+    public List<Dependency> dependencies() {
         return List.of();
     }
 
@@ -200,11 +200,6 @@ public class DummyElement implements Element {
     @Override
     public LiveStatusSummary statusCheck() {
         return new LiveStatusSummary(currentState, currentSummary);
-    }
-
-    @Override
-    public Optional<InstancingScope> instancingScope() {
-        return Optional.empty();
     }
 
     // -----------------------------------------------------------------------

@@ -6,7 +6,6 @@ package io.nosqlbench.paramodel.engine.plan;
 
 import io.nosqlbench.paramodel.compilation.Compiler;
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.engine.compiler.DefaultCompiler;
 import io.nosqlbench.paramodel.parameters.ValidationResult;
 import io.nosqlbench.paramodel.plan.Axis;
@@ -66,7 +65,6 @@ public class DefaultTestPlan implements TestPlan, Sequence {
     private final String description;
     private final Map<String, Element> elements;
     private final List<Axis<?>> axes;
-    private final Map<ElementPair, RelationshipType> relationships;
     private final ExecutionPolicies policies;
     private final OptimizationStrategy optimizationStrategy;
     private final TestPlanMetadata metadata;
@@ -80,7 +78,6 @@ public class DefaultTestPlan implements TestPlan, Sequence {
         this.description = builder.description;
         this.elements = new LinkedHashMap<>(builder.elements);
         this.axes = Collections.unmodifiableList(new ArrayList<>(builder.axes));
-        this.relationships = Collections.unmodifiableMap(new LinkedHashMap<>(builder.relationships));
         this.policies = builder.policies;
         this.optimizationStrategy = builder.optimizationStrategy;
         this.metadata = builder.metadata != null ? builder.metadata : new DefaultMetadata(description);
@@ -108,21 +105,6 @@ public class DefaultTestPlan implements TestPlan, Sequence {
     @Override
     public List<Element> elements() {
         return List.copyOf(elements.values());
-    }
-
-    @Override
-    public Map<ElementPair, RelationshipType> relationships() {
-        return relationships;
-    }
-
-    @Override
-    public Optional<RelationshipType> relationshipBetween(Element element1, Element element2) {
-        ElementPair forward = new ElementPair(element1, element2);
-        if (relationships.containsKey(forward)) {
-            return Optional.of(relationships.get(forward));
-        }
-        ElementPair reverse = new ElementPair(element2, element1);
-        return Optional.ofNullable(relationships.get(reverse));
     }
 
     @Override
@@ -280,7 +262,6 @@ public class DefaultTestPlan implements TestPlan, Sequence {
         private final Map<String, Element> elements = new LinkedHashMap<>();
         private final List<Axis<?>> axes = new ArrayList<>();
         private final List<Trial> trials = new ArrayList<>();
-        private final Map<ElementPair, RelationshipType> relationships = new LinkedHashMap<>();
         private ExecutionPolicies policies = new NoOpExecutionPolicies();
         private OptimizationStrategy optimizationStrategy = OptimizationStrategy.NONE;
         private TestPlanMetadata metadata;
@@ -327,12 +308,6 @@ public class DefaultTestPlan implements TestPlan, Sequence {
         /// Adds multiple trials to the plan.
         public Builder trials(List<Trial> trials) {
             this.trials.addAll(trials);
-            return this;
-        }
-
-        /// Adds a relationship between two elements.
-        public Builder relationship(Element from, Element to, RelationshipType type) {
-            this.relationships.put(new ElementPair(from, to), type);
             return this;
         }
 

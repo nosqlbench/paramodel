@@ -9,8 +9,7 @@ import static org.assertj.core.api.Assertions.*;
 /// Technology Compatibility Kit tests for RelationshipType enum behavior.
 ///
 /// Validates that the enum's behavior methods correctly reflect the
-/// concurrency, instance sharing, and barrier semantics defined by
-/// each relationship type.
+/// concurrency and barrier semantics defined by each relationship type.
 ///
 /// @see RelationshipType
 /// @since 0.1.0
@@ -19,35 +18,24 @@ public abstract class RelationshipTypeTCK {
     protected RelationshipTypeTCK() {}
 
     @Test
-    public void testMutuallyExclusiveDoesNotAllowConcurrency() {
-        assertThat(RelationshipType.MUTUALLY_EXCLUSIVE.allowsConcurrency()).isFalse();
+    public void testSharedDoesNotRequireSerializationBarrier() {
+        assertThat(RelationshipType.SHARED.requiresSerializationBarrier()).isFalse();
     }
 
     @Test
-    public void testSharedAllowsConcurrency() {
-        assertThat(RelationshipType.SHARED.allowsConcurrency()).isTrue();
+    public void testExclusiveRequiresSerializationBarrier() {
+        assertThat(RelationshipType.EXCLUSIVE.requiresSerializationBarrier()).isTrue();
     }
 
     @Test
-    public void testInstancedPerAllowsConcurrency() {
-        assertThat(RelationshipType.INSTANCED_PER.allowsConcurrency()).isTrue();
+    public void testDedicatedRequiresDedicatedInstance() {
+        assertThat(RelationshipType.DEDICATED.requiresDedicatedInstance()).isTrue();
+        assertThat(RelationshipType.SHARED.requiresDedicatedInstance()).isFalse();
     }
 
     @Test
-    public void testMutuallyExclusiveRequiresBarriers() {
-        assertThat(RelationshipType.MUTUALLY_EXCLUSIVE.requiresBarriers()).isTrue();
-        assertThat(RelationshipType.SHARED.requiresBarriers()).isFalse();
-        assertThat(RelationshipType.INSTANCED_PER.requiresBarriers()).isFalse();
-    }
-
-    @Test
-    public void testSharedRequiresSingleInstance() {
-        assertThat(RelationshipType.SHARED.requiresSingleInstance()).isTrue();
-        assertThat(RelationshipType.MUTUALLY_EXCLUSIVE.requiresSingleInstance()).isTrue();
-    }
-
-    @Test
-    public void testInstancedPerDoesNotRequireSingleInstance() {
-        assertThat(RelationshipType.INSTANCED_PER.requiresSingleInstance()).isFalse();
+    public void testLifelineImpliesLifecycleCoupling() {
+        assertThat(RelationshipType.LIFELINE.impliesLifecycleCoupling()).isTrue();
+        assertThat(RelationshipType.SHARED.impliesLifecycleCoupling()).isFalse();
     }
 }

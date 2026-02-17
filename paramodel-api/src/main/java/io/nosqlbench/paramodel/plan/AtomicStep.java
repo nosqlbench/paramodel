@@ -43,7 +43,7 @@ import java.util.Optional;
 ///
 /// ## Step Types
 ///
-/// Five fundamental step types support the complete execution lifecycle:
+/// Seven step types support the complete execution lifecycle:
 ///
 /// ```
 /// Step Type Hierarchy:
@@ -55,10 +55,19 @@ import java.util.Optional;
 ///   │    ├─ configuration
 ///   │    └─ health_checks
 ///   │
+///   ├─ NotifyTrialStart    (Trial lifecycle: start notification)
+///   │    ├─ trial_id
+///   │    └─ element_names
+///   │
 ///   ├─ ExecuteTrial        (Run parameter combination)
 ///   │    ├─ trial_id
 ///   │    ├─ element_bindings
 ///   │    └─ trial_logic
+///   │
+///   ├─ NotifyTrialEnd      (Trial lifecycle: end notification)
+///   │    ├─ trial_id
+///   │    ├─ element_names
+///   │    └─ planned_reason
 ///   │
 ///   ├─ TeardownElement     (Clean up resources)
 ///   │    ├─ element_id
@@ -367,9 +376,12 @@ import java.util.Optional;
 public sealed interface AtomicStep
     permits AtomicStep.DeployElement,
             AtomicStep.ExecuteTrial,
+            AtomicStep.AwaitElement,
             AtomicStep.TeardownElement,
             AtomicStep.BarrierSync,
-            AtomicStep.CheckpointState {
+            AtomicStep.CheckpointState,
+            AtomicStep.NotifyTrialStart,
+            AtomicStep.NotifyTrialEnd {
 
     ///
     /// Returns the unique identifier for this step.
@@ -534,6 +546,60 @@ public sealed interface AtomicStep
     }
 
     ///
+    /// Step for awaiting natural completion of a COMMAND element.
+    ///
+    /// Emitted instead of {@code ExecuteTrial} when the trial element
+    /// has {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#COMMAND
+    /// COMMAND} shutdown semantics. The element runs to completion on
+    /// its own; the scheduler waits for it to terminate naturally rather
+    /// than issuing a stop signal.
+    ///
+    /// The trial element's teardown step is also omitted — the element
+    /// has already exited when this step completes.
+    ///
+    /// @param id Step identifier
+    /// @param elementId The COMMAND element being awaited
+    /// @param instanceNumber Instance number of the element being awaited
+    /// @param trialId Trial this await belongs to
+    /// @param elementBindings Mapping from element names to instance IDs
+    /// @param dependencies Prerequisite step IDs
+    /// @param estimatedDuration Estimated completion time
+    /// @param resourceRequirements Resource needs
+    /// @param retryPolicy Retry strategy on failure
+    /// @param metadata Additional metadata
+    ///
+    record AwaitElement(
+        String id,
+        String elementId,
+        int instanceNumber,
+        String trialId,
+        Map<String, String> elementBindings,
+        List<String> dependencies,
+        Optional<Duration> estimatedDuration,
+        ResourceRequirements resourceRequirements,
+        Optional<RetryPolicy> retryPolicy,
+        Map<String, Object> metadata
+    ) implements AtomicStep {
+
+        @Override
+        public StepType type() {
+            return StepType.AWAIT_ELEMENT;
+        }
+
+        @Override
+        public String description() {
+            return "Await element: " + elementId + " #" + instanceNumber
+                   + " (trial " + trialId + ")";
+        }
+
+        @Override
+        public StepResult execute(ExecutionContext context) throws StepExecutionException {
+            throw new UnsupportedOperationException(
+                "AwaitElement.execute() requires a concrete implementation");
+        }
+    }
+
+    ///
     /// Step for tearing down an element and collecting artifacts.
     ///
     /// @param id Step identifier
@@ -652,11 +718,130 @@ public sealed interface AtomicStep
     }
 
     ///
+    /// Step for notifying all elements in the trial scope that a trial
+    /// is about to start. Emitted just before the trial element is
+    /// deployed, after all other elements are ready.
+    ///
+    /// At runtime, the executor delivers
+    /// {@link io.nosqlbench.paramodel.elements.TrialLifecycleParticipant#onTrialStarting
+    /// onTrialStarting} to each element instance named in {@code elementNames},
+    /// in dependency order (outermost first).
+    ///
+    /// @param id Step identifier
+    /// @param trialId Trial about to start
+    /// @param elementNames Elements to notify (all elements in the trial scope)
+    /// @param dependencies Prerequisite step IDs
+    /// @param estimatedDuration Estimated notification time
+    /// @param resourceRequirements Resource needs (typically none)
+    /// @param retryPolicy Retry strategy on failure
+    /// @param metadata Additional metadata
+    ///
+    record NotifyTrialStart(
+        String id,
+        String trialId,
+        List<String> elementNames,
+        List<String> dependencies,
+        Optional<Duration> estimatedDuration,
+        ResourceRequirements resourceRequirements,
+        Optional<RetryPolicy> retryPolicy,
+        Map<String, Object> metadata
+    ) implements AtomicStep {
+
+        @Override
+        public StepType type() {
+            return StepType.NOTIFY_TRIAL_START;
+        }
+
+        @Override
+        public String description() {
+            return "Notify trial start: " + trialId + " (" + elementNames.size() + " elements)";
+        }
+
+        @Override
+        public StepResult execute(ExecutionContext context) throws StepExecutionException {
+            throw new UnsupportedOperationException(
+                "NotifyTrialStart.execute() requires a concrete implementation");
+        }
+    }
+
+    ///
+    /// Step for notifying all elements in the trial scope that a trial
+    /// has ended. Emitted just after the trial element is torn down or
+    /// the trial execution completes.
+    ///
+    /// At runtime, the executor delivers
+    /// {@link io.nosqlbench.paramodel.elements.TrialLifecycleParticipant#onTrialEnding
+    /// onTrialEnding} to each element instance named in {@code elementNames},
+    /// in reverse dependency order (innermost first).
+    ///
+    /// The {@code plannedReason} indicates the expected shutdown mode.
+    /// The executor may override this at runtime based on actual outcome
+    /// (e.g. switching from {@code NORMAL} to {@code ERROR} if the trial
+    /// failed).
+    ///
+    /// @param id Step identifier
+    /// @param trialId Trial that has ended
+    /// @param elementNames Elements to notify (all elements in the trial scope)
+    /// @param plannedReason Expected shutdown reason (runtime may override)
+    /// @param dependencies Prerequisite step IDs
+    /// @param estimatedDuration Estimated notification time
+    /// @param resourceRequirements Resource needs (typically none)
+    /// @param retryPolicy Retry strategy on failure
+    /// @param metadata Additional metadata
+    ///
+    record NotifyTrialEnd(
+        String id,
+        String trialId,
+        List<String> elementNames,
+        ShutdownReason plannedReason,
+        List<String> dependencies,
+        Optional<Duration> estimatedDuration,
+        ResourceRequirements resourceRequirements,
+        Optional<RetryPolicy> retryPolicy,
+        Map<String, Object> metadata
+    ) implements AtomicStep {
+
+        @Override
+        public StepType type() {
+            return StepType.NOTIFY_TRIAL_END;
+        }
+
+        @Override
+        public String description() {
+            return "Notify trial end: " + trialId + " (" + plannedReason + ")";
+        }
+
+        @Override
+        public StepResult execute(ExecutionContext context) throws StepExecutionException {
+            throw new UnsupportedOperationException(
+                "NotifyTrialEnd.execute() requires a concrete implementation");
+        }
+    }
+
+    ///
+    /// Reason for trial shutdown, carried by {@link NotifyTrialEnd}.
+    ///
+    /// At compile time the planner sets {@link #NORMAL}. At runtime the
+    /// executor determines the actual reason based on trial outcome.
+    ///
+    enum ShutdownReason {
+        /// Trial completed successfully.
+        NORMAL,
+        /// Trial stopped by operator or control plane (graceful).
+        MANAGED,
+        /// Trial failed with an error.
+        ERROR
+    }
+
+    ///
     /// Step type enumeration.
     ///
     enum StepType {
         DEPLOY_ELEMENT,
+        NOTIFY_TRIAL_START,
         EXECUTE_TRIAL,
+        AWAIT_ELEMENT,
+        NOTIFY_TRIAL_END,
         TEARDOWN_ELEMENT,
         BARRIER_SYNC,
         CHECKPOINT_STATE

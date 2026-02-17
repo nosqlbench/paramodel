@@ -19,9 +19,7 @@ import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.AxisDefinition;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.DependencyDefinition;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.ElementDefinition;
-import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.SamplingDefinition;
 import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.SettingsDefinition;
-import io.nosqlbench.paramodel.elements.Element.InstancingScope;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptor;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 import io.nosqlbench.paramodel.elements.RelationshipType;
@@ -142,7 +140,7 @@ class ValidationStageTest {
 
         // Element missing the required "image" property
         ElementDefinition elem = new ElementDefinition(
-                "server", "service", Map.of(), List.of(), Map.of(), null, Map.of());
+                "server", "service", Map.of(), List.of(), Map.of(), Map.of());
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(elem), List.of(), List.of(), null);
@@ -173,7 +171,7 @@ class ValidationStageTest {
 
         // Node element with forbidden "output" property
         ElementDefinition elem = new ElementDefinition(
-                "infra", "node", Map.of(), List.of(), Map.of(), null,
+                "infra", "node", Map.of(), List.of(), Map.of(),
                 Map.of("output", Map.of("volume", "/out")));
 
         TestPlanDefinition def = new TestPlanDefinition(
@@ -205,7 +203,7 @@ class ValidationStageTest {
 
         // Service element with advisory "output" property
         ElementDefinition elem = new ElementDefinition(
-                "server", "service", Map.of(), List.of(), Map.of(), null,
+                "server", "service", Map.of(), List.of(), Map.of(),
                 Map.of("image", "nginx:latest", "output", Map.of("volume", "/out")));
 
         TestPlanDefinition def = new TestPlanDefinition(
@@ -224,7 +222,7 @@ class ValidationStageTest {
         // With the default open provider, no field validation is performed —
         // an element without any properties is valid.
         ElementDefinition elem = new ElementDefinition(
-                "server", "service", Map.of(), List.of(), Map.of(), null, Map.of());
+                "server", "service", Map.of(), List.of(), Map.of(), Map.of());
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(elem), List.of(), List.of(), null);
@@ -239,7 +237,7 @@ class ValidationStageTest {
         ElementDefinition server = new ElementDefinition(
                 "server", "service", Map.of(),
                 List.of(new DependencyDefinition("nonexistent", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "nginx:latest"));
+                Map.of(), Map.of("image", "nginx:latest"));
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(server), List.of(), List.of(), null);
@@ -256,7 +254,7 @@ class ValidationStageTest {
         ElementDefinition server = new ElementDefinition(
                 "server", "service", Map.of(),
                 List.of(new DependencyDefinition("server", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "nginx:latest"));
+                Map.of(), Map.of("image", "nginx:latest"));
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(server), List.of(), List.of(), null);
@@ -273,12 +271,12 @@ class ValidationStageTest {
         ElementDefinition a = new ElementDefinition(
                 "a", "service", Map.of(),
                 List.of(new DependencyDefinition("b", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:a"));
+                Map.of(), Map.of("image", "image:a"));
 
         ElementDefinition b = new ElementDefinition(
                 "b", "service", Map.of(),
                 List.of(new DependencyDefinition("a", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:b"));
+                Map.of(), Map.of("image", "image:b"));
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(a, b), List.of(), List.of(), null);
@@ -296,11 +294,11 @@ class ValidationStageTest {
         ElementDefinition b = new ElementDefinition(
                 "b", "service", Map.of(),
                 List.of(new DependencyDefinition("a", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:b"));
+                Map.of(), Map.of("image", "image:b"));
         ElementDefinition c = new ElementDefinition(
                 "c", "command", Map.of(),
                 List.of(new DependencyDefinition("b", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:c"));
+                Map.of(), Map.of("image", "image:c"));
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(a, b, c), List.of(), List.of(), null);
@@ -310,27 +308,6 @@ class ValidationStageTest {
         assertThat(report.isValid()).isTrue();
     }
 
-    @Test
-    void testScopeViolation() {
-        // PER_RUN scope element trying to depend on PER_TRIAL scope element
-        ElementDefinition studyScoped = new ElementDefinition(
-                "shared", "service", Map.of(),
-                List.of(new DependencyDefinition("varied", RelationshipType.SHARED)),
-                Map.of(), InstancingScope.PER_RUN, Map.of("image", "image:shared"));
-
-        ElementDefinition trialScoped = new ElementDefinition(
-                "varied", "service", Map.of(), List.of(), Map.of(),
-                InstancingScope.PER_TRIAL, Map.of("image", "image:varied"));
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(studyScoped, trialScoped), List.of(), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasErrors()).isTrue();
-        assertThat(report.errors())
-                .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_SCOPE_VIOLATION)));
-    }
 
     @Test
     void testUnknownAxisElement() {
@@ -422,7 +399,7 @@ class ValidationStageTest {
     /// varied parameters — nodes are elements like any other.
     void testAxisAllowedOnNodeElement() {
         ElementDefinition infra = new ElementDefinition(
-                "infra", "node", Map.of(), List.of(), Map.of(), null, Map.of());
+                "infra", "node", Map.of(), List.of(), Map.of(), Map.of());
 
         AxisDefinition axis = new AxisDefinition(
                 "instance_type", "infra", List.of("m5.xlarge", "m5.2xlarge"),
@@ -435,26 +412,6 @@ class ValidationStageTest {
 
         assertThat(report.errors())
                 .noneMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_AXIS_LOCALITY)));
-    }
-
-    @Test
-    void testAxisLocalityStudyScopedElement() {
-        ElementDefinition server = new ElementDefinition(
-                "server", "service", Map.of(), List.of(), Map.of(),
-                InstancingScope.PER_RUN, Map.of("image", "nginx:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "threads", "server", List.of(1, 2, 4),
-                null, null, "serial", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasErrors()).isTrue();
-        assertThat(report.errors())
-                .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_AXIS_LOCALITY)));
     }
 
     @Test
@@ -497,13 +454,11 @@ class ValidationStageTest {
                 .tag("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command").tag("image", "client:latest")
-                .tag("instancing_hint", "per_trial")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .relationship(server, client, RelationshipType.SHARED)
                 .trial(new DefaultTrial("trial-0", Map.of(
                         "server.threads", val("threads", 1)
                 ), List.of(), null))
@@ -525,13 +480,11 @@ class ValidationStageTest {
                 .tag("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command").tag("image", "client:latest")
-                .tag("instancing_hint", "per_trial")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .relationship(server, client, RelationshipType.SHARED)
                 .trial(new DefaultTrial("trial-0", Map.of(
                         "server.threads", val("threads", 4),
                         "client.dataset", val("dataset", "sift")
@@ -548,18 +501,16 @@ class ValidationStageTest {
     }
 
     @Test
-    void testNoUnstableReuseWarningForMutuallyExclusiveRelationship() {
+    void testNoUnstableReuseWarningForExclusiveRelationship() {
         DefaultElement server = DefaultElement.builder("server")
                 .tag("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command").tag("image", "client:latest")
-                .tag("instancing_hint", "per_trial")
-                .dependency(server).build();
+                .dependency(server, RelationshipType.EXCLUSIVE).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .relationship(server, client, RelationshipType.MUTUALLY_EXCLUSIVE)
                 .trial(new DefaultTrial("trial-0", Map.of(
                         "server.threads", val("threads", 1)
                 ), List.of(), null))
@@ -579,13 +530,11 @@ class ValidationStageTest {
                 .tag("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
                 .tag("type", "command").tag("image", "client:latest")
-                .tag("instancing_hint", "per_trial")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .relationship(server, client, RelationshipType.SHARED)
                 .trial(new DefaultTrial("trial-0", Map.of(
                         "server.threads", val("threads", 1)
                 ), List.of(), null))
@@ -717,167 +666,21 @@ class ValidationStageTest {
     }
 
     @Test
-    void testInsufficientNodesWarningNoInfraProvider() {
-        ElementDefinition server = serviceElement("server", "server:latest");
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.INSTANCED_PER)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "CONC", "client", List.of(1, 4, 8),
-                null, null, "concurrent", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server, client), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasWarnings()).isTrue();
-        assertThat(report.warnings())
-                .anyMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSUFFICIENT_NODES)));
-    }
-
-    @Test
-    void testInsufficientNodesWarningWithInfraProvider() {
-        // Create a provider that recognizes "node" as an infrastructure type
-        ElementTypeDescriptorProvider provider = new ElementTypeDescriptorProvider() {
-            @Override
-            public List<ElementTypeDescriptor> descriptors() {
-                return List.of(new ElementTypeDescriptor(
-                        "node", Set.of(), Map.of(), Map.of(), true));
-            }
-
-            @Override
-            public Map<String, String> typeAliases() { return Map.of(); }
-        };
-
-        ValidationStage validatorWithProvider = new ValidationStage(provider);
-
-        ElementDefinition infra = new ElementDefinition(
-                "infra", "node", Map.of(), List.of(), Map.of(), null, Map.of());
-        ElementDefinition server = new ElementDefinition(
-                "server", "service", Map.of(),
-                List.of(new DependencyDefinition("infra", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "server:latest"));
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.INSTANCED_PER)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "CONC", "client", List.of(1, 4, 8),
-                null, null, "concurrent", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(infra, server, client), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validatorWithProvider.validate(def);
-
-        assertThat(report.hasWarnings()).isTrue();
-        assertThat(report.warnings())
-                .anyMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSUFFICIENT_NODES))
-                        && w.message().contains("verify infrastructure"));
-    }
-
-    @Test
-    void testNoInsufficientNodesWarningWithoutFanOut() {
-        ElementDefinition server = serviceElement("server", "server:latest");
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "CONC", "client", List.of(1, 4, 8),
-                null, null, "concurrent", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server, client), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.warnings())
-                .noneMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSUFFICIENT_NODES)));
-    }
-
-    @Test
-    void testInstancedPerWithoutConcurrentWarning() {
-        ElementDefinition server = serviceElement("server", "server:latest");
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.INSTANCED_PER)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "CONC", "client", List.of(1, 4, 8),
-                null, null, "serial", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server, client), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasWarnings()).isTrue();
-        assertThat(report.warnings())
-                .anyMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSTANCED_PER_WITHOUT_CONCURRENT)));
-    }
-
-    @Test
-    void testInstancedPerWithConcurrentNoWarning() {
-        ElementDefinition server = serviceElement("server", "server:latest");
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.INSTANCED_PER)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        AxisDefinition axis = new AxisDefinition(
-                "CONC", "client", List.of(1, 4, 8),
-                null, null, "concurrent", 0, null, null, 1);
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server, client), List.of(axis), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.warnings())
-                .noneMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSTANCED_PER_WITHOUT_CONCURRENT)));
-    }
-
-    @Test
-    void testInstancedPerWithoutAnyAxisWarning() {
-        ElementDefinition server = serviceElement("server", "server:latest");
-        ElementDefinition client = new ElementDefinition(
-                "client", "command", Map.of(),
-                List.of(new DependencyDefinition("server", RelationshipType.INSTANCED_PER)),
-                Map.of(), null, Map.of("image", "client:latest"));
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(server, client), List.of(), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasWarnings()).isTrue();
-        assertThat(report.warnings())
-                .anyMatch(w -> w.code().equals(Optional.of(ValidationStage.WARN_INSTANCED_PER_WITHOUT_CONCURRENT)));
-    }
-
-    @Test
     void testThreeElementCycle() {
         ElementDefinition a = new ElementDefinition(
                 "a", "service", Map.of(),
                 List.of(new DependencyDefinition("b", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:a"));
+                Map.of(), Map.of("image", "image:a"));
 
         ElementDefinition b = new ElementDefinition(
                 "b", "service", Map.of(),
                 List.of(new DependencyDefinition("c", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:b"));
+                Map.of(), Map.of("image", "image:b"));
 
         ElementDefinition c = new ElementDefinition(
                 "c", "service", Map.of(),
                 List.of(new DependencyDefinition("a", RelationshipType.SHARED)),
-                Map.of(), null, Map.of("image", "image:c"));
+                Map.of(), Map.of("image", "image:c"));
 
         TestPlanDefinition def = new TestPlanDefinition(
                 "Study", null, List.of(a, b, c), List.of(), List.of(), null);
@@ -889,33 +692,13 @@ class ValidationStageTest {
                 .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_DEPENDENCY_CYCLE)));
     }
 
-    @Test
-    void testScopeViolationPerRunDependsOnPerGroup() {
-        ElementDefinition perRunElem = new ElementDefinition(
-                "monitor", "service", Map.of(),
-                List.of(new DependencyDefinition("cache", RelationshipType.SHARED)),
-                Map.of(), InstancingScope.PER_RUN, Map.of("image", "image:monitor"));
-
-        ElementDefinition perGroupElem = new ElementDefinition(
-                "cache", "service", Map.of(), List.of(), Map.of(),
-                InstancingScope.PER_GROUP, Map.of("image", "image:cache"));
-
-        TestPlanDefinition def = new TestPlanDefinition(
-                "Study", null, List.of(perRunElem, perGroupElem), List.of(), List.of(), null);
-
-        DefaultValidationResult report = validator.validate(def);
-
-        assertThat(report.hasErrors()).isTrue();
-        assertThat(report.errors())
-                .anyMatch(e -> e.code().equals(Optional.of(ValidationStage.ERR_SCOPE_VIOLATION)));
-    }
 
     // ── Helper methods ─────────────────────────────────────────────────
 
     /// Creates a simple service element definition for tests.
     private ElementDefinition serviceElement(String id, String image) {
         return new ElementDefinition(
-                id, "service", Map.of(), List.of(), Map.of(), null,
+                id, "service", Map.of(), List.of(), Map.of(),
                 Map.of("image", image));
     }
 

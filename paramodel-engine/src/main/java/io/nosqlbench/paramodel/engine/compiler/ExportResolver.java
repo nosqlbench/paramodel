@@ -241,9 +241,9 @@ public class ExportResolver {
     /// dependency graph without needing hyperplane-specific types.
     private void collectUpstreamRecursive(DefaultTestPlan plan, String elementId, Set<String> visited) {
         plan.element(elementId).ifPresent(element -> {
-            for (Element dep : element.dependencies()) {
-                if (visited.add(dep.name())) {
-                    collectUpstreamRecursive(plan, dep.name(), visited);
+            for (Element.Dependency dep : element.dependencies()) {
+                if (visited.add(dep.target().name())) {
+                    collectUpstreamRecursive(plan, dep.target().name(), visited);
                 }
             }
         });

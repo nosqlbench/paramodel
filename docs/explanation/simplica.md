@@ -73,10 +73,13 @@ specification. It combines:
   services, infrastructure). Each `Element` (in
   `io.nosqlbench.paramodel.elements`) has a name, type, configuration,
   health check specification, and lifecycle hooks.
-- **Relationships** -- how elements interact, expressed as
-  `RelationshipType` values: `MUTUALLY_EXCLUSIVE` (serialized access),
-  `SHARED` (concurrent access to a single instance), or `INSTANCED_PER`
-  (fresh instance per scope).
+- **Relationships** -- how elements relate to their dependencies, expressed
+  as `RelationshipType` values on each dependency edge: `SHARED` (concurrent
+  access, the default), `EXCLUSIVE` (serialized access), `DEDICATED`
+  (dedicated instance per dependent), or `LIFELINE` (target's teardown
+  subsumes dependent). Element instance lifecycle is derived by the
+  compilation pipeline from parameter-axis overlap, not from relationship
+  type.
 - **Policies** -- `ExecutionPolicies` (in
   `io.nosqlbench.paramodel.plan.policies`) governing retry strategies,
   timeouts, error handling, and intervention behavior.
@@ -98,8 +101,8 @@ compilation pipeline in `DefaultCompiler` (from
 - **ExecutionGraph** -- a directed acyclic graph capturing dependencies and
   parallelism opportunities.
 - **Barriers** -- synchronization points that enforce relationship
-  constraints (e.g., `MUTUALLY_EXCLUSIVE` elements cannot be used
-  concurrently).
+  constraints (e.g., `EXCLUSIVE` dependency edges serialize access to
+  shared elements).
 - **TrialOrdering** -- the strategy used to sequence trials (`SEQUENTIAL`,
   `SHUFFLED`, `EDGE_FIRST`, `DEPENDENCY_OPTIMIZED`, `COST_OPTIMIZED`).
 
@@ -115,14 +118,19 @@ the full reasoning.
 The `DefaultScheduler` (from `io.nosqlbench.paramodel.engine.execution`)
 uses element relationships to make concurrency decisions:
 
-- **MUTUALLY_EXCLUSIVE** elements produce barriers that serialize trial
+- **EXCLUSIVE** dependency edges produce barriers that serialize trial
   access. If a database cannot handle concurrent connections, the scheduler
   ensures only one trial uses it at a time.
-- **SHARED** elements allow concurrent access. The scheduler can run
+- **SHARED** dependency edges allow concurrent access. The scheduler can run
   multiple trials simultaneously against a shared cache or connection pool.
-- **INSTANCED_PER** elements are provisioned per scope (trial, group, or
-  run). The scheduler manages instance lifecycle -- deploying before use
-  and tearing down after the scope ends.
+- **DEDICATED** edges provision a dedicated instance per dependent element.
+- **LIFELINE** edges couple the dependent's lifecycle to the target's --
+  tearing down the target implicitly destroys the dependent.
+Element instance lifecycle (when elements are redeployed vs. persisted) is
+determined by the fingerprint-based group mechanism in the compilation
+pipeline, based on parameter-axis overlap. The scheduler manages instance
+lifecycle -- deploying before use and tearing down at group boundaries
+when configuration changes.
 
 Grouping, barrier coalescing, and critical-path prioritization are handled
 during compilation so the scheduler operates on a pre-optimized graph.
@@ -248,19 +256,23 @@ concurrent access is allowed.
 
 ### Relationship Types
 
-| Type | Instances | Concurrency | Barrier Needed |
-|------|-----------|-------------|----------------|
-| `MUTUALLY_EXCLUSIVE` | 1 | No | Yes |
-| `SHARED` | 1 | Yes | No |
-| `INSTANCED_PER` | N (per scope) | Yes | No |
+| Type | Instance Sharing | Concurrency | Barrier Needed |
+|------|------------------|-------------|----------------|
+| `SHARED`    | Shared    | Yes | No  |
+| `EXCLUSIVE` | Shared    | No  | Yes |
+| `DEDICATED` | Dedicated | N/A | No  |
+| `LIFELINE`  | Shared    | Yes | No  |
 
-These three types cover the fundamental patterns of resource sharing in
-distributed systems.
+These four types cover the fundamental patterns of resource sharing in
+distributed systems. Relationship types are a directional property of
+each dependency edge (declared by the dependent element). Element instance
+lifecycle (redeployment vs. persistence) is determined by the
+fingerprint-based group mechanism, not by relationship type.
 
 ### Barriers
 
 Barriers are synchronization points inserted by the compiler based on
-element relationships. They ensure that `MUTUALLY_EXCLUSIVE` constraints
+dependency edge relationships. They ensure that `EXCLUSIVE` constraints
 are enforced, that elements are fully deployed before trials begin, and
 that teardown does not start until all dependent trials complete.
 

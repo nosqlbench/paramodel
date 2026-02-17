@@ -342,7 +342,8 @@ envelope, and error information.
 **Package:** `io.nosqlbench.paramodel.plan`
 
 **Responsibility:** User-authored declarative specification of a study. Defines WHAT
-to test (axes, elements, relationships, policies) before compilation resolves HOW.
+to test (axes, elements, policies) before compilation resolves HOW.
+Relationships are carried on each element's dependency edges, not on the plan.
 
 ```java
 public interface TestPlan {
@@ -351,8 +352,6 @@ public interface TestPlan {
     default Optional<Axis<?>> axis(String name);
     List<Element> elements();
     default Optional<Element> element(String name);
-    Map<ElementPair, RelationshipType> relationships();
-    Optional<RelationshipType> relationshipBetween(Element e1, Element e2);
     ExecutionPolicies policies();
     OptimizationStrategy optimizationStrategy();
     long trialSpaceSize();

@@ -32,26 +32,29 @@
 /// Element
 ///   ├── name: String              - Unique identifier within a study
 ///   ├── parameters: List          - Configurable dimensions (Parameter models)
-///   ├── dependencies: List        - Other elements this depends on (DAG)
-///   ├── healthCheck: Optional     - Readiness verification strategy
-///   └── instancingScope: Optional - PER_TRIAL | PER_GROUP | PER_RUN
+///   ├── dependencies: List<Dependency> - Directed dependency edges (DAG)
+///   └── healthCheck: Optional     - Readiness verification strategy
+///
+/// Element.Dependency(target, type)
+///   ├── target: Element           - The upstream element
+///   └── type: RelationshipType    - How this element relates to the dependency
 ///
 /// RelationshipType
-///   ├── MUTUALLY_EXCLUSIVE  - Serialize access (barriers inserted)
-///   ├── SHARED              - Concurrent access to single instance
-///   └── INSTANCED_PER       - Fresh instance per scope
+///   ├── SHARED     - Concurrent access allowed (default)
+///   ├── EXCLUSIVE  - Serialize access (dependents mutually exclusive)
+///   ├── DEDICATED  - Dedicated instance per dependent
+///   └── LIFELINE   - Target's teardown subsumes dependent's teardown
 /// ```
 ///
 /// ## Relationship to Test Plans
 ///
-/// Elements are declared in {@link io.nosqlbench.paramodel.plan.TestPlan} instances
-/// and their relationships determine how the compiler generates execution plans:
+/// Elements are declared in {@link io.nosqlbench.paramodel.plan.TestPlan} instances.
+/// Relationship types are carried on each directed dependency edge, not on the plan:
 ///
 /// ```
 /// TestPlan
 ///   ├── axes (parameter dimensions)
-///   ├── elements (from this package)
-///   ├── relationships (Element, Element) → RelationshipType
+///   ├── elements (from this package, each with Dependency edges)
 ///   └── policies
 /// ```
 ///

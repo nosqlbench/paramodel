@@ -15,6 +15,7 @@
  */
 package io.nosqlbench.paramodel.engine.definition;
 
+import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
 import io.nosqlbench.paramodel.engine.compiler.DefaultValidationResult;
 import io.nosqlbench.paramodel.engine.compiler.ExportResolver;
@@ -127,19 +128,6 @@ public class TestPlanComposer {
         elementMap.values().forEach(planBuilder::element);
         axes.forEach(planBuilder::axis);
 
-        // Add relationships from dependency definitions
-        for (ElementDefinition def : definition.elements()) {
-            if (def.dependsOn() != null) {
-                for (DependencyDefinition dep : def.dependsOn()) {
-                    DefaultElement downstream = elementMap.get(def.id());
-                    DefaultElement upstream = elementMap.get(dep.element());
-                    if (downstream != null && upstream != null) {
-                        planBuilder.relationship(upstream, downstream, dep.relationship());
-                    }
-                }
-            }
-        }
-
         DefaultTestPlan plan = planBuilder.build();
 
         // Apply cross-element bindings (spec section 10 — bindings section)
@@ -181,7 +169,7 @@ public class TestPlanComposer {
                 for (DependencyDefinition dep : def.dependsOn()) {
                     DefaultElement upstream = elementMap.get(dep.element());
                     if (upstream != null) {
-                        builder.dependency(upstream);
+                        builder.dependency(upstream, dep.relationship());
                     }
                 }
                 elementMap.put(def.id(), builder.build());
@@ -196,10 +184,23 @@ public class TestPlanComposer {
     /// All metadata flows through tags. The element type identifier and all
     /// type-specific properties from the definition are stored as tags so
     /// the engine remains agnostic to concrete element types.
+    ///
+    /// The element's {@code type} field also drives shutdown semantics:
+    /// {@code "command"} type elements are self-terminating, so they receive
+    /// {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#COMMAND COMMAND}
+    /// semantics. All other types default to
+    /// {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#SERVICE SERVICE}.
     @SuppressWarnings("unchecked")
     private DefaultElement.Builder populateElementBuilder(ElementDefinition def) {
         var builder = DefaultElement.builder(def.id())
                 .tag("type", def.type());
+
+        // Map element type to shutdown semantics.
+        // "command" type elements are self-terminating — the scheduler awaits
+        // natural completion instead of issuing a shutdown signal.
+        if ("command".equalsIgnoreCase(def.type())) {
+            builder.shutdownSemantics(Element.ShutdownSemantics.COMMAND);
+        }
 
         // All type-specific properties flow through as tags generically
         if (def.properties() != null) {
@@ -229,17 +230,8 @@ public class TestPlanComposer {
             builder.exports(def.exports());
         }
 
-        // Scope: explicit override or hint for NormalizationStage
-        if (def.scope() != null) {
-            builder.instancingScope(def.scope());
-        }
-
-        // Store dependency relationship types as tags for downstream use
-        if (def.dependsOn() != null) {
-            for (DependencyDefinition dep : def.dependsOn()) {
-                builder.tag("depends." + dep.element(), dep.relationship().name());
-            }
-        }
+        // Relationship types are now carried on the Dependency edge directly,
+        // no longer stored as tags.
 
         return builder;
     }
@@ -316,12 +308,12 @@ public class TestPlanComposer {
         }
         builder.configuration(configuration);
         builder.exports(original.exports());
-        original.instancingScope().ifPresent(builder::instancingScope);
+        builder.shutdownSemantics(original.shutdownSemantics());
         for (var p : original.parameters()) {
             builder.parameter(p);
         }
-        for (var d : original.dependencies()) {
-            builder.dependency(d);
+        for (var dep : original.dependencies()) {
+            builder.dependency(dep);
         }
         return builder.build();
     }

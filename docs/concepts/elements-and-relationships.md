@@ -66,9 +66,9 @@ respectively.
 | `name()`             | `String`                      | Unique identifier within the study            |
 | `tags()`             | `Map<String, String>`         | Classification metadata (includes `"name"`)   |
 | `parameters()`       | `List<Parameter<?>>`          | Configurable dimensions of this element       |
-| `dependencies()`     | `List<Element>`               | Other elements this one depends on (DAG)      |
+| `dependencies()`     | `List<Dependency>`            | Directed dependency edges (target + relationship type) |
 | `healthCheck()`      | `Optional<HealthCheckSpec>`   | Readiness verification strategy               |
-| `instancingScope()`  | `Optional<InstancingScope>`   | PER_TRIAL, PER_GROUP, or PER_RUN              |
+| `shutdownSemantics()`| `ShutdownSemantics`           | SERVICE or COMMAND                             |
 
 ### Element lifecycle
 
@@ -84,8 +84,16 @@ NOT_STARTED --> STARTING --> READY --> RUNNING --> STOPPING --> STOPPED --> TEAR
 
 ### Dependencies
 
-Elements form a directed acyclic graph through `dependencies()`. If element
-A depends on element B:
+Elements form a directed acyclic graph through `dependencies()`. Each
+dependency is represented as an `Element.Dependency` record carrying both
+the target element and a `RelationshipType` that describes how the
+dependent element relates to its dependency:
+
+```java
+record Dependency(Element target, RelationshipType type) {}
+```
+
+If element A depends on element B:
 
 - B must reach READY before A begins STARTING.
 - A must reach STOPPED before B begins STOPPING.
@@ -95,86 +103,84 @@ The compiler uses the dependency graph to generate `DeployElement` and
 
 ## RelationshipType
 
-`RelationshipType` is an enum with three values. It answers the question:
-*when two elements are used by different trials, how do those usages
-interact?*
+`RelationshipType` is an enum with four values. It is a **directional
+property of each dependency edge** -- element A declares how it relates to
+its dependency B. A's view of B can differ from C's view of B.
 
-### MUTUALLY_EXCLUSIVE
+### SHARED (default)
 
-The element cannot be used concurrently. Trials that depend on it are
-serialized through barriers.
-
-```
-Trial 1: ----[Element]----
-Trial 2:                    ----[Element]----
-                ^ barrier prevents overlap
-```
-
-Use when the resource does not support concurrent access -- for example, a
-single GPU, an exclusive file lock, or a non-thread-safe singleton service.
-
-The compiler inserts barriers so that at most one trial accesses the
-element at any time.
-
-### SHARED
-
-The element may be shared concurrently. All trials that depend on it use
-the same running instance at the same time.
+The dependency may be shared concurrently by multiple dependents. All
+elements that depend on it use the same running instance at the same time.
 
 ```
-Trial 1: ----[Element (shared)]----
-Trial 2:     ----[Element (shared)]----
-             ^ concurrent access to same instance
+Element A: ----[depends on B (shared)]----
+Element C:     ----[depends on B (shared)]----
+               ^ concurrent access to same B instance
 ```
 
 Use when the resource is thread-safe or read-only -- for example, a
 connection pool, a read-only cache, or a shared reference dataset.
 
-No barriers are needed. The element has a single instance whose lifecycle
-spans all dependent trials.
+### EXCLUSIVE
 
-### INSTANCED_PER
-
-A fresh instance is created per defined scope. Each trial (or group, or
-run) gets its own isolated copy of the element.
+During the dependent's lifetime, no other dependent of the target can be
+active. Dependents are serialized through barriers.
 
 ```
-Trial 1: ----[Element instance 1]----
-Trial 2:     ----[Element instance 2]----
-             ^ independent, isolated instances
+Element A: ----[depends on B (exclusive)]----
+Element C:                                     ----[depends on B (exclusive)]----
+                                ^ barrier prevents overlap
 ```
 
-Use when trials need isolated state to avoid cross-contamination -- for
-example, per-trial temporary databases, per-trial Docker containers, or
-trial-specific scratch storage.
+Use when the resource does not support concurrent access -- for example, a
+single GPU, an exclusive file lock, or a non-thread-safe singleton service.
 
-The `instancingScope()` on the element determines how coarse the isolation
-is:
+### DEDICATED
 
-| Scope        | Meaning                                |
-|--------------|----------------------------------------|
-| `PER_TRIAL`  | One instance per individual trial      |
-| `PER_GROUP`  | One instance per logical trial group   |
-| `PER_RUN`    | One instance per study run             |
+The target gets its own instance for this dependent. The instance is never
+shared with other elements.
+
+Use when the dependent requires complete isolation -- for example,
+per-tenant database instances or isolated test environments.
+
+### LIFELINE
+
+The target's lifecycle subsumes the dependent's lifecycle. When the target
+tears down, the dependent is automatically torn down. No explicit teardown
+step is emitted for the dependent.
+
+Use when the dependent is inherently tied to the target's lifetime -- for
+example, Docker containers running on a compute node. Tearing down the
+node implicitly destroys all containers.
 
 ### Summary table
 
-| Relationship       | Concurrent Access | Instance Count | Barriers Required | Best For              |
-|--------------------|-------------------|----------------|-------------------|-----------------------|
-| MUTUALLY_EXCLUSIVE | No                | 1              | Yes               | Safety-critical resources |
-| SHARED             | Yes               | 1              | No                | Read-heavy / thread-safe  |
-| INSTANCED_PER      | Yes               | N              | No                | Isolation-required        |
+| Relationship | Concurrent Access | Instance Sharing | Barriers Required | Best For                    |
+|-------------|-------------------|------------------|-------------------|-----------------------------|
+| SHARED      | Yes               | Shared           | No                | Read-heavy / thread-safe    |
+| EXCLUSIVE   | No                | Shared           | Yes               | Safety-critical resources   |
+| DEDICATED   | N/A               | Dedicated        | No                | Per-tenant isolation        |
+| LIFELINE    | Yes               | Shared           | No                | Container-on-node lifecycle |
 
-Convenience methods on the enum:
+Semantic methods on the enum:
 
-- `allowsConcurrency()` -- true for SHARED and INSTANCED_PER.
-- `requiresSingleInstance()` -- true for SHARED and MUTUALLY_EXCLUSIVE.
-- `requiresBarriers()` -- true only for MUTUALLY_EXCLUSIVE.
+- `requiresSerializationBarrier()` -- true for EXCLUSIVE.
+- `requiresDedicatedInstance()` -- true for DEDICATED.
+- `impliesLifecycleCoupling()` -- true for LIFELINE.
+
+### Instance Lifecycle
+
+Element instance lifecycle (when an element is redeployed vs. persisted) is
+determined by the fingerprint-based group mechanism in the compilation
+pipeline, not by relationship type. If an element's parameters vary across
+trials (because an axis targets them), the element is redeployed at group
+boundaries when the configuration fingerprint changes. If no axis targets the
+element's parameters, it deploys once and persists for the entire run.
 
 ## How Relationships Affect Planning
 
-When a `TestPlan` is committed, the compiler inspects every element
-relationship and its connection to defined axes to determine:
+When a `TestPlan` is committed, the compiler inspects every dependency edge
+and its connection to defined axes to determine:
 
 1. **Dynamic Scoping** -- whether an element configuration varies.
 2. **Group boundaries** -- which trials can share an element instance.
@@ -182,24 +188,24 @@ relationship and its connection to defined axes to determine:
 4. **Barrier placement** -- where synchronization points are needed.
 5. **Instance lifecycle** -- how many deploy/teardown steps to generate.
 
-### Dynamic Scoping and Axis Binding
+### Fingerprint-Based Lifecycle
 
-The compiler automatically determines the optimal **Instancing Scope** based
-on axis usage:
+The compiler automatically determines element lifecycle based on
+parameter-axis overlap:
 
-*   **GLOBAL**: If an element's parameters are all constant across the
+*   **Run-scoped**: If an element's parameters are all constant across the
     entire trial space (no axes bind to them), the element is instantiated
     once and shared by all trials.
-*   **PER_TRIAL**: If one or more of an element's parameters are bound to
-    an axis with multiple values, the element's configuration varies per
-    trial. The compiler plans separate instances for each trial to ensure
-    isolation and correct configuration.
+*   **Group-scoped**: If one or more of an element's parameters are bound to
+    an axis with multiple values, the element persists for contiguous trial
+    blocks where its configuration fingerprint is constant. It is redeployed
+    at group boundaries when the fingerprint changes.
 
-For `MUTUALLY_EXCLUSIVE` relationships the compiler serializes trials
-through `BarrierSync` steps. For `SHARED` relationships no barriers are
-inserted but the element's lifecycle spans all dependent trials. For
-`INSTANCED_PER` relationships the compiler generates separate
-`DeployElement` and `TeardownElement` steps for each scope instance.
+For `EXCLUSIVE` dependency edges the compiler serializes trials through
+`BarrierSync` steps. For `SHARED` edges no barriers are inserted but the
+element's lifecycle spans all dependent trials. For `LIFELINE` edges the
+dependent's teardown is omitted -- the target's teardown implicitly
+destroys the dependent.
 
 ## Example: Elements and Relationships in a TestPlan
 
@@ -208,31 +214,34 @@ import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.plan.TestPlan;
 
-// Assume elements are provided by the adopting system
+// Elements declare their dependencies and relationship types
+// database has no dependencies
 Element database  = /* ... */;  // "postgres"
-Element cache     = /* ... */;  // "redis"
-Element appServer = /* ... */;  // "app-server", depends on database and cache
 
-// TODO: This might be out of order if we presume that elements must be added to a plan in order to make the
-// axes which depend on them available in the builder or planning state.
+// cache has no dependencies
+Element cache     = /* ... */;  // "redis"
+
+// appServer depends on database (exclusive) and cache (shared)
+Element appServer = /* element builder */
+    .dependency(database, RelationshipType.EXCLUSIVE)
+    .dependency(cache)  // defaults to SHARED
+    .build();
+
 TestPlan plan = TestPlan.builder()
     .name("performance-study")
     .withAxis(/* ... */)
     .withElement(database)
     .withElement(cache)
     .withElement(appServer)
-    // Only one trial may use the database at a time
-    .relationship(database, appServer, RelationshipType.MUTUALLY_EXCLUSIVE)
-    // All trials share the same cache instance
-    .relationship(cache, appServer, RelationshipType.SHARED)
     .build();
 ```
 
 In the compiled execution plan:
 
 - The database is deployed once and protected by barriers so trials access
-  it one at a time.
-- The cache is deployed once and shared concurrently by all trials.
+  it one at a time (EXCLUSIVE dependency from appServer).
+- The cache is deployed once and shared concurrently by all trials
+  (SHARED dependency from appServer).
 - The app server lifecycle is tied to the trials it serves.
 
 ## Further Reading

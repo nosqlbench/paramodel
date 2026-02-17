@@ -1,7 +1,6 @@
 package io.nosqlbench.paramodel.mock.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.Constraint;
 import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ValidationResult;
@@ -53,18 +52,6 @@ public class MockTestPlan implements TestPlan {
     @Override
     public List<Element> elements() {
         return Collections.unmodifiableList(elements);
-    }
-
-    @Override
-    public Map<TestPlan.ElementPair, RelationshipType> relationships() {
-        // Return empty map for simple mock
-        return Map.of();
-    }
-
-    @Override
-    public Optional<RelationshipType> relationshipBetween(Element element1, Element element2) {
-        // No relationships in simple mock
-        return Optional.empty();
     }
 
     @Override

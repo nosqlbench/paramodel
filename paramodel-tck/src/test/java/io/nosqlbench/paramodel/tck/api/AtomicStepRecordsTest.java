@@ -203,7 +203,10 @@ class AtomicStepRecordsTest {
     void stepTypeValuesExist() {
         assertThat(StepType.values()).containsExactlyInAnyOrder(
             StepType.DEPLOY_ELEMENT,
+            StepType.NOTIFY_TRIAL_START,
             StepType.EXECUTE_TRIAL,
+            StepType.AWAIT_ELEMENT,
+            StepType.NOTIFY_TRIAL_END,
             StepType.TEARDOWN_ELEMENT,
             StepType.BARRIER_SYNC,
             StepType.CHECKPOINT_STATE);

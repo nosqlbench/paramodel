@@ -1,6 +1,7 @@
 package io.nosqlbench.paramodel.mock.plan;
 
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.DynamicParameterResolver;
 import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ParameterView;
@@ -11,7 +12,7 @@ import java.util.*;
 /// Simple element implementation for testing.
 ///
 /// Creates element models with optional parameters, dependencies,
-/// health checks, and instancing scopes. The element type is conveyed
+/// and health checks. The element type is conveyed
 /// through tags rather than a fixed enum, matching the paramodel API
 /// contract that types are system-defined.
 ///
@@ -37,29 +38,33 @@ public class MockElement implements Element {
     private final String type;
     private final List<Parameter<?>> parameters;
     private final List<Parameter<?>> resultParameters;
-    private final List<Element> dependencies;
+    private final List<Dependency> dependencies;
     private final HealthCheckSpec healthCheck;
-    private final InstancingScope instancingScope;
+    private final ShutdownSemantics shutdownSemantics;
     private final LiveStatusSummary statusSummary;
     private final DynamicParameterResolver dynamicResolver;
     private final List<Parameter<?>> requiredParameters;
+    private final Map<String, String> extraTags;
 
     private MockElement(String name, String type, List<Parameter<?>> parameters,
                         List<Parameter<?>> resultParameters,
-                        List<Element> dependencies, HealthCheckSpec healthCheck,
-                        InstancingScope instancingScope, LiveStatusSummary statusSummary,
+                        List<Dependency> dependencies, HealthCheckSpec healthCheck,
+                        ShutdownSemantics shutdownSemantics,
+                        LiveStatusSummary statusSummary,
                         DynamicParameterResolver dynamicResolver,
-                        List<Parameter<?>> requiredParameters) {
+                        List<Parameter<?>> requiredParameters,
+                        Map<String, String> extraTags) {
         this.name = Objects.requireNonNull(name);
         this.type = type;
         this.parameters = parameters != null ? List.copyOf(parameters) : List.of();
         this.resultParameters = resultParameters != null ? List.copyOf(resultParameters) : List.of();
         this.dependencies = dependencies != null ? List.copyOf(dependencies) : List.of();
         this.healthCheck = healthCheck;
-        this.instancingScope = instancingScope;
+        this.shutdownSemantics = shutdownSemantics != null ? shutdownSemantics : ShutdownSemantics.SERVICE;
         this.statusSummary = statusSummary != null ? statusSummary : LiveStatusSummary.inactive();
         this.dynamicResolver = dynamicResolver;
         this.requiredParameters = requiredParameters != null ? List.copyOf(requiredParameters) : List.of();
+        this.extraTags = extraTags != null ? Map.copyOf(extraTags) : Map.of();
     }
 
     @Override
@@ -69,10 +74,13 @@ public class MockElement implements Element {
 
     @Override
     public Map<String, String> tags() {
+        Map<String, String> tags = new LinkedHashMap<>();
+        tags.put("name", name);
         if (type != null) {
-            return Map.of("name", name, "type", type);
+            tags.put("type", type);
         }
-        return Map.of("name", name);
+        tags.putAll(extraTags);
+        return Collections.unmodifiableMap(tags);
     }
 
     @Override
@@ -94,7 +102,7 @@ public class MockElement implements Element {
     }
 
     @Override
-    public List<Element> dependencies() {
+    public List<Dependency> dependencies() {
         return dependencies;
     }
 
@@ -104,8 +112,8 @@ public class MockElement implements Element {
     }
 
     @Override
-    public Optional<InstancingScope> instancingScope() {
-        return Optional.ofNullable(instancingScope);
+    public ShutdownSemantics shutdownSemantics() {
+        return shutdownSemantics;
     }
 
     @Override
@@ -120,7 +128,7 @@ public class MockElement implements Element {
     /// @return a simple mock element
     ///
     public static MockElement of(String name) {
-        return new MockElement(name, null, List.of(), List.of(), List.of(), null, null, null, null, null);
+        return new MockElement(name, null, List.of(), List.of(), List.of(), null, null, null, null, null, null);
     }
 
     ///
@@ -131,7 +139,7 @@ public class MockElement implements Element {
     /// @return a typed mock element
     ///
     public static MockElement ofType(String name, String type) {
-        return new MockElement(name, type, List.of(), List.of(), List.of(), null, null, null, null, null);
+        return new MockElement(name, type, List.of(), List.of(), List.of(), null, null, null, null, null, null);
     }
 
     ///
@@ -152,12 +160,13 @@ public class MockElement implements Element {
         private String type;
         private final List<Parameter<?>> parameters = new ArrayList<>();
         private final List<Parameter<?>> resultParameters = new ArrayList<>();
-        private final List<Element> dependencies = new ArrayList<>();
+        private final List<Dependency> dependencies = new ArrayList<>();
         private HealthCheckSpec healthCheck;
-        private InstancingScope instancingScope;
+        private ShutdownSemantics shutdownSemantics;
         private LiveStatusSummary statusSummary;
         private DynamicParameterResolver dynamicResolver;
         private final List<Parameter<?>> requiredParameters = new ArrayList<>();
+        private final Map<String, String> extraTags = new LinkedHashMap<>();
 
         public Builder(String name) {
             this.name = name;
@@ -197,13 +206,36 @@ public class MockElement implements Element {
         }
 
         ///
-        /// Adds a dependency on another element.
+        /// Adds a typed dependency edge.
         ///
-        /// @param dependency the element this depends on
+        /// @param dep the dependency to add
         /// @return this builder
         ///
-        public Builder dependency(Element dependency) {
-            this.dependencies.add(dependency);
+        public Builder dependency(Dependency dep) {
+            this.dependencies.add(dep);
+            return this;
+        }
+
+        ///
+        /// Adds a SHARED dependency on another element (convenience).
+        ///
+        /// @param target the element this depends on
+        /// @return this builder
+        ///
+        public Builder dependency(Element target) {
+            this.dependencies.add(Dependency.shared(target));
+            return this;
+        }
+
+        ///
+        /// Adds a dependency on another element with a specific relationship type.
+        ///
+        /// @param target the element this depends on
+        /// @param type   the relationship type
+        /// @return this builder
+        ///
+        public Builder dependency(Element target, RelationshipType type) {
+            this.dependencies.add(new Dependency(target, type));
             return this;
         }
 
@@ -219,13 +251,13 @@ public class MockElement implements Element {
         }
 
         ///
-        /// Sets the instancing scope.
+        /// Sets the shutdown semantics for this element.
         ///
-        /// @param instancingScope the instancing scope
+        /// @param shutdownSemantics the shutdown semantics
         /// @return this builder
         ///
-        public Builder instancingScope(InstancingScope instancingScope) {
-            this.instancingScope = instancingScope;
+        public Builder shutdownSemantics(ShutdownSemantics shutdownSemantics) {
+            this.shutdownSemantics = shutdownSemantics;
             return this;
         }
 
@@ -272,6 +304,18 @@ public class MockElement implements Element {
         }
 
         ///
+        /// Adds a custom tag to this element.
+        ///
+        /// @param key the tag key
+        /// @param value the tag value
+        /// @return this builder
+        ///
+        public Builder tag(String key, String value) {
+            this.extraTags.put(key, value);
+            return this;
+        }
+
+        ///
         /// Builds the element.
         ///
         /// @return the constructed element
@@ -279,8 +323,8 @@ public class MockElement implements Element {
         public MockElement build() {
             return new MockElement(
                 name, type, parameters, resultParameters, dependencies,
-                healthCheck, instancingScope, statusSummary,
-                dynamicResolver, requiredParameters);
+                healthCheck, shutdownSemantics, statusSummary,
+                dynamicResolver, requiredParameters, extraTags);
         }
     }
 }
