@@ -498,7 +498,7 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     /// - **COMMAND**: Self-terminating process that runs to completion.
     ///   The scheduler awaits natural completion instead of issuing a shutdown.
     ///   The trial element's step becomes {@code AwaitElement} instead of
-    ///   {@code ExecuteTrial} + {@code TeardownElement}.
+    ///   {@code TrialStep} + {@code TeardownElement}.
     enum ShutdownSemantics {
         /// Long-running; requires explicit stop signal. Default.
         SERVICE,
@@ -514,6 +514,20 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     /// @return shutdown semantics, defaults to SERVICE when not specified
     default ShutdownSemantics shutdownSemantics() {
         return ShutdownSemantics.SERVICE;
+    }
+
+    /// Returns the explicit trial-element override for this element.
+    ///
+    /// - **empty** (default): auto-detect — the compiler uses scope-aware
+    ///   leaf-node heuristic (most-dependent among trial-scoped elements).
+    /// - **true**: force this element to be a trial element regardless of
+    ///   dependency position.
+    /// - **false**: force this element to NOT be a trial element even if
+    ///   it would be auto-detected.
+    ///
+    /// @return explicit override, or empty for auto-detection
+    default Optional<Boolean> trialElement() {
+        return Optional.empty();
     }
 
     ///

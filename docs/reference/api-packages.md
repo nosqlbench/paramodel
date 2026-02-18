@@ -129,7 +129,7 @@ for common value types.
 | Type | Responsibility |
 |------|---------------|
 | `Element` | A deployable resource with lifecycle (deploy, ready, teardown). Extends `Tagged`. |
-| `RelationshipType` | Enum defining how a dependent element relates to its dependency: `SHARED`, `EXCLUSIVE`, `DEDICATED`, `LIFELINE`. |
+| `RelationshipType` | Enum defining how a dependent element relates to its dependency: `SHARED`, `EXCLUSIVE`, `DEDICATED`, `LINEAR`, `LIFELINE`. |
 | `Element.Dependency` | Record representing a directed dependency edge with target element and relationship type. |
 
 ---
@@ -206,7 +206,10 @@ StepResult execute(ExecutionContext context) throws StepExecutionException;
 
 Permitted subtypes:
 - `DeployElement(String elementId, int instanceNumber, ...)`
-- `ExecuteTrial(String trialId, Map<String, String> elementBindings, ...)`
+- `NotifyTrialStart(String trialId, List<String> elementNames, ...)`
+- `TrialStep(String trialId, Map<String, String> elementBindings, ...)`
+- `AwaitElement(String elementId, int instanceNumber, String trialId, ...)`
+- `NotifyTrialEnd(String trialId, List<String> elementNames, ShutdownReason reason, ...)`
 - `TeardownElement(String elementId, int instanceNumber, ...)`
 - `BarrierSync(String barrierId, List<String> dependencies, ...)`
 - `CheckpointState(String checkpointId, ...)`

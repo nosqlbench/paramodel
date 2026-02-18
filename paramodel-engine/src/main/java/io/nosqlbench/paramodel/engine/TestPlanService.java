@@ -194,7 +194,7 @@ public class TestPlanService {
                     deploysPerElement.merge(deploy.elementId(), 1, Integer::sum);
                 }
                 case AtomicStep.TeardownElement ignored -> teardownSteps++;
-                case AtomicStep.ExecuteTrial ignored -> trialSteps++;
+                case AtomicStep.TrialStep ignored -> trialSteps++;
                 case AtomicStep.AwaitElement ignored -> trialSteps++;
                 case AtomicStep.BarrierSync ignored -> barrierSteps++;
                 case AtomicStep.CheckpointState ignored -> checkpointSteps++;
@@ -241,7 +241,7 @@ public class TestPlanService {
     /// Step counts map to paramodel {@link AtomicStep} types:
     /// - `deploySteps`: {@link AtomicStep.DeployElement} (element deployment)
     /// - `teardownSteps`: {@link AtomicStep.TeardownElement} (element teardown)
-    /// - `trialSteps`: {@link AtomicStep.ExecuteTrial} (trial execution)
+    /// - `trialSteps`: {@link AtomicStep.TrialStep} (trial execution)
     /// - `barrierSteps`: {@link AtomicStep.BarrierSync} (synchronization)
     /// - `checkpointSteps`: {@link AtomicStep.CheckpointState} (state persistence)
     ///

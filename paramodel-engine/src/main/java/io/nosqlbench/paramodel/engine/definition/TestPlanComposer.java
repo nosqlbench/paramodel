@@ -202,6 +202,18 @@ public class TestPlanComposer {
             builder.shutdownSemantics(Element.ShutdownSemantics.COMMAND);
         }
 
+        // trialElement override from properties
+        if (def.properties() != null) {
+            Object trialEl = def.properties().get("trialElement");
+            if (trialEl instanceof Boolean b) {
+                builder.trialElement(b);
+            } else if (trialEl instanceof String s) {
+                if ("true".equalsIgnoreCase(s) || "false".equalsIgnoreCase(s)) {
+                    builder.trialElement(Boolean.parseBoolean(s));
+                }
+            }
+        }
+
         // All type-specific properties flow through as tags generically
         if (def.properties() != null) {
             for (var entry : def.properties().entrySet()) {
@@ -309,6 +321,7 @@ public class TestPlanComposer {
         builder.configuration(configuration);
         builder.exports(original.exports());
         builder.shutdownSemantics(original.shutdownSemantics());
+        original.trialElement().ifPresent(builder::trialElement);
         for (var p : original.parameters()) {
             builder.parameter(p);
         }

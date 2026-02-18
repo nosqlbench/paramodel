@@ -1,15 +1,27 @@
 # Paramodel
 
+![Paramodel Logo](docs/images/paramodel-logo.png)
+
 Contract-first framework for pseudo-formal parameter modeling and systematic test sequence execution.
 
 ## Overview
 
 Paramodel provides a rigorous foundation for defining, compiling, and executing parametric studies. Built on algebraic principles with an emphasis on correctness, composability, and reproducibility.
 
+With Paramodel, you can:
+- Define type-safe **Para**meter **Models** to define parameters and domains to use in your studies.
+- Define **Para**metric Test **Models** by defining parameter sets based on parameter models.
+- Define test plans that express relationships between parameters and domains.
+- Compile test plans into execution plans that can be executed in parallel.
+
+In this context, a model is simply a specification for the parameters and deployable elements which they describe.
+You provide the implementation of these elements, and Paramodel takes care of the rest.
+
 **Key Features:**
 - **Pure contract interfaces** - Zero implementation coupling
 - **8-stage compilation pipeline** - TestPlan → ExecutionPlan transformation
 - **Concurrent execution engine** - Resource-aware parallel execution with DAG scheduling
+- **Cardinality Management** - Automatic derivation of element instances and cost optimization
 - **Technology Compatibility Kit (TCK)** - Validates implementation conformance
 - **Java 25** - Leverages sealed interfaces, records, and pattern matching
 - **Diátaxis Documentation** - Comprehensive tutorials, how-tos, reference, and explanation
@@ -35,7 +47,7 @@ import io.nosqlbench.paramodel.plan.*;
 
 TestPlan plan = MockTestPlan.builder()
     .name("performance-study")
-    .axis(MockAxis.of("concurrency", 1, 4, 16, 64))
+    .axis(MockAxis.of("concurrency", 1, 4, 16, 64)) // Major axis - minimizes churn
     .axis(MockAxis.of("model", "gpt-4", "gpt-4o"))
     .optimizationStrategy(OptimizationStrategy.PRUNE_REDUNDANT)
     .build();
@@ -51,10 +63,11 @@ Compiler compiler = DefaultCompiler.builder()
     .build();
 
 ExecutionPlan executionPlan = compiler.compile(plan).executionPlan().orElseThrow();
-System.out.println("Execution Graph Nodes: " + executionPlan.executionGraph().steps().size());
+System.out.println("Lifecycle steps: " + executionPlan.executionGraph().steps().size());
+System.out.println("Estimated duration: " + executionPlan.estimatedDuration());
 ```
 
-### 4. Execute
+### 4. Run
 
 ```java
 import io.nosqlbench.paramodel.engine.execution.*;
@@ -77,6 +90,7 @@ Mental models and foundational ideas:
 - [Parameters and Domains](docs/concepts/parameters-and-domains.md)
 - [Execution Plans](docs/concepts/execution-plans.md)
 - [Elements and Relationships](docs/concepts/elements-and-relationships.md)
+- [Cardinality and Costs](docs/concepts/cardinality-and-costs.md)
 
 ### 🚀 [Tutorials](docs/tutorials/)
 Step-by-step learning guides:
@@ -88,6 +102,7 @@ Step-by-step learning guides:
 Task-oriented recipes:
 - [Define Parameters](docs/howto/define-parameters.md)
 - [Build a Test Plan](docs/howto/build-test-plan.md)
+- [Manage Cardinality](docs/howto/manage-cardinality.md)
 - [Validate with TCK](docs/howto/validate-with-tck.md)
 
 ### 📖 [Reference](docs/reference/)
@@ -101,13 +116,6 @@ Design decisions and architecture:
 - [Architecture](docs/explanation/architecture.md)
 - [Design Principles](docs/explanation/design-principles.md)
 - [Immutability and Reproducibility](docs/explanation/immutability-and-reproducibility.md)
-
-## Project Structure
-
-- **`paramodel-api`**: Pure contract interfaces (~52 contracts). Stable center of the system.
-- **`paramodel-mock`**: Lightweight in-memory implementation for prototyping and testing.
-- **`paramodel-engine`**: Production-grade compiler and executor with 8-stage pipeline.
-- **`paramodel-tck`**: Technology Compatibility Kit for validating implementations.
 
 ## Requirements
 

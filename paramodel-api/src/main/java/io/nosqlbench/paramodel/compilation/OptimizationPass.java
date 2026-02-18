@@ -167,7 +167,7 @@ import java.util.Optional;
 /// Before:
 ///   DEPLOY_ELEMENT(service_A)
 ///      ↓
-///   EXECUTE_TRIAL(t1) [uses service_A]
+///   TRIAL_STEP(t1) [uses service_A]
 ///      ↓
 ///   DEPLOY_ELEMENT(service_B)
 ///      ↓
@@ -182,7 +182,7 @@ import java.util.Optional;
 /// After:
 ///   DEPLOY_ELEMENT(service_A)
 ///      ↓
-///   EXECUTE_TRIAL(t1)
+///   TRIAL_STEP(t1)
 ///   [service_B steps removed]
 ///
 /// Savings:

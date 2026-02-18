@@ -170,10 +170,14 @@ scopes (shared, instanced-per-trial, etc.) based on relationships.
 ### Stage 5: Step Generation
 
 Converts trials into `AtomicStep` objects -- the fundamental unit of work in an
-`ExecutionPlan`. Step types include:
+`ExecutionPlan`. Each trial is bounded by a designated **Trial Element**. Step
+types include:
 
 - `DEPLOY_ELEMENT` -- provision a resource
-- `EXECUTE_TRIAL` -- run a single trial with its parameter bindings
+- `NOTIFY_TRIAL_START` -- notify elements that a trial is starting
+- `TrialStep` -- the operative action of the trial element
+- `AwaitElement` -- emitted instead of `TrialStep` for self-terminating trial elements
+- `NOTIFY_TRIAL_END` -- notify elements that a trial has ended
 - `TEARDOWN_ELEMENT` -- clean up a resource
 - `BARRIER_SYNC` -- synchronization point
 - `CHECKPOINT_STATE` -- persist execution state for recovery

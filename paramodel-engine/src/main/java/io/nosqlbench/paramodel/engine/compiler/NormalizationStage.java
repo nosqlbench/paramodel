@@ -3,6 +3,7 @@ package io.nosqlbench.paramodel.engine.compiler;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.SamplingStrategy;
 import io.nosqlbench.paramodel.plan.Axis;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -27,7 +28,9 @@ import java.util.Set;
 ///
 /// 1. If any axis targets this element → bound to those axes
 /// 2. If this element depends on a bound element → propagate axes
-/// 3. Otherwise → run-scoped (depth 0)
+/// 3. DEDICATED reverse: if a dependent uses DEDICATED relationship,
+///    the target inherits the dependent's axes (matching instancing)
+/// 4. Otherwise → run-scoped (depth 0)
 ///
 public class NormalizationStage implements CompilationStage {
     public NormalizationStage() {}
@@ -158,8 +161,11 @@ public class NormalizationStage implements CompilationStage {
                 new HashSet<>(directAxes.getOrDefault(element.name(), Set.of())));
         }
 
-        // Second pass: propagation — if A depends on B, A's effective axes
-        // include B's effective axes.
+        // Second pass: propagation — two rules iterated to fixed point:
+        //   (a) If A depends on B, A's effective axes include B's effective axes.
+        //   (b) DEDICATED reverse: if A depends on B with DEDICATED, B's
+        //       effective axes include A's effective axes (the target must
+        //       match the dependent's instancing scope).
         boolean changed = true;
         while (changed) {
             changed = false;
@@ -168,9 +174,18 @@ public class NormalizationStage implements CompilationStage {
                 if (currentAxes == null) continue;
 
                 for (Element.Dependency dep : element.dependencies()) {
+                    // (a) Forward: dependent inherits target's axes
                     Set<String> depAxes = effectiveAxes.get(dep.target().name());
                     if (depAxes != null && currentAxes.addAll(depAxes)) {
                         changed = true;
+                    }
+
+                    // (b) DEDICATED reverse: target inherits dependent's axes
+                    if (dep.type() == RelationshipType.DEDICATED) {
+                        Set<String> targetAxes = effectiveAxes.get(dep.target().name());
+                        if (targetAxes != null && targetAxes.addAll(currentAxes)) {
+                            changed = true;
+                        }
                     }
                 }
             }

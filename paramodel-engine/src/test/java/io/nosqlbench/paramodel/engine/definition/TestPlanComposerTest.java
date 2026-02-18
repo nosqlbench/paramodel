@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /// Integration tests for {@link TestPlanComposer} using worked examples from the spec.
 ///
 /// Assertions use paramodel {@link AtomicStep} types ({@link AtomicStep.DeployElement},
-/// {@link AtomicStep.ExecuteTrial}, {@link AtomicStep.TeardownElement},
+/// {@link AtomicStep.TrialStep}, {@link AtomicStep.TeardownElement},
 /// {@link AtomicStep.BarrierSync}) produced by the DefaultCompiler pipeline.
 class TestPlanComposerTest {
     private TestPlanDefinitionParser parser;

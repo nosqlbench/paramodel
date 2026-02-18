@@ -103,10 +103,10 @@ class DefaultJournalStateReconstructorTest {
             8, EXEC_ID, PLAN_ID, now, "trial-1", "step-2", TrialStatus.COMPLETED));
         journalStore.append(new JournalEvent.StepStarted(
             9, EXEC_ID, PLAN_ID, now, "step-2",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
         journalStore.append(new JournalEvent.StepCompleted(
             10, EXEC_ID, PLAN_ID, now, "step-2",
-            AtomicStep.StepType.EXECUTE_TRIAL, Duration.ofSeconds(10), Map.of()));
+            AtomicStep.StepType.TRIAL_STEP, Duration.ofSeconds(10), Map.of()));
 
         ExecutionSnapshot snapshot = reconstructor.reconstruct(
             EXEC_ID, plan, journalStore, checkpointStore);
@@ -180,7 +180,7 @@ class DefaultJournalStateReconstructorTest {
             1, EXEC_ID, PLAN_ID, now, Optional.empty(), Map.of()));
         journalStore.append(new JournalEvent.StepStarted(
             2, EXEC_ID, PLAN_ID, now, "step-1",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
 
         ExecutionSnapshot snapshot = reconstructor.reconstruct(
             EXEC_ID, plan, journalStore, checkpointStore);
@@ -290,10 +290,10 @@ class DefaultJournalStateReconstructorTest {
             4, EXEC_ID, PLAN_ID, now, "cp-1"));
         journalStore.append(new JournalEvent.StepStarted(
             5, EXEC_ID, PLAN_ID, now, "step-2",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
         journalStore.append(new JournalEvent.StepCompleted(
             6, EXEC_ID, PLAN_ID, now, "step-2",
-            AtomicStep.StepType.EXECUTE_TRIAL, Duration.ofSeconds(10), Map.of()));
+            AtomicStep.StepType.TRIAL_STEP, Duration.ofSeconds(10), Map.of()));
 
         checkpointStore.saveCheckpoint(createCheckpoint("cp-1", PLAN_ID,
             List.of("step-1"), List.of()));

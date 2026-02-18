@@ -15,9 +15,9 @@ public final class MockAtomicStep {
 
     private MockAtomicStep() {}
 
-    /// Creates an {@link AtomicStep.ExecuteTrial} with minimal defaults.
-    public static AtomicStep.ExecuteTrial executeTrial(String id, String trialId) {
-        return new AtomicStep.ExecuteTrial(
+    /// Creates a {@link AtomicStep.TrialStep} with minimal defaults.
+    public static AtomicStep.TrialStep trialStep(String id, String trialId) {
+        return new AtomicStep.TrialStep(
             id,
             trialId,
             Map.of(),
@@ -29,10 +29,10 @@ public final class MockAtomicStep {
         );
     }
 
-    /// Creates an {@link AtomicStep.ExecuteTrial} with dependencies.
-    public static AtomicStep.ExecuteTrial executeTrial(String id, String trialId,
-                                                       List<String> dependencies) {
-        return new AtomicStep.ExecuteTrial(
+    /// Creates a {@link AtomicStep.TrialStep} with dependencies.
+    public static AtomicStep.TrialStep trialStep(String id, String trialId,
+                                                 List<String> dependencies) {
+        return new AtomicStep.TrialStep(
             id,
             trialId,
             Map.of(),

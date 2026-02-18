@@ -68,7 +68,7 @@ class PipelineCornerCaseIntegrationTest {
         assertThat(teardowns).isEqualTo(1); // only final teardown
 
         long execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         assertThat(execTrials).isEqualTo(3);
     }
@@ -106,11 +106,11 @@ class PipelineCornerCaseIntegrationTest {
         ExecutionPlan execPlan = result.executionPlan().get();
         List<AtomicStep> steps = execPlan.steps();
 
-        // 2×2 = 4 trials
+        // 2×2 = 4 trials, 2 independent leaf elements → 2 TrialSteps per trial = 8
         long execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
-        assertThat(execTrials).isEqualTo(4);
+        assertThat(execTrials).isEqualTo(8);
 
         // cache has varying config: deploys depend on actual fingerprint changes
         // At minimum cache has more than 1 deploy (config changes)
@@ -189,10 +189,11 @@ class PipelineCornerCaseIntegrationTest {
 
         ExecutionPlan execPlan = result.executionPlan().get();
 
+        // db and cache are independent leaf elements → 2 TrialSteps per trial
         long execTrials = execPlan.steps().stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
-        assertThat(execTrials).isEqualTo(1);
+        assertThat(execTrials).isEqualTo(2);
 
         // Each element: 1 deploy (PER_RUN), 1 final teardown
         long deploys = execPlan.steps().stream()

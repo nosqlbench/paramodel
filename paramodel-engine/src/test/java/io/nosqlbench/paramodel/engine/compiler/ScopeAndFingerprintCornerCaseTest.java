@@ -148,18 +148,24 @@ class ScopeAndFingerprintCornerCaseTest {
         assertThat(deployOrder.indexOf("c")).isLessThan(deployOrder.indexOf("b"));
         assertThat(deployOrder.indexOf("b")).isLessThan(deployOrder.indexOf("a"));
 
-        // With predictive eager teardown, the last trial eagerly tears down
-        // all bound elements in LIFO reverse topo order: a, b, c, d.
-        // There are no Phase 3 "cleanup" teardowns for bound elements because
-        // Phase 2c of the last trial already handles them.
-        List<String> lastTrialTeardownOrder = steps.stream()
+        // Phase 2c skips the last trial, so trial 0 gets predictive_eager
+        // teardowns in LIFO reverse topo order: a, b, c, d.
+        List<String> trial0TeardownOrder = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "predictive_eager".equals(t.metadata().get("reason"))
-                && Integer.valueOf(1).equals(t.metadata().get("trial_index")))
+                && Integer.valueOf(0).equals(t.metadata().get("trial_index")))
             .map(s -> ((AtomicStep.TeardownElement) s).elementId())
             .toList();
 
-        assertThat(lastTrialTeardownOrder).containsExactly("a", "b", "c", "d");
+        assertThat(trial0TeardownOrder).containsExactly("a", "b", "c", "d");
+
+        // Last trial's instances get Phase 3 "cleanup" teardowns instead
+        List<String> cleanupTeardownOrder = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && "cleanup".equals(t.metadata().get("phase")))
+            .map(s -> ((AtomicStep.TeardownElement) s).elementId())
+            .toList();
+        assertThat(cleanupTeardownOrder).containsExactly("a", "b", "c", "d");
     }
 
     @Test
@@ -206,25 +212,25 @@ class ScopeAndFingerprintCornerCaseTest {
         assertThat(serverDeploys).isEqualTo(2);
 
         // worker: bound to "port" axis but has no parameter named "port", so its
-        // fingerprint is static ("static:worker"). It deploys once and is only
-        // torn down by predictive eager teardown on the last trial.
+        // fingerprint is static ("static:worker"). It deploys once.
         long workerDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("worker"))
             .count();
         assertThat(workerDeploys).isEqualTo(1);
 
+        // Phase 2c skips the last trial, and the static fingerprint means no
+        // eager teardown on non-last trials either. Worker gets Phase 3 cleanup.
         long workerEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(workerEagerTeardowns).isEqualTo(1);
+        assertThat(workerEagerTeardowns).isZero();
 
-        // worker: no final "cleanup" teardown — predictive eager handles it
         long workerFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker") && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(workerFinalTeardowns).isZero();
+        assertThat(workerFinalTeardowns).isEqualTo(1);
     }
 
     @Test
@@ -305,20 +311,20 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(intermediateTeardowns).isZero();
 
-        // No Phase 3 "cleanup" teardown — the last trial's Phase 2c eagerly
-        // tears down all bound elements (even if fingerprint didn't change).
+        // Phase 2c skips the last trial and the static fingerprint means
+        // no eager teardown on non-last trials. Server gets Phase 3 cleanup.
         long cleanupTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(cleanupTeardowns).isZero();
+        assertThat(cleanupTeardowns).isEqualTo(1);
 
-        // Exactly 1 predictive eager teardown on the last trial
+        // No predictive eager teardowns (fingerprint never changes between trials)
         long eagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(eagerTeardowns).isEqualTo(1);
+        assertThat(eagerTeardowns).isZero();
     }
 
     @Test
@@ -388,15 +394,19 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(deploys).isEqualTo(3);
 
-        // With predictive eager teardown, every trial where the fingerprint
-        // will change for the next trial triggers a "predictive_eager" teardown.
-        // All three trials produce predictive_eager teardowns (trial 0→1 change,
-        // trial 1→2 change, trial 2 is last). No "group_boundary" teardowns.
+        // Phase 2c skips the last trial. Trials 0→1 and 1→2 have fingerprint
+        // changes, so 2 predictive_eager teardowns. Last trial gets Phase 3 cleanup.
         long predictiveEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(predictiveEagerTeardowns).isEqualTo(3);
+        assertThat(predictiveEagerTeardowns).isEqualTo(2);
+
+        long cleanupTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
+            .count();
+        assertThat(cleanupTeardowns).isEqualTo(1);
 
         long groupBoundaryTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
@@ -435,19 +445,20 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(intermediateTeardowns).isZero();
 
-        // Single trial is the last trial, so Phase 2c eagerly tears down.
-        // No Phase 3 "cleanup" teardown is emitted.
+        // Single trial is the last trial, so Phase 2c skips entirely.
+        // Server gets Phase 3 "cleanup" teardown.
         long cleanupTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(cleanupTeardowns).isZero();
+        assertThat(cleanupTeardowns).isEqualTo(1);
 
+        // No predictive eager teardowns (only trial is the last trial)
         long eagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(eagerTeardowns).isEqualTo(1);
+        assertThat(eagerTeardowns).isZero();
     }
 
     // ── Barrier generation corner cases ────────────────────────────────
@@ -478,7 +489,7 @@ class ScopeAndFingerprintCornerCaseTest {
         // Should have an ELEMENT_READY barrier for db
         long readyBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.ELEMENT_READY
-                && b.metadata().get("element").equals("db"))
+                && b.id().contains("_db"))
             .count();
         assertThat(readyBarriers).isGreaterThanOrEqualTo(1);
 
@@ -492,7 +503,7 @@ class ScopeAndFingerprintCornerCaseTest {
                 dbDeployIdx = i;
             }
             if (step instanceof AtomicStep.BarrierSync bs
-                && bs.metadata().getOrDefault("element", "").equals("db")
+                && bs.barrierId().contains("_db")
                 && Integer.valueOf(0).equals(bs.metadata().get("binding_depth"))) {
                 readyBarrierIdx = i;
             }
@@ -504,14 +515,24 @@ class ScopeAndFingerprintCornerCaseTest {
         assertThat(readyBarrierIdx).isGreaterThan(dbDeployIdx);
         assertThat(appDeployIdx).isGreaterThan(readyBarrierIdx);
 
-        // app deploy should depend on the ready barrier step (not the deploy step directly)
+        // app is the trial element (leaf), so it deploys after NotifyTrialStart.
+        // The dependency chain is: deploy db → barrier → NotifyTrialStart → deploy app
         AtomicStep.DeployElement appDeploy = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("app"))
             .map(AtomicStep.DeployElement.class::cast)
             .findFirst()
             .orElseThrow();
         String readyBarrierStepId = steps.get(readyBarrierIdx).id();
-        assertThat(appDeploy.dependencies()).contains(readyBarrierStepId);
+
+        // NotifyTrialStart should depend on the barrier (non-trial element's health check)
+        AtomicStep notifyStart = steps.stream()
+            .filter(s -> s instanceof AtomicStep.NotifyTrialStart)
+            .findFirst()
+            .orElseThrow();
+        assertThat(notifyStart.dependencies()).contains(readyBarrierStepId);
+
+        // app deploy depends on NotifyTrialStart (trial element deploys within notification scope)
+        assertThat(appDeploy.dependencies()).contains(notifyStart.id());
     }
 
     @Test
@@ -590,13 +611,20 @@ class ScopeAndFingerprintCornerCaseTest {
         assertThat(workerBarrierSyncs).isZero();
 
         // Worker is bound to "port" axis but has no parameter named "port", so
-        // its fingerprint is static. It deploys once and gets a single
-        // predictive_eager teardown on the last trial.
+        // its fingerprint is static. It deploys once. Phase 2c skips the last
+        // trial, and static fingerprint means no eager teardown on non-last
+        // trials. Worker gets Phase 3 cleanup instead.
         long workerEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(workerEagerTeardowns).isEqualTo(1);
+        assertThat(workerEagerTeardowns).isZero();
+
+        long workerCleanupTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("worker") && "cleanup".equals(t.metadata().get("phase")))
+            .count();
+        assertThat(workerCleanupTeardowns).isEqualTo(1);
     }
 
     @Test
@@ -707,19 +735,19 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(deploys).isEqualTo(2);
 
-        // Predictive eager teardowns on the last trial: 1 per element = 2 total.
+        // Phase 2c skips the last trial, and static fingerprints mean no eager
+        // teardowns on non-last trials. Both workers get Phase 3 cleanup.
         long eagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(eagerTeardowns).isEqualTo(2);
+        assertThat(eagerTeardowns).isZero();
 
-        // No final "cleanup" teardowns — predictive eager handles them
         long finalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(finalTeardowns).isZero();
+        assertThat(finalTeardowns).isEqualTo(2);
     }
 
     @Test
@@ -791,7 +819,7 @@ class ScopeAndFingerprintCornerCaseTest {
 
         // 2×2 = 4 trials
         long execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         assertThat(execTrials).isEqualTo(4);
 
@@ -801,15 +829,20 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(deploys).isEqualTo(4);
 
-        // With predictive eager teardown, every trial triggers a teardown
-        // because each trial has a unique config (the fingerprint always changes
-        // for the next trial). All 4 teardowns are "predictive_eager":
-        // trials 0-2 because next trial differs, trial 3 because it's last.
+        // Phase 2c skips the last trial. Trials 0-2 have fingerprint changes
+        // for the next trial → 3 predictive_eager teardowns. Last trial gets
+        // Phase 3 cleanup.
         long predictiveEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("server") && "predictive_eager".equals(t.metadata().get("reason")))
             .count();
-        assertThat(predictiveEagerTeardowns).isEqualTo(4);
+        assertThat(predictiveEagerTeardowns).isEqualTo(3);
+
+        long cleanupTeardowns = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("server") && "cleanup".equals(t.metadata().get("phase")))
+            .count();
+        assertThat(cleanupTeardowns).isEqualTo(1);
 
         // No group_boundary teardowns — predictive eager preempts them
         long groupBoundaryTeardowns = steps.stream()

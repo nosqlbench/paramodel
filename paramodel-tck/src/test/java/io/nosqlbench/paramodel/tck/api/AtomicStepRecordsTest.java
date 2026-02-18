@@ -79,28 +79,28 @@ class AtomicStepRecordsTest {
             .isInstanceOf(UnsupportedOperationException.class);
     }
 
-    // ── ExecuteTrial ────────────────────────────────────────────────
+    // ── TrialStep ────────────────────────────────────────────────
 
     @Test
-    void executeTrialHasCorrectType() {
-        var step = new ExecuteTrial(
+    void trialStepHasCorrectType() {
+        var step = new TrialStep(
             "step-2", "trial-1", Map.of("db", "db_inst_1"),
             List.of("step-1"), Optional.of(Duration.ofMinutes(5)),
             MINIMAL, Optional.empty(), EMPTY_META);
-        assertThat(step.type()).isEqualTo(StepType.EXECUTE_TRIAL);
+        assertThat(step.type()).isEqualTo(StepType.TRIAL_STEP);
     }
 
     @Test
-    void executeTrialDescription() {
-        var step = new ExecuteTrial(
+    void trialStepDescription() {
+        var step = new TrialStep(
             "step-2", "trial-42", Map.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         assertThat(step.description()).contains("trial-42");
     }
 
     @Test
-    void executeTrialAccessors() {
-        var step = new ExecuteTrial(
+    void trialStepAccessors() {
+        var step = new TrialStep(
             "step-2", "trial-1", Map.of("db", "inst-1"),
             List.of("dep-1", "dep-2"), Optional.empty(),
             MINIMAL, Optional.empty(), EMPTY_META);
@@ -204,7 +204,7 @@ class AtomicStepRecordsTest {
         assertThat(StepType.values()).containsExactlyInAnyOrder(
             StepType.DEPLOY_ELEMENT,
             StepType.NOTIFY_TRIAL_START,
-            StepType.EXECUTE_TRIAL,
+            StepType.TRIAL_STEP,
             StepType.AWAIT_ELEMENT,
             StepType.NOTIFY_TRIAL_END,
             StepType.TEARDOWN_ELEMENT,
@@ -292,7 +292,7 @@ class AtomicStepRecordsTest {
         AtomicStep deploy = new DeployElement(
             "1", "e", 0, Map.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
-        AtomicStep execute = new ExecuteTrial(
+        AtomicStep trialStep = new TrialStep(
             "2", "t", Map.of(), List.of(),
             Optional.empty(), MINIMAL, Optional.empty(), EMPTY_META);
         AtomicStep teardown = new TeardownElement(
@@ -306,7 +306,7 @@ class AtomicStepRecordsTest {
             Optional.empty(), ResourceRequirements.none(), Optional.empty(), EMPTY_META);
 
         assertThat(deploy).isInstanceOf(AtomicStep.class);
-        assertThat(execute).isInstanceOf(AtomicStep.class);
+        assertThat(trialStep).isInstanceOf(AtomicStep.class);
         assertThat(teardown).isInstanceOf(AtomicStep.class);
         assertThat(barrier).isInstanceOf(AtomicStep.class);
         assertThat(checkpoint).isInstanceOf(AtomicStep.class);

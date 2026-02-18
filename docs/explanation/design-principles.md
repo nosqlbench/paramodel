@@ -113,7 +113,8 @@ than at runtime wherever possible.
   `Value<T>` are all generic, preventing type-confusion bugs where an
   `Integer` constraint is accidentally applied to a `String` parameter.
 - **Enums.** `RelationshipType` (`SHARED`, `EXCLUSIVE`, `DEDICATED`,
-  `LIFELINE`), `TrialOrdering`, `TrialStatus`, and compilation strategy
+  `LINEAR`, `LIFELINE`), `TrialOrdering`, `TrialStatus`, and compilation
+ strategy
   types are enums, giving a closed set of legal values that the compiler
   can check exhaustively.
 

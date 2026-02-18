@@ -194,30 +194,56 @@ The compiler binds axis values to element parameters using prioritized matching:
 Creates the concrete atomic steps that constitute the execution plan. Each trial
 and each element lifecycle transition becomes one or more steps.
 
+### Design Rules (in order of precedence)
+
+1. **Trial element identity**: Trial elements are the innermost leaf nodes in
+   the dependency graph, even when the innermost layer is also the outermost
+   layer.  Binding depth does not disqualify an element from being a trial
+   element.
+2. **Notification scope containment**: The full lifecycle of every trial element
+   — deploy, execute, completion — must fall within the NotifyTrialStart /
+   NotifyTrialEnd bracket.
+3. **Non-trial elements as notification receivers**: Non-trial elements deploy
+   *before* NotifyTrialStart so they are running and able to observe trial
+   lifecycle events.
+
+### Unified Per-Trial Algorithm
+
+All elements are processed through a single fingerprint-based mechanism per
+trial.  Run-scoped (depth-0) elements naturally deploy on trial 0 and persist
+(constant fingerprint), while bound elements redeploy when their fingerprint
+changes.  For each trial: fingerprint check → teardown at boundaries → deploy
+non-trial elements → NotifyTrialStart → deploy trial elements → operative
+steps → NotifyTrialEnd → predictive eager teardown.
+
 ### Step Types Generated
 
 | Step Type | When Generated |
 |-----------|---------------|
-| `DeployElement` | One per element instance, before any trials that use it |
-| `ExecuteTrial` | One per trial, bound to its element instances |
-| `TeardownElement` | One per element instance, after all trials using it complete |
-| `BarrierSync` | At scope boundaries: element ready, scope end, batch boundaries |
-| `CheckpointState` | At configured checkpoint intervals or barrier boundaries |
+| `DeployElement` | Non-trial elements before NotifyTrialStart; trial elements after it |
+| `NotifyTrialStart`| After non-trial deploys, before trial element deploys |
+| `TrialStep` | For `SERVICE` trial elements (the operative action) |
+| `AwaitElement` | For `COMMAND` trial elements (natural completion) |
+| `NotifyTrialEnd` | After all operative steps of the trial complete |
+| `TeardownElement` | At group boundaries (predictive) and after all trials (final) |
+| `BarrierSync` | After deploys when elements have health checks |
+
+**Linearization Rule**:
+When trial elements declare a `LINEAR` relationship, the stage enforces
+strict sequential ordering of their operative steps (`TrialStep` or
+`AwaitElement`) within the trial boundary, supporting implied data flow.
 
 ### Barrier Insertion Rules
 
 | Barrier Type | Trigger |
 |-------------|---------|
-| `ELEMENT_READY` | After each `DeployElement` step completes |
-| `ELEMENT_SCOPE_END` | After all trials using an element instance complete |
-| `TRIAL_BATCH` | After each batch of N trials (configurable) |
-| `CHECKPOINT_BOUNDARY` | At configured checkpoint intervals |
+| `ELEMENT_READY` | After each `DeployElement` step for elements with health checks |
 
 ### Context Writes
 
 - `steps`: `List<AtomicStep>`
 - `barriers`: `List<Barrier>`
-- Metrics: `deploy_steps`, `execute_steps`, `teardown_steps`, `barrier_steps`, `checkpoint_steps`
+- Metrics: `steps_generated`, `barriers_generated`
 - Timing metric: `step_generation_duration`
 
 ---

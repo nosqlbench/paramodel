@@ -146,6 +146,7 @@ the `RelationshipType` on the `Element.Dependency` record.
 | `SHARED` (default) | Concurrent | Shared | Read-heavy / thread-safe |
 | `EXCLUSIVE` | Serialized | Shared | Safety-critical resources |
 | `DEDICATED` | N/A | Dedicated per dependent | Per-tenant isolation |
+| `LINEAR` | Serial | Shared within trial scope | Strict ordering and data flow in trial |
 | `LIFELINE` | Concurrent | Shared | Container-on-node lifecycle |
 
 Element lifecycle (when instances are redeployed vs. persisted) is determined

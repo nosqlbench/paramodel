@@ -132,6 +132,22 @@ public class DefaultValidationResult implements Compiler.ValidationResult {
     ///
     /// @param code the error code to downgrade
     public void downgradeError(String code) {
+        downgradeErrorTo(code, ErrorSeverity.INFO);
+    }
+
+    /// Downgrades all diagnostics with the given error code from ERROR to WARNING.
+    ///
+    /// Use this instead of {@link #downgradeError} when the issue is non-blocking
+    /// but still represents a real problem that the user should address (e.g., a
+    /// broken axis reference after renaming an element).
+    ///
+    /// @param code the error code to downgrade
+    public void downgradeErrorToWarning(String code) {
+        downgradeErrorTo(code, ErrorSeverity.WARNING);
+    }
+
+    /// Downgrades all diagnostics with the given error code to the specified severity.
+    private void downgradeErrorTo(String code, ErrorSeverity targetSeverity) {
         List<Diagnostic> downgraded = new ArrayList<>();
         var iterator = diagnostics.iterator();
         while (iterator.hasNext()) {
@@ -139,7 +155,7 @@ public class DefaultValidationResult implements Compiler.ValidationResult {
             if (d.severity() == ErrorSeverity.ERROR
                     && code.equals(d.code().orElse(null))) {
                 iterator.remove();
-                downgraded.add(Diagnostic.of(ErrorSeverity.INFO, code, d.message(),
+                downgraded.add(Diagnostic.of(targetSeverity, code, d.message(),
                         d.location().orElse(null),
                         d.explanation().orElse(null),
                         d.suggestion().orElse(null)));

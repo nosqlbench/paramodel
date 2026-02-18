@@ -19,6 +19,7 @@ package io.nosqlbench.paramodel.elements;
 /// SHARED             Can overlap                      Single shared instance
 /// EXCLUSIVE          Cannot overlap                   Single instance, serialized
 /// DEDICATED          Isolated per dependent           Dedicated instance per dependent
+/// LINEAR             Serial within trial scope        Shared instance, ordered
 /// LIFELINE           Target subsumes dependent        Dependent torn down with target
 /// ```
 ///
@@ -39,6 +40,10 @@ package io.nosqlbench.paramodel.elements;
 ///   Trial1: ----[B instance-1]----
 ///   Trial2: ----[B instance-2]----
 ///           ^ Each dependent gets its own instance
+///
+/// LINEAR:
+///   Trial1: [B operative action] → [A operative action]
+///           ^ Sequential actions within the same trial scope
 ///
 /// LIFELINE:
 ///   B teardown → A automatically torn down
@@ -68,6 +73,13 @@ package io.nosqlbench.paramodel.elements;
 /// - Resource is cheap to instantiate
 /// - Test isolation is required
 ///
+/// ### LINEAR
+///
+/// Use when:
+/// - Multiple trial elements exist in the same trial scope
+/// - Their operative actions must be performed in a specific sequence
+/// - Earlier actions provide state for later ones within the trial
+///
 /// ### LIFELINE
 ///
 /// Use when:
@@ -83,6 +95,7 @@ package io.nosqlbench.paramodel.elements;
 /// SHARED:     → No barriers needed, single instance lifecycle
 /// EXCLUSIVE:  → Compiler inserts serialization barriers
 /// DEDICATED:  → Compiler creates per-dependent instances
+/// LINEAR:     → Compiler enforces serial TrialSteps for trial elements
 /// LIFELINE:   → Dependent's final teardown step is omitted
 /// ```
 ///
@@ -110,6 +123,12 @@ public enum RelationshipType {
     /// is never shared with other elements.
     DEDICATED,
 
+    /// Indicates that the dependent and target are both trial elements
+    /// within the same trial scope and must occur in order, as strict
+    /// serialization is required and further, data flow may be implied
+    /// between elements in the same trial scope (parameter group).
+    LINEAR,
+
     /// The target's lifecycle subsumes the dependent's. When the target
     /// tears down, the dependent is automatically torn down.
     LIFELINE;
@@ -126,6 +145,14 @@ public enum RelationshipType {
     /// @return true if this is {@link #DEDICATED}
     public boolean requiresDedicatedInstance() {
         return this == DEDICATED;
+    }
+
+    /// True when the dependency implies a linear execution order within
+    /// the same trial scope.
+    ///
+    /// @return true if this is {@link #LINEAR}
+    public boolean isLinear() {
+        return this == LINEAR;
     }
 
     /// True when the target's teardown subsumes the dependent's teardown.

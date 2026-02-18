@@ -53,7 +53,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_0", "trial_0", Map.of("server", "inst_0"), List.of("deploy_server_t0"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("trial_index", 0)
@@ -68,7 +68,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_1", "trial_1", Map.of("server", "inst_1"), List.of("deploy_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("trial_index", 1)
@@ -118,7 +118,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_0", "trial_0", Map.of("server", "inst_0"), List.of("deploy_server_t0"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("trial_index", 0)
@@ -133,7 +133,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_1", "trial_1", Map.of("server", "inst_1"), List.of("deploy_server_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("trial_index", 1)
@@ -243,7 +243,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 0)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_0", "trial_0", Map.of("server", "inst_s0", "cache", "inst_c0"),
             List.of("deploy_server_t0", "deploy_cache_t0"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
@@ -273,7 +273,7 @@ class PruneRedundantPassTest {
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),
             Optional.empty(), Map.of("binding_depth", 1, "trial_index", 1)
         ));
-        injectedSteps.add(new AtomicStep.ExecuteTrial(
+        injectedSteps.add(new AtomicStep.TrialStep(
             "exec_trial_1", "trial_1", Map.of("server", "inst_s1", "cache", "inst_c1"),
             List.of("deploy_server_t1", "deploy_cache_t1"),
             Optional.empty(), AtomicStep.ResourceRequirements.minimal(),

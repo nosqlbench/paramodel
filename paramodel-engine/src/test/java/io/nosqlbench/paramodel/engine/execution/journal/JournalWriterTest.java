@@ -107,7 +107,7 @@ class JournalWriterTest {
 
     @Test
     void testStepCompletedEvent() {
-        writer.writeStepCompleted("step-1", AtomicStep.StepType.EXECUTE_TRIAL,
+        writer.writeStepCompleted("step-1", AtomicStep.StepType.TRIAL_STEP,
             Duration.ofSeconds(10), Map.of("result", "success"));
 
         JournalEvent.StepCompleted event = (JournalEvent.StepCompleted)

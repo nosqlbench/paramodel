@@ -153,7 +153,7 @@ public class ValidationStage implements CompilationStage {
         DefaultValidationResult result = validate(definition);
         result.downgradeError(ERR_NO_ELEMENTS);
         result.downgradeError(ERR_UNKNOWN_DEPENDENCY);
-        result.downgradeError(ERR_UNKNOWN_AXIS_ELEMENT);
+        result.downgradeErrorToWarning(ERR_UNKNOWN_AXIS_ELEMENT);
         return result;
     }
 

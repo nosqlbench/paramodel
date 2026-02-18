@@ -98,11 +98,11 @@ import java.util.Set;
 ///         │     │                            │     │
 ///         │     ├─→ DEPLOY_ELEMENT(app_t1)  │     ├─→ DEPLOY_ELEMENT(app_t3)
 ///         │     │     │                      │     │     │
-///         │     │     └─→ EXECUTE_TRIAL(t1) │     │     └─→ EXECUTE_TRIAL(t3)
+///         │     │     └─→ TRIAL_STEP(t1)    │     │     └─→ TRIAL_STEP(t3)
 ///         │     │           │                │     │           │
 ///         │     ├─→ DEPLOY_ELEMENT(app_t2)  │     ├─→ DEPLOY_ELEMENT(app_t4)
 ///         │     │     │                      │     │     │
-///         │     │     └─→ EXECUTE_TRIAL(t2) │     │     └─→ EXECUTE_TRIAL(t4)
+///         │     │     └─→ TRIAL_STEP(t2)    │     │     └─→ TRIAL_STEP(t4)
 ///         │     │           │                │     │           │
 ///         │     └───────────┴─────────→ BARRIER(cache_10_done)
 ///         │                                  │
@@ -174,10 +174,10 @@ import java.util.Set;
 ///
 ///   DEPLOY_ELEMENT(cache) → BARRIER(cache_ready)
 ///                               │
-///                               ├─→ EXECUTE_TRIAL(t1) ─┐
-///                               ├─→ EXECUTE_TRIAL(t2) ─┼─→ BARRIER(cache_trials_done)
-///                               └─→ EXECUTE_TRIAL(t3) ─┘         │
-///                                                                 └─→ TEARDOWN_ELEMENT(cache)
+///                               ├─→ TRIAL_STEP(t1) ──┐
+///                               ├─→ TRIAL_STEP(t2) ──┼─→ BARRIER(cache_trials_done)
+///                               └─→ TRIAL_STEP(t3) ──┘         │
+///                                                              └─→ TEARDOWN_ELEMENT(cache)
 /// ```
 ///
 /// ## Checkpoint and Recovery
@@ -209,16 +209,16 @@ import java.util.Set;
 ///   Initial Run:
 ///     ✓ DEPLOY_ELEMENT(db)
 ///     ✓ DEPLOY_ELEMENT(cache)
-///     ✓ EXECUTE_TRIAL(t1)
-///     ✓ EXECUTE_TRIAL(t2)
+///     ✓ TRIAL_STEP(t1)
+///     ✓ TRIAL_STEP(t2)
 ///     ✗ CRASH → CHECKPOINT written
 ///
 ///   Recovery Run:
 ///     ↻ Load checkpoint
 ///     ↻ db and cache still healthy → reuse
-///     ↻ Resume at EXECUTE_TRIAL(t3)
-///     ✓ EXECUTE_TRIAL(t3)
-///     ✓ EXECUTE_TRIAL(t4)
+///     ↻ Resume at TRIAL_STEP(t3)
+///     ✓ TRIAL_STEP(t3)
+///     ✓ TRIAL_STEP(t4)
 ///     ✓ TEARDOWN_ALL
 /// ```
 ///

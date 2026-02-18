@@ -268,7 +268,7 @@ public class DefaultExecutionGraph implements ExecutionGraph {
             .filter(s -> {
                 if (s instanceof AtomicStep.DeployElement d) return d.elementId().equals(elementId);
                 if (s instanceof AtomicStep.TeardownElement t) return t.elementId().equals(elementId);
-                if (s instanceof AtomicStep.ExecuteTrial e) return e.elementBindings().containsKey(elementId);
+                if (s instanceof AtomicStep.TrialStep e) return e.elementBindings().containsKey(elementId);
                 return false;
             })
             .map(AtomicStep::id)
@@ -281,7 +281,7 @@ public class DefaultExecutionGraph implements ExecutionGraph {
         Set<String> trialSet = new HashSet<>(trialIds);
         Set<String> ids = steps.stream()
             .filter(s -> {
-                if (s instanceof AtomicStep.ExecuteTrial e) return trialSet.contains(e.trialId());
+                if (s instanceof AtomicStep.TrialStep e) return trialSet.contains(e.trialId());
                 return false;
             })
             .map(AtomicStep::id)

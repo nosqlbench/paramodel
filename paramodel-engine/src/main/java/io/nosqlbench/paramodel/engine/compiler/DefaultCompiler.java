@@ -2,6 +2,7 @@ package io.nosqlbench.paramodel.engine.compiler;
 
 import io.nosqlbench.paramodel.compilation.*;
 import io.nosqlbench.paramodel.elements.ElementTypeDescriptorProvider;
+import io.nosqlbench.paramodel.engine.planners.StepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -152,6 +153,17 @@ public class DefaultCompiler implements Compiler {
 
         public Builder options(CompilerOptions options) {
             this.options = options;
+            return this;
+        }
+
+        /// Registers a custom {@link StepGenerationStrategy} that can be
+        /// selected via the {@value StepGenerationStage#OPTION_STRATEGY}
+        /// compiler option.
+        ///
+        /// @param strategy the strategy to register
+        /// @return this builder
+        public Builder registerStepStrategy(StepGenerationStrategy strategy) {
+            StepGenerationStage.register(strategy);
             return this;
         }
 

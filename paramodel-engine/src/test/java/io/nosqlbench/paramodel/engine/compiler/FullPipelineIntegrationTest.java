@@ -57,7 +57,7 @@ class FullPipelineIntegrationTest {
 
         // Verify trial count: 2 trials (port 8080, 8081)
         long trialSteps = execPlan.steps().stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         assertThat(trialSteps).isEqualTo(2);
 
@@ -141,7 +141,7 @@ class FullPipelineIntegrationTest {
 
         // 4 trials => 4 execute trial steps
         long execTrials = execPlan.steps().stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         assertThat(execTrials).isEqualTo(4);
     }

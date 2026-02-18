@@ -29,7 +29,7 @@ import java.util.*;
 ///
 /// 1. **Deadline passed** → {@link ResolutionAction#TIMED_OUT}
 /// 2. **Clean shutdown** (ExecutionSuspended was last event) → {@link ResolutionAction#RESUME}
-/// 3. **Idempotent step** (DEPLOY_ELEMENT or EXECUTE_TRIAL) with retries remaining
+/// 3. **Idempotent step** (DEPLOY_ELEMENT or TRIAL_STEP) with retries remaining
 ///    → {@link ResolutionAction#RETRY}
 /// 4. **Otherwise** → {@link ResolutionAction#FAIL}
 ///
@@ -41,7 +41,7 @@ public class DefaultInFlightStepResolver implements InFlightStepResolver {
 
     private static final Set<AtomicStep.StepType> IDEMPOTENT_STEP_TYPES = Set.of(
         AtomicStep.StepType.DEPLOY_ELEMENT,
-        AtomicStep.StepType.EXECUTE_TRIAL
+        AtomicStep.StepType.TRIAL_STEP
     );
 
     /// Creates a new resolver.

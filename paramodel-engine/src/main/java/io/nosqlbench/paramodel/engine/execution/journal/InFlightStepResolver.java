@@ -34,7 +34,7 @@ import java.util.Map;
 /// In-flight step detected:
 ///   +-- Deadline passed? -> TIMED_OUT
 ///   +-- Clean shutdown (ExecutionSuspended present)? -> RESUME
-///   +-- Idempotent step (DEPLOY_ELEMENT, EXECUTE_TRIAL) -> RETRY
+///   +-- Idempotent step (DEPLOY_ELEMENT, TRIAL_STEP) -> RETRY
 ///   +-- Otherwise (BARRIER_SYNC, CHECKPOINT_STATE, TEARDOWN_ELEMENT) -> FAIL
 /// ```
 ///
@@ -43,7 +43,7 @@ import java.util.Map;
 /// Steps are classified as idempotent or non-idempotent by their
 /// {@link io.nosqlbench.paramodel.plan.AtomicStep.StepType StepType}:
 ///
-/// - **Idempotent** (`DEPLOY_ELEMENT`, `EXECUTE_TRIAL`): safe to
+/// - **Idempotent** (`DEPLOY_ELEMENT`, `TRIAL_STEP`): safe to
 ///   re-execute from scratch because the operation either succeeds
 ///   with the same result or can detect prior partial completion.
 ///   Deploying an element that is already deployed is a no-op;

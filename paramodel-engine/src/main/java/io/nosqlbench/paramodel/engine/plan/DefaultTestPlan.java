@@ -21,11 +21,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Queue;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -76,7 +79,7 @@ public class DefaultTestPlan implements TestPlan, Sequence {
     private DefaultTestPlan(Builder builder) {
         this.name = Objects.requireNonNull(builder.name, "name must not be null");
         this.description = builder.description;
-        this.elements = new LinkedHashMap<>(builder.elements);
+        this.elements = topologicalSort(builder.elements);
         this.axes = Collections.unmodifiableList(new ArrayList<>(builder.axes));
         this.policies = builder.policies;
         this.optimizationStrategy = builder.optimizationStrategy;
@@ -373,6 +376,44 @@ public class DefaultTestPlan implements TestPlan, Sequence {
         @Override public Optional<String> description() { return Optional.ofNullable(description); }
         @Override public Map<String, String> tags() { return Map.of(); }
         @Override public Optional<String> version() { return Optional.empty(); }
+    }
+
+    /// Topologically sorts elements so that dependencies appear before
+    /// dependents, producing the "element stack" order for user display.
+    /// Elements with no dependencies come first; elements at the leaves
+    /// of the dependency graph come last.
+    private static LinkedHashMap<String, Element> topologicalSort(Map<String, Element> elements) {
+        Map<String, Integer> inDegree = new HashMap<>();
+        Map<String, List<String>> adj = new HashMap<>();
+        for (Element e : elements.values()) {
+            inDegree.putIfAbsent(e.name(), 0);
+            for (Element.Dependency dep : e.dependencies()) {
+                if (elements.containsKey(dep.target().name())) {
+                    adj.computeIfAbsent(dep.target().name(), k -> new ArrayList<>()).add(e.name());
+                    inDegree.merge(e.name(), 1, Integer::sum);
+                    inDegree.putIfAbsent(dep.target().name(), 0);
+                }
+            }
+        }
+        Queue<String> queue = new LinkedList<>();
+        for (var entry : inDegree.entrySet()) {
+            if (entry.getValue() == 0) queue.add(entry.getKey());
+        }
+        LinkedHashMap<String, Element> sorted = new LinkedHashMap<>();
+        while (!queue.isEmpty()) {
+            String name = queue.poll();
+            Element e = elements.get(name);
+            if (e != null) sorted.put(name, e);
+            for (String dependent : adj.getOrDefault(name, List.of())) {
+                inDegree.put(dependent, inDegree.get(dependent) - 1);
+                if (inDegree.get(dependent) == 0) queue.add(dependent);
+            }
+        }
+        // Include any elements not in the graph (no deps, not depended upon)
+        for (var entry : elements.entrySet()) {
+            sorted.putIfAbsent(entry.getKey(), entry.getValue());
+        }
+        return sorted;
     }
 
     @Override

@@ -59,10 +59,14 @@ import java.util.Optional;
 ///   │    ├─ trial_id
 ///   │    └─ element_names
 ///   │
-///   ├─ ExecuteTrial        (Run parameter combination)
+///   ├─ TrialStep           (Operative action of the Trial Element)
 ///   │    ├─ trial_id
 ///   │    ├─ element_bindings
 ///   │    └─ trial_logic
+///   │
+///   ├─ AwaitElement        (Natural completion of COMMAND element)
+///   │    ├─ element_id
+///   │    └─ trial_id
 ///   │
 ///   ├─ NotifyTrialEnd      (Trial lifecycle: end notification)
 ///   │    ├─ trial_id
@@ -93,8 +97,8 @@ import java.util.Optional;
 ///       │
 ///       ├─→ deploy_cache (Step 2)
 ///       │       │
-///       │       ├─→ execute_trial_1 (Step 3)
-///       │       └─→ execute_trial_2 (Step 4)
+///       │       ├─→ trial_step_1 (Step 3)
+///       │       └─→ trial_step_2 (Step 4)
 ///       │
 ///       └─→ barrier_db_ready (Step 5)
 ///               │
@@ -102,7 +106,7 @@ import java.util.Optional;
 ///
 /// Dependency Rules:
 ///   - Step 2 cannot start until Step 1 completes
-///   - Steps 3 and 4 can execute in parallel (both depend only on Step 2)
+///   - Steps 3 and 4 can run in parallel (both depend only on Step 2)
 ///   - Step 6 cannot start until Step 5 completes
 ///   - Step 5 depends on all trials completing
 /// ```
@@ -122,16 +126,16 @@ import java.util.Optional;
 ///   5. Wait for health checks
 ///   6. Return SUCCESS or FAILURE
 ///
-/// ExecuteTrial(trial_id, bindings):
-///   1. Check if trial already executed (result exists)
+/// TrialStep(trial_id, bindings):
+///   1. Check if trial already performed (result exists)
 ///   2. If result exists → verify integrity
 ///   3. If valid result → SUCCESS (idempotent)
-///   4. If no result or corrupt → execute trial
+///   4. If no result or corrupt → perform trial action
 ///   5. Store result atomically
 ///   6. Return SUCCESS or FAILURE
 ///
 /// Retry Strategy:
-///   Attempt 1: Execute
+///   Attempt 1: Run
 ///   Attempt 2 (if failed): Wait 1s, retry
 ///   Attempt 3 (if failed): Wait 2s, retry
 ///   Attempt 4 (if failed): Wait 4s, retry
@@ -145,7 +149,7 @@ import java.util.Optional;
 /// ```
 /// Resource Binding Example:
 ///
-/// ExecuteTrial("trial_42", bindings={
+/// TrialStep("trial_42", bindings={
 ///   "database": "db_instance_prod_1",
 ///   "cache": "cache_instance_10",
 ///   "app": "app_instance_42"
@@ -238,10 +242,10 @@ import java.util.Optional;
 ///         step.estimatedDuration().orElse(Duration.ZERO));
 ///     System.out.printf("  Dependencies: %d%n", step.dependencies().size());
 ///
-///     if (step instanceof AtomicStep.ExecuteTrial executeTrial) {
-///         System.out.printf("  Trial ID: %s%n", executeTrial.trialId());
+///     if (step instanceof AtomicStep.TrialStep trialStep) {
+///         System.out.printf("  Trial ID: %s%n", trialStep.trialId());
 ///         System.out.printf("  Element bindings: %s%n",
-///             executeTrial.elementBindings());
+///             trialStep.elementBindings());
 ///     }
 /// }
 /// ```
@@ -254,11 +258,11 @@ import java.util.Optional;
 ///     .toList();
 ///
 /// List<AtomicStep> trialSteps = plan.steps().stream()
-///     .filter(s -> s.type() == StepType.EXECUTE_TRIAL)
+///     .filter(s -> s.type() == StepType.TRIAL_STEP)
 ///     .toList();
 ///
 /// System.out.printf("Deployment steps: %d%n", deploySteps.size());
-/// System.out.printf("Trial execution steps: %d%n", trialSteps.size());
+/// System.out.printf("Trial steps: %d%n", trialSteps.size());
 ///
 /// // Estimate deployment time
 /// Duration totalDeployTime = deploySteps.stream()
@@ -295,7 +299,7 @@ import java.util.Optional;
 /// while (attempt < retryPolicy.maxAttempts()) {
 ///     try {
 ///         attempt++;
-///         System.out.printf("Attempt %d: Executing %s%n", attempt, step.id());
+///         System.out.printf("Attempt %d: Running %s%n", attempt, step.id());
 ///
 ///         StepResult result = step.execute(executionContext);
 ///
@@ -375,7 +379,7 @@ import java.util.Optional;
 ///
 public sealed interface AtomicStep
     permits AtomicStep.DeployElement,
-            AtomicStep.ExecuteTrial,
+            AtomicStep.TrialStep,
             AtomicStep.AwaitElement,
             AtomicStep.TeardownElement,
             AtomicStep.BarrierSync,
@@ -506,18 +510,18 @@ public sealed interface AtomicStep
     }
 
     ///
-    /// Step for executing a trial with bound element instances.
+    /// Step for performing the operative action of the Trial Element.
     ///
     /// @param id Step identifier
-    /// @param trialId Trial to execute
+    /// @param trialId Trial this step belongs to
     /// @param elementBindings Mapping from element names to instance IDs
     /// @param dependencies Prerequisite step IDs
-    /// @param estimatedDuration Estimated trial execution time
+    /// @param estimatedDuration Estimated trial duration
     /// @param resourceRequirements Resource needs
     /// @param retryPolicy Retry strategy on failure
     /// @param metadata Additional metadata
     ///
-    record ExecuteTrial(
+    record TrialStep(
         String id,
         String trialId,
         Map<String, String> elementBindings,
@@ -530,25 +534,25 @@ public sealed interface AtomicStep
 
         @Override
         public StepType type() {
-            return StepType.EXECUTE_TRIAL;
+            return StepType.TRIAL_STEP;
         }
 
         @Override
         public String description() {
-            return "Execute trial: " + trialId;
+            return "Trial step: " + trialId;
         }
 
         @Override
         public StepResult execute(ExecutionContext context) throws StepExecutionException {
             throw new UnsupportedOperationException(
-                "ExecuteTrial.execute() requires a concrete implementation");
+                "TrialStep.execute() requires a concrete implementation");
         }
     }
 
     ///
     /// Step for awaiting natural completion of a COMMAND element.
     ///
-    /// Emitted instead of {@code ExecuteTrial} when the trial element
+    /// Emitted instead of {@link TrialStep} when the trial element
     /// has {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#COMMAND
     /// COMMAND} shutdown semantics. The element runs to completion on
     /// its own; the scheduler waits for it to terminate naturally rather
@@ -839,7 +843,7 @@ public sealed interface AtomicStep
     enum StepType {
         DEPLOY_ELEMENT,
         NOTIFY_TRIAL_START,
-        EXECUTE_TRIAL,
+        TRIAL_STEP,
         AWAIT_ELEMENT,
         NOTIFY_TRIAL_END,
         TEARDOWN_ELEMENT,

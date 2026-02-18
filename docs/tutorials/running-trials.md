@@ -117,8 +117,9 @@ Internally the executor follows a four-phase lifecycle:
 1. **Initializing** -- validates the plan and prepares runtime state.
 2. **Deploying** -- provisions any elements (databases, services, etc.)
    declared in the plan.
-3. **Executing** -- runs trials concurrently up to the concurrency limit,
-   respecting dependency ordering from the execution graph.
+3. **Trial Running** -- performs the operative actions of the designated
+   **trial elements** concurrently up to the concurrency limit,
+   respecting dependency ordering.
 4. **Tearing down** -- releases resources and collects final artifacts.
 
 When `execute()` returns, all four phases have completed.
@@ -227,12 +228,12 @@ ExecutionPlan
      |
      v
 +-----------+    +-----------+    +------------+    +------------------+
-| Scheduling| -> | Resource  | -> | Parallel   | -> | Result           |
-|           |    | Allocation|    | Execution  |    | Collection       |
+| Scheduling| -> | Resource  | -> | Trial      | -> | Result           |
+|           |    | Allocation|    | Runs       |    | Collection       |
 +-----------+    +-----------+    +------------+    +------------------+
      |                |                |                     |
-  Determine       Provision        Run trials          Aggregate
-  step order      elements         concurrently        per-trial
+  Determine       Provision        Action of           Aggregate
+  step order      elements         trial elements      per-trial
   from DAG        (deploy)         up to limit         results
 ```
 
@@ -240,8 +241,8 @@ ExecutionPlan
   next.
 - **Resource Allocation** provisions elements declared in the plan (databases,
   caches, services).
-- **Parallel Execution** runs trials concurrently, bounded by the configured
-  maximum.
+- **Trial Runs** perform the action of each trial element concurrently, 
+  bounded by the configured maximum.
 - **Result Collection** gathers each trial's status, timing, metrics, and
   artifacts into the final `ExecutionResult`.
 

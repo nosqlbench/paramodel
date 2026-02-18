@@ -52,6 +52,7 @@ public class DefaultElement implements Element {
     private final Map<String, String> exports;
     private final HealthCheckSpec healthCheck;
     private final ShutdownSemantics shutdownSemantics;
+    private final Boolean trialElement;
     private volatile LiveStatusSummary statusSummary;
 
     private DefaultElement(Builder builder) {
@@ -67,6 +68,7 @@ public class DefaultElement implements Element {
         this.healthCheck = builder.healthCheck;
         this.shutdownSemantics = builder.shutdownSemantics != null
                 ? builder.shutdownSemantics : ShutdownSemantics.SERVICE;
+        this.trialElement = builder.trialElement;
         this.statusSummary = builder.statusSummary != null
                 ? builder.statusSummary
                 : LiveStatusSummary.inactive();
@@ -110,6 +112,11 @@ public class DefaultElement implements Element {
     @Override
     public ShutdownSemantics shutdownSemantics() {
         return shutdownSemantics;
+    }
+
+    @Override
+    public Optional<Boolean> trialElement() {
+        return Optional.ofNullable(trialElement);
     }
 
     @Override
@@ -166,6 +173,7 @@ public class DefaultElement implements Element {
         private final Map<String, String> exports = new LinkedHashMap<>();
         private HealthCheckSpec healthCheck;
         private ShutdownSemantics shutdownSemantics;
+        private Boolean trialElement;
         private LiveStatusSummary statusSummary;
 
         private Builder(String name) {
@@ -271,6 +279,15 @@ public class DefaultElement implements Element {
         /// @return this builder
         public Builder shutdownSemantics(ShutdownSemantics shutdownSemantics) {
             this.shutdownSemantics = shutdownSemantics;
+            return this;
+        }
+
+        /// Sets the explicit trial-element override.
+        ///
+        /// @param trialElement true to force trial, false to force non-trial, null for auto
+        /// @return this builder
+        public Builder trialElement(Boolean trialElement) {
+            this.trialElement = trialElement;
             return this;
         }
 

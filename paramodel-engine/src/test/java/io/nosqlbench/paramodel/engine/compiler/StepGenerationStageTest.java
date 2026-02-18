@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.Compiler;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
+import io.nosqlbench.paramodel.engine.planners.StepGenerationStrategy;
 import io.nosqlbench.paramodel.mock.plan.MockAxis;
 import io.nosqlbench.paramodel.mock.plan.MockElement;
 import io.nosqlbench.paramodel.mock.plan.MockTestPlan;
@@ -42,7 +43,7 @@ class StepGenerationStageTest {
         // Should have: 1 global deploy + 2 ExecuteTrials + 2 BarrierSyncs + 1 final teardown
         long deploys = steps.stream().filter(s -> s instanceof AtomicStep.DeployElement).count();
         long teardowns = steps.stream().filter(s -> s instanceof AtomicStep.TeardownElement).count();
-        long execTrials = steps.stream().filter(s -> s instanceof AtomicStep.ExecuteTrial).count();
+        long execTrials = steps.stream().filter(s -> s instanceof AtomicStep.TrialStep).count();
 
         assertThat(deploys).isEqualTo(1); // single global deploy
         assertThat(teardowns).isEqualTo(1); // single final teardown
@@ -131,13 +132,16 @@ class StepGenerationStageTest {
 
         DefaultCompilationContext context = runPipeline(plan);
 
-        List<AtomicStep.ExecuteTrial> execTrials = context.steps().get().stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
-            .map(AtomicStep.ExecuteTrial.class::cast)
+        List<AtomicStep.TrialStep> execTrials = context.steps().get().stream()
+            .filter(s -> s instanceof AtomicStep.TrialStep)
+            .map(AtomicStep.TrialStep.class::cast)
             .toList();
 
-        assertThat(execTrials).hasSize(1);
-        assertThat(execTrials.getFirst().elementBindings()).containsKeys("db", "cache");
+        assertThat(execTrials).hasSize(2); // one per leaf element (db and cache are independent leaves)
+        // Both TrialSteps carry the full binding map
+        for (AtomicStep.TrialStep ts : execTrials) {
+            assertThat(ts.elementBindings()).containsKeys("db", "cache");
+        }
     }
 
     @Test
@@ -353,18 +357,18 @@ class StepGenerationStageTest {
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
 
-        assertThat(eagerTeardowns).hasSize(2);
+        assertThat(eagerTeardowns).hasSize(1); // only trial 0 (Phase 2c skips last trial)
         assertThat(eagerTeardowns.get(0).instanceNumber()).isEqualTo(0);
-        assertThat(eagerTeardowns.get(1).instanceNumber()).isEqualTo(1);
 
-        // No final (cleanup) teardown — Phase 2c already tore down all instances
+        // Last trial's instance (instance 1) gets final (cleanup) teardown
         List<AtomicStep.TeardownElement> finalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "cleanup".equals(t.metadata().get("phase")))
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
 
-        assertThat(finalTeardowns).isEmpty();
+        assertThat(finalTeardowns).hasSize(1);
+        assertThat(finalTeardowns.get(0).instanceNumber()).isEqualTo(1);
     }
 
     @Test
@@ -538,23 +542,24 @@ class StepGenerationStageTest {
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
 
-        assertThat(eagerTeardowns).hasSize(2); // one per trial
+        assertThat(eagerTeardowns).hasSize(1); // only trial 0 (Phase 2c skips last trial)
 
-        // Each eager teardown should depend on its trial's exec step or
+        // The eager teardown should depend on its trial's exec step or
         // the NotifyTrialEnd step (which follows the exec step)
         for (AtomicStep.TeardownElement td : eagerTeardowns) {
             assertThat(td.dependencies())
-                .allMatch(dep -> dep.startsWith("exec_trial_") || dep.startsWith("notify_trial_end_"));
+                .allMatch(dep -> dep.startsWith("exec_trial_") || dep.startsWith("notify_trial_end_")
+                    || dep.startsWith("trial_step_") || dep.startsWith("await_"));
         }
 
-        // No final teardown for PER_TRIAL elements
+        // Last trial's instance gets final (cleanup) teardown instead of eager
         List<AtomicStep.TeardownElement> finalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && "cleanup".equals(t.metadata().get("phase")))
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
 
-        assertThat(finalTeardowns).isEmpty();
+        assertThat(finalTeardowns).hasSize(1); // last trial's instance
 
         // No barriers for fully-PER_TRIAL plans (they would be dangling leaves)
         long barrierCount = steps.stream()
@@ -663,11 +668,12 @@ class StepGenerationStageTest {
         AtomicStep.TeardownElement teardown = intermediateTeardowns.getFirst();
 
         // The teardown should depend on a trial-completion step — either
-        // an exec step directly or a NotifyTrialEnd step (which itself
-        // depends on the exec step, representing trial completion).
+        // its operative step directly (trial_step_ or await_) or
+        // a NotifyTrialEnd step (for non-trial elements).
         assertThat(teardown.dependencies())
-            .as("Intermediate teardown should depend on exec or trial-end notification step")
-            .anyMatch(dep -> dep.startsWith("exec_") || dep.startsWith("notify_trial_end_"));
+            .as("Intermediate teardown should depend on operative or trial-end notification step")
+            .anyMatch(dep -> dep.startsWith("trial_step_") || dep.startsWith("await_")
+                || dep.startsWith("notify_trial_end_"));
 
         // The teardown should NOT depend on a deploy step
         assertThat(teardown.dependencies())
@@ -717,15 +723,16 @@ class StepGenerationStageTest {
                 && "predictive_eager".equals(t.metadata().get("reason")))
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
-        assertThat(workerEagerTeardowns).hasSize(2); // one per trial
+        assertThat(workerEagerTeardowns).hasSize(1); // only trial 0 (Phase 2c skips last trial)
 
+        // Last trial's worker instance gets final (cleanup) teardown
         List<AtomicStep.TeardownElement> workerFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker")
                 && "cleanup".equals(t.metadata().get("phase")))
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
-        assertThat(workerFinalTeardowns).isEmpty();
+        assertThat(workerFinalTeardowns).hasSize(1); // last trial's instance
 
         // Independent elements deploy in Phase 2a (before NotifyTrialStart).
         // Worker deploys depend on db's deploy (its dependency, Phase 1) or
@@ -736,23 +743,19 @@ class StepGenerationStageTest {
             .toList();
         assertThat(workerDeploys).hasSize(2); // one per trial
 
-        // First worker deploy depends on db deploy (Phase 1 dependency)
+        // First worker deploy depends on NotifyTrialStart (which transitively
+        // covers deploy_db, so no direct dep on deploy_db is needed)
         assertThat(workerDeploys.getFirst().dependencies())
-            .as("first worker deploy should depend on db deploy (Phase 1)")
-            .anyMatch(dep -> dep.startsWith("deploy_db"));
+            .as("first worker deploy should depend on NotifyTrialStart")
+            .anyMatch(dep -> dep.startsWith("notify_trial_start"));
 
-        // The first final teardown (db) must depend on the latest step
-        // from each trial. With predictive eager teardown, the latest step
-        // per trial is the last worker teardown (which comes after
-        // NotifyTrialEnd in the Phase 2c chain).
+        // The first final teardown (worker) must come before db's final
+        // teardown in the LIFO chain. db's final teardown depends on
+        // worker's final teardown.
         AtomicStep.TeardownElement dbTeardown = dbFinalTeardowns.getFirst();
-
-        List<String> workerTeardownIds = workerEagerTeardowns.stream()
-            .map(AtomicStep::id).toList();
-        assertThat(workerTeardownIds).hasSize(2); // one per trial
         assertThat(dbTeardown.dependencies())
-            .as("First final teardown must wait for latest-per-trial steps (worker teardowns)")
-            .containsAll(workerTeardownIds);
+            .as("db final teardown must depend on worker final teardown via reverse dep")
+            .contains(workerFinalTeardowns.getFirst().id());
 
         // No ELEMENT_SCOPE_END barrier steps should exist
         long scopeEndBarriers = steps.stream()
@@ -773,7 +776,8 @@ class StepGenerationStageTest {
             .parameter(StringParameter.of("mode"))
             .build();
 
-        Axis<String> axis = MockAxis.of("mode", "a");
+        // Use 2 trials so trial 0 gets eager teardowns (Phase 2c skips last trial)
+        Axis<String> axis = MockAxis.of("mode", "a", "b");
 
         TestPlan plan = MockTestPlan.builder()
             .name("per-trial-teardown-chain-test")
@@ -785,10 +789,11 @@ class StepGenerationStageTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        // Eager teardowns: LIFO order = app first, then db
+        // Trial 0 eager teardowns: LIFO order = app first, then db
         List<AtomicStep.TeardownElement> eagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
-                && "predictive_eager".equals(t.metadata().get("reason")))
+                && "predictive_eager".equals(t.metadata().get("reason"))
+                && Integer.valueOf(0).equals(t.metadata().get("trial_index")))
             .map(AtomicStep.TeardownElement.class::cast)
             .toList();
 
@@ -796,21 +801,17 @@ class StepGenerationStageTest {
         assertThat(eagerTeardowns.get(0).elementId()).isEqualTo("app");
         assertThat(eagerTeardowns.get(1).elementId()).isEqualTo("db");
 
-        // In Phase 2c, NotifyTrialEnd is emitted first (depends on exec),
-        // then eager teardowns follow in LIFO order. The chain is:
-        //   exec → NotifyTrialEnd → app_teardown → db_teardown
-        AtomicStep.NotifyTrialEnd notifyEnd = steps.stream()
-            .filter(s -> s instanceof AtomicStep.NotifyTrialEnd)
-            .map(AtomicStep.NotifyTrialEnd.class::cast)
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("Expected NotifyTrialEnd step"));
+        // In Phase 2c, teardowns use reverse dependency ordering:
+        // app's teardown depends on its operative step, and db's teardown
+        // depends on app's teardown (since app depends on db, db must wait
+        // for app to finish tearing down).
 
-        // app's teardown depends on NotifyTrialEnd (the first in the chain)
+        // app's teardown depends on its operative step (trial_step or await)
         assertThat(eagerTeardowns.get(0).dependencies())
-            .as("app teardown must depend on NotifyTrialEnd")
-            .contains(notifyEnd.id());
+            .as("app teardown must depend on its operative step")
+            .anyMatch(dep -> dep.startsWith("trial_step_") || dep.startsWith("await_"));
 
-        // db's teardown depends on app's teardown (chained via prevEagerTeardownId)
+        // db's teardown depends on app's teardown (reverse dependency)
         assertThat(eagerTeardowns.get(1).dependencies())
             .as("db teardown must depend on app teardown for safe concurrent execution")
             .contains(eagerTeardowns.get(0).id());
@@ -1064,9 +1065,9 @@ class StepGenerationStageTest {
         List<AtomicStep> steps = context.steps().get();
 
         // ExecuteTrial should carry trial_element=app (the leaf)
-        List<AtomicStep.ExecuteTrial> execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
-            .map(AtomicStep.ExecuteTrial.class::cast)
+        List<AtomicStep.TrialStep> execTrials = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TrialStep)
+            .map(AtomicStep.TrialStep.class::cast)
             .toList();
 
         assertThat(execTrials).hasSize(1);
@@ -1098,15 +1099,18 @@ class StepGenerationStageTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        List<AtomicStep.ExecuteTrial> execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
-            .map(AtomicStep.ExecuteTrial.class::cast)
+        List<AtomicStep.TrialStep> execTrials = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TrialStep)
+            .map(AtomicStep.TrialStep.class::cast)
             .toList();
 
-        assertThat(execTrials).hasSize(1);
-        // svc_b is last-defined leaf, so it should be the trial element
-        assertThat(execTrials.getFirst().metadata().get("trial_element"))
-            .isEqualTo("svc_b");
+        assertThat(execTrials).hasSize(2); // one per leaf element (svc_a and svc_b are peer leaves)
+        // Each leaf gets its own TrialStep with its own trial_element
+        Map<String, AtomicStep.TrialStep> byTrialElement = execTrials.stream()
+            .collect(Collectors.toMap(
+                ts -> (String) ts.metadata().get("trial_element"),
+                ts -> ts));
+        assertThat(byTrialElement).containsKeys("svc_a", "svc_b");
     }
 
     @Test
@@ -1271,7 +1275,7 @@ class StepGenerationStageTest {
         AtomicStep.TeardownElement appTeardown = appFinalTeardowns.getFirst();
         AtomicStep.TeardownElement nodeTeardown = nodeFinalTeardowns.getFirst();
         assertThat(nodeTeardown.dependencies())
-            .as("Node (cluster root) teardown must depend on App's teardown via LIFO chain")
+            .as("Node (cluster root) teardown must depend on App's teardown via reverse dep")
             .contains(appTeardown.id());
 
         // Node's teardown carries the lifeline_cluster metadata
@@ -1346,10 +1350,11 @@ class StepGenerationStageTest {
         // CRITICAL: Node's teardown must depend on App's teardown.
         // App → DB (regular) and DB is in Node's lifeline cluster.
         // When Node tears down it destroys DB, so App must finish first.
+        // This is enforced via lifeline-cluster-aware reverse dependency ordering.
         AtomicStep.TeardownElement appTeardown = appFinalTeardowns.getFirst();
         AtomicStep.TeardownElement nodeTeardown = nodeFinalTeardowns.getFirst();
         assertThat(nodeTeardown.dependencies())
-            .as("Node (cluster root) teardown must depend on App's teardown via LIFO chain")
+            .as("Node (cluster root) teardown must depend on App's teardown via reverse dep")
             .contains(appTeardown.id());
 
         // Verify cluster metadata
@@ -1359,7 +1364,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Independent element deploys in Phase 2a before NotifyTrialStart")
+    @DisplayName("NotifyTrialStart emitted before trial element deploy")
     void notifyTrialStartBeforeTrialElementDeploy() {
         Element node = MockElement.of("node"); // PER_RUN
         Element app = MockElement.builder("app")
@@ -1389,26 +1394,22 @@ class StepGenerationStageTest {
         AtomicStep.NotifyTrialStart notifyStart = notifyStarts.getFirst();
         assertThat(notifyStart.elementNames()).containsExactlyInAnyOrder("node", "app");
 
-        // Independent elements deploy in Phase 2a (before NotifyTrialStart).
-        // NotifyTrialStart depends on app's deploy (the leaf deploy in the
-        // unified loop), NOT the other way around.
+        // Trial lifecycle ordering: NotifyTrialStart is emitted BEFORE
+        // trial element deploys. The trial element (app) deploys after
+        // the notification and depends on it.
         AtomicStep.DeployElement appDeploy = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("app"))
             .map(AtomicStep.DeployElement.class::cast)
             .findFirst().orElseThrow();
 
-        // app's deploy depends on node's deploy (its dependency, deployed in Phase 1)
+        // app's deploy depends on NotifyTrialStart (which transitively
+        // covers deploy_node, so no direct dep on deploy_node is needed)
         assertThat(appDeploy.dependencies())
-            .as("app deploy must depend on node's deploy (Phase 1)")
-            .anyMatch(dep -> dep.startsWith("deploy_node"));
+            .as("trial element deploy must depend on NotifyTrialStart")
+            .anyMatch(dep -> dep.startsWith("notify_trial_start"));
 
-        // NotifyTrialStart depends on app's deploy (the leaf after Phase 2a)
-        assertThat(notifyStart.dependencies())
-            .as("NotifyTrialStart depends on app deploy (Phase 2a leaf)")
-            .anyMatch(dep -> dep.startsWith("deploy_app"));
-
-        // app deploy must appear before NotifyTrialStart in step list
-        assertThat(steps.indexOf(appDeploy)).isLessThan(steps.indexOf(notifyStart));
+        // NotifyTrialStart must appear before app's deploy in step list
+        assertThat(steps.indexOf(notifyStart)).isLessThan(steps.indexOf(appDeploy));
     }
 
     @Test
@@ -1435,19 +1436,108 @@ class StepGenerationStageTest {
         assertThat(notifyStarts).hasSize(2);
 
         // Each NotifyTrialStart should appear before its trial's ExecuteTrial
-        List<AtomicStep.ExecuteTrial> execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
-            .map(AtomicStep.ExecuteTrial.class::cast)
+        List<AtomicStep.TrialStep> execTrials = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TrialStep)
+            .map(AtomicStep.TrialStep.class::cast)
             .toList();
         assertThat(execTrials).hasSize(2);
+
+        // db's deploy step (trial element, deploys after NotifyTrialStart)
+        List<AtomicStep.DeployElement> dbDeploys = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
 
         for (int i = 0; i < 2; i++) {
             assertThat(steps.indexOf(notifyStarts.get(i)))
                 .isLessThan(steps.indexOf(execTrials.get(i)));
-            // ExecuteTrial should depend on NotifyTrialStart
-            assertThat(execTrials.get(i).dependencies())
-                .contains(notifyStarts.get(i).id());
+            // ExecuteTrial depends on its own deploy step (which
+            // transitively depends on NotifyTrialStart), not directly
+            // on NotifyTrialStart — avoids redundant transitive edges.
+            if (!dbDeploys.isEmpty()) {
+                String deployId = dbDeploys.getFirst().id();
+                assertThat(execTrials.get(i).dependencies()).contains(deployId);
+            }
         }
+    }
+
+    @Test
+    @DisplayName("Run-scoped trial element (COMMAND) deploys within notification scope")
+    void runScopedTrialElementDeploysAfterNotifyStart() {
+        // node (PER_RUN, non-trial) → command (PER_RUN, COMMAND, trial element)
+        // All run-scoped, classic fallback: command is the leaf → trial element.
+        // command must deploy AFTER NotifyTrialStart, while node deploys BEFORE.
+        Element node = MockElement.of("node");
+        Element command = MockElement.builder("command")
+            .dependency(node)
+            .shutdownSemantics(Element.ShutdownSemantics.COMMAND)
+            .build();
+
+        Axis<String> axis = MockAxis.of("mode", "a");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("run-scoped-command-notify-scope-test")
+            .axis(axis)
+            .element(node)
+            .element(command)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // node deploys in Phase 1 (before per-trial steps)
+        AtomicStep.DeployElement nodeDeploy = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("node"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .findFirst().orElseThrow();
+
+        // NotifyTrialStart emitted in Phase 2b
+        AtomicStep.NotifyTrialStart notifyStart = steps.stream()
+            .filter(s -> s instanceof AtomicStep.NotifyTrialStart)
+            .map(AtomicStep.NotifyTrialStart.class::cast)
+            .findFirst().orElseThrow();
+
+        // command deploys in Phase 2b AFTER NotifyTrialStart
+        AtomicStep.DeployElement commandDeploy = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("command"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .findFirst().orElseThrow();
+
+        // AwaitElement for the command trial element
+        AtomicStep.AwaitElement awaitCommand = steps.stream()
+            .filter(s -> s instanceof AtomicStep.AwaitElement a && a.elementId().equals("command"))
+            .map(AtomicStep.AwaitElement.class::cast)
+            .findFirst().orElseThrow();
+
+        // NotifyTrialEnd closes the notification scope
+        AtomicStep.NotifyTrialEnd notifyEnd = steps.stream()
+            .filter(s -> s instanceof AtomicStep.NotifyTrialEnd)
+            .map(AtomicStep.NotifyTrialEnd.class::cast)
+            .findFirst().orElseThrow();
+
+        // Step ordering: node deploy < NotifyTrialStart < command deploy < await < NotifyTrialEnd
+        assertThat(steps.indexOf(nodeDeploy))
+            .as("node deploys before NotifyTrialStart")
+            .isLessThan(steps.indexOf(notifyStart));
+        assertThat(steps.indexOf(notifyStart))
+            .as("NotifyTrialStart before command deploy")
+            .isLessThan(steps.indexOf(commandDeploy));
+        assertThat(steps.indexOf(commandDeploy))
+            .as("command deploys before await")
+            .isLessThan(steps.indexOf(awaitCommand));
+        assertThat(steps.indexOf(awaitCommand))
+            .as("await before NotifyTrialEnd")
+            .isLessThan(steps.indexOf(notifyEnd));
+
+        // command's deploy depends on NotifyTrialStart
+        assertThat(commandDeploy.dependencies())
+            .as("trial element deploy must depend on NotifyTrialStart")
+            .anyMatch(dep -> dep.startsWith("notify_trial_start"));
+
+        // NotifyTrialStart does NOT depend on command's deploy
+        assertThat(notifyStart.dependencies())
+            .as("NotifyTrialStart must not depend on trial element deploy")
+            .noneMatch(dep -> dep.contains("command"));
     }
 
     @Test
@@ -1459,7 +1549,8 @@ class StepGenerationStageTest {
             .parameter(StringParameter.of("mode"))
             .build();
 
-        Axis<String> axis = MockAxis.of("mode", "x");
+        // Use 2 trials so trial 0 gets a predictive_eager teardown (Phase 2c skips last trial)
+        Axis<String> axis = MockAxis.of("mode", "x", "y");
 
         TestPlan plan = MockTestPlan.builder()
             .name("notify-end-per-trial-test")
@@ -1471,29 +1562,30 @@ class StepGenerationStageTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        // Should have a NotifyTrialEnd step
+        // Should have two NotifyTrialEnd steps (one per trial)
         List<AtomicStep.NotifyTrialEnd> notifyEnds = steps.stream()
             .filter(s -> s instanceof AtomicStep.NotifyTrialEnd)
             .map(AtomicStep.NotifyTrialEnd.class::cast)
             .toList();
-        assertThat(notifyEnds).hasSize(1);
+        assertThat(notifyEnds).hasSize(2);
 
-        AtomicStep.NotifyTrialEnd notifyEnd = notifyEnds.getFirst();
-        assertThat(notifyEnd.plannedReason()).isEqualTo(AtomicStep.ShutdownReason.NORMAL);
-        assertThat(notifyEnd.elementNames()).containsExactlyInAnyOrder("node", "app");
+        AtomicStep.NotifyTrialEnd notifyEnd0 = notifyEnds.getFirst();
+        assertThat(notifyEnd0.plannedReason()).isEqualTo(AtomicStep.ShutdownReason.NORMAL);
+        assertThat(notifyEnd0.elementNames()).containsExactlyInAnyOrder("node", "app");
 
-        // In Phase 2c, NotifyTrialEnd is emitted first (depends on exec),
-        // then app's teardown follows (depends on NotifyTrialEnd).
+        // In Phase 2c (trial 0), app's teardown depends on its operative step
+        // (not NotifyTrialEnd, since teardowns use reverse dependency ordering
+        // and trial elements depend directly on their own operative steps).
         AtomicStep.TeardownElement appTeardown = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("app")
-                && "predictive_eager".equals(t.metadata().get("reason")))
+                && "predictive_eager".equals(t.metadata().get("reason"))
+                && Integer.valueOf(0).equals(t.metadata().get("trial_index")))
             .map(AtomicStep.TeardownElement.class::cast)
             .findFirst().orElseThrow();
-        assertThat(appTeardown.dependencies()).contains(notifyEnd.id());
-
-        // NotifyTrialEnd appears before app teardown in step list
-        assertThat(steps.indexOf(notifyEnd)).isLessThan(steps.indexOf(appTeardown));
+        assertThat(appTeardown.dependencies())
+            .as("app teardown must depend on its operative step")
+            .anyMatch(dep -> dep.startsWith("trial_step_") || dep.startsWith("await_"));
     }
 
     @Test
@@ -1520,9 +1612,9 @@ class StepGenerationStageTest {
         assertThat(notifyEnds).hasSize(2);
 
         // Each NotifyTrialEnd should depend on its trial's ExecuteTrial
-        List<AtomicStep.ExecuteTrial> execTrials = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
-            .map(AtomicStep.ExecuteTrial.class::cast)
+        List<AtomicStep.TrialStep> execTrials = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TrialStep)
+            .map(AtomicStep.TrialStep.class::cast)
             .toList();
         assertThat(execTrials).hasSize(2);
 
@@ -1601,7 +1693,7 @@ class StepGenerationStageTest {
             .filter(s -> s instanceof AtomicStep.AwaitElement)
             .count();
         long execTrialCount = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
 
         assertThat(awaitCount).as("COMMAND trial element should emit AwaitElement").isEqualTo(1);
@@ -1638,7 +1730,7 @@ class StepGenerationStageTest {
 
         // Should have ExecuteTrial, NOT AwaitElement
         long execTrialCount = steps.stream()
-            .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         long awaitCount = steps.stream()
             .filter(s -> s instanceof AtomicStep.AwaitElement)
@@ -1730,10 +1822,12 @@ class StepGenerationStageTest {
     // ── Minimal dependency tests ─────────────────────────────────────
 
     @Test
-    @DisplayName("Default: ExecuteTrial depends only on leaf deploy steps (minimal deps)")
+    @DisplayName("Default: NotifyTrialStart depends only on non-trial deploys (minimal deps)")
     void minimalDepsOnlyLeafDeploysLinkedToExec() {
-        // node → db → app chain; all PER_RUN so ExecuteTrial should only
-        // depend on deploy_app (deploy_db and deploy_node are transitive)
+        // node → db → app chain; all PER_RUN.  Classic fallback: app is the
+        // trial element (leaf).  app deploys AFTER NotifyTrialStart (within the
+        // notification scope), so NotifyTrialStart depends only on non-trial
+        // deploys — minimally just deploy_db (the non-trial leaf).
         Element node = MockElement.of("node");
         Element db = MockElement.builder("db").dependency(node).build();
         Element app = MockElement.builder("app").dependency(db).build();
@@ -1750,23 +1844,33 @@ class StepGenerationStageTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        // Find the NotifyTrialStart (which sits between deploys and ExecuteTrial)
+        // Find the NotifyTrialStart
         AtomicStep.NotifyTrialStart notifyStart = steps.stream()
             .filter(s -> s instanceof AtomicStep.NotifyTrialStart)
             .map(AtomicStep.NotifyTrialStart.class::cast)
             .findFirst().orElseThrow();
 
-        // NotifyTrialStart should depend only on the app deploy (the leaf),
-        // not on deploy_node or deploy_db
+        // NotifyTrialStart depends on non-trial deploys (node, db).
+        // With minimal deps: only the non-trial leaf (db).
         assertThat(notifyStart.dependencies())
-            .allSatisfy(dep -> assertThat(dep).contains("app"))
+            .allSatisfy(dep -> assertThat(dep).contains("db"))
             .hasSize(1);
+
+        // app (trial element) deploys AFTER NotifyTrialStart
+        AtomicStep.DeployElement appDeploy = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("app"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .findFirst().orElseThrow();
+        assertThat(appDeploy.dependencies())
+            .anyMatch(dep -> dep.contains("notify_trial_start"));
     }
 
     @Test
-    @DisplayName("explicitTransitiveDeps=true: ExecuteTrial depends on ALL deploy steps")
+    @DisplayName("explicitTransitiveDeps=true: NotifyTrialStart depends on ALL non-trial deploy steps")
     void explicitTransitiveDepsIncludesAllDeploys() {
-        // Same chain: node → db → app
+        // Same chain: node → db → app.  Classic fallback: app is the trial
+        // element (leaf).  app deploys AFTER NotifyTrialStart, so
+        // NotifyTrialStart depends only on non-trial deploys (node, db).
         Element node = MockElement.of("node");
         Element db = MockElement.builder("db").dependency(node).build();
         Element app = MockElement.builder("app").dependency(db).build();
@@ -1790,12 +1894,19 @@ class StepGenerationStageTest {
             .map(AtomicStep.NotifyTrialStart.class::cast)
             .findFirst().orElseThrow();
 
-        // With explicit transitive deps, should depend on all 3 deploy steps
-        assertThat(notifyStart.dependencies()).hasSize(3);
+        // With explicit transitive deps, depends on all non-trial deploys (node, db)
+        assertThat(notifyStart.dependencies()).hasSize(2);
         assertThat(notifyStart.dependencies())
             .anyMatch(dep -> dep.contains("node"))
-            .anyMatch(dep -> dep.contains("_db_"))
-            .anyMatch(dep -> dep.contains("app"));
+            .anyMatch(dep -> dep.contains("_db_"));
+
+        // app (trial element) deploys AFTER NotifyTrialStart
+        AtomicStep.DeployElement appDeploy = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("app"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .findFirst().orElseThrow();
+        assertThat(appDeploy.dependencies())
+            .anyMatch(dep -> dep.contains("notify_trial_start"));
     }
 
     @Test
@@ -1836,11 +1947,12 @@ class StepGenerationStageTest {
             .map(AtomicStep.DeployElement.class::cast)
             .findFirst().orElseThrow();
 
-        // benchmark deploy should depend on service's deploy (its
-        // dependency, both deployed in Phase 2a before NotifyTrialStart)
+        // benchmark (trial element) deploy depends on NotifyTrialStart
+        // (which transitively covers deploy_service — a non-trial element
+        // dep that was deployed before NotifyTrialStart)
         assertThat(benchDeploy.dependencies())
-            .as("benchmark deploy depends on service deploy (Phase 2a dependency)")
-            .anyMatch(dep -> dep.startsWith("deploy_service"));
+            .as("benchmark deploy depends on NotifyTrialStart")
+            .anyMatch(dep -> dep.startsWith("notify_trial_start"));
     }
 
     @Test
@@ -1874,26 +1986,248 @@ class StepGenerationStageTest {
             .map(AtomicStep.TeardownElement.class::cast)
             .findFirst().orElseThrow();
 
-        List<String> workerTeardownIds = steps.stream()
+        List<String> workerEagerTeardownIds = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker")
                 && "predictive_eager".equals(t.metadata().get("reason")))
             .map(AtomicStep::id).toList();
-        assertThat(workerTeardownIds).hasSize(3); // one per trial
+        assertThat(workerEagerTeardownIds).hasSize(2); // trials 0 and 1 (Phase 2c skips last trial)
 
-        // First final teardown should depend on all worker teardown entries
+        // Worker's last trial instance gets final teardown instead of eager.
+        // db's final teardown depends on worker's final teardown (LIFO chain).
+        List<String> workerFinalTeardownIds = steps.stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement t
+                && t.elementId().equals("worker")
+                && "cleanup".equals(t.metadata().get("phase")))
+            .map(AtomicStep::id).toList();
+        assertThat(workerFinalTeardownIds).hasSize(1);
+
+        // db's final teardown depends on worker's final teardown via reverse dep
         assertThat(dbTeardown.dependencies())
-            .as("First final teardown depends on latest-per-trial steps (worker teardowns)")
-            .containsAll(workerTeardownIds);
+            .as("First final teardown depends on worker's final teardown (LIFO chain)")
+            .contains(workerFinalTeardownIds.getFirst());
 
         // First final teardown should NOT depend directly on exec step IDs
         // (those are transitively covered by the Phase 2c chain)
         List<String> execStepIds = steps.stream()
-            .filter(s -> s instanceof AtomicStep.AwaitElement || s instanceof AtomicStep.ExecuteTrial)
+            .filter(s -> s instanceof AtomicStep.AwaitElement || s instanceof AtomicStep.TrialStep)
             .map(AtomicStep::id).toList();
         assertThat(dbTeardown.dependencies())
             .as("First final teardown should not depend directly on exec steps")
             .doesNotContainAnyElementsOf(execStepIds);
+    }
+
+    @Test
+    @DisplayName("DEDICATED dependency target redeploys when dependent's configuration changes")
+    void dedicatedDependencyTargetRedeploysWithDependent() {
+        // db has no axis bindings (would be run-scoped without DEDICATED)
+        Element db = MockElement.of("db");
+        // app has a "threads" parameter bound to an axis and depends on db with DEDICATED
+        var threadsParam = IntegerParameter.range("threads", 1, 4);
+        Element app = MockElement.builder("app")
+            .parameter(threadsParam)
+            .dependency(db, RelationshipType.DEDICATED)
+            .build();
+
+        Axis<Integer> threadsAxis = MockAxis.of("threads", 1, 2);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("dedicated-test")
+            .axis(threadsAxis)
+            .element(db)
+            .element(app)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // db should redeploy for each trial because of DEDICATED relationship:
+        // once for threads=1 and once for threads=2
+        long dbDeploys = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
+            .count();
+        assertThat(dbDeploys)
+            .as("DEDICATED target should redeploy when dependent's configuration changes")
+            .isEqualTo(2);
+
+        // app (trial element, leaf) should also deploy twice
+        long appDeploys = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("app"))
+            .count();
+        assertThat(appDeploys).isEqualTo(2);
+
+        // DEDICATED instances are parallel — the second deploy of db should
+        // have NO cross-trial deps (no teardown_db, no deploy_db from trial 0).
+        List<AtomicStep.DeployElement> dbDeploySteps = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+        assertThat(dbDeploySteps).hasSize(2);
+        List<String> secondDbDeployDeps = dbDeploySteps.get(1).dependencies();
+        assertThat(secondDbDeployDeps)
+            .as("Second db deploy should not depend on any previous db step")
+            .noneMatch(dep -> dep.contains("teardown_db"))
+            .noneMatch(dep -> dep.startsWith("deploy_db"));
+    }
+
+    @Test
+    @DisplayName("DEDICATED 3-trial wiring: each redeploy depends on teardown, not previous deploy")
+    void dedicatedThreeTrialWiringNotLinearized() {
+        // Mirrors user scenario: node → command with DEDICATED, 3 behavior values
+        Element node = MockElement.of("node");
+        var behaviorParam = StringParameter.of("behavior");
+        Element command = MockElement.builder("command")
+            .parameter(behaviorParam)
+            .shutdownSemantics(Element.ShutdownSemantics.COMMAND)
+            .dependency(node, RelationshipType.DEDICATED)
+            .build();
+
+        Axis<String> behaviorAxis = MockAxis.of("behavior", "infra", "service", "cmd");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("dedicated-3trial-wiring")
+            .axis(behaviorAxis)
+            .element(node)
+            .element(command)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // Both should deploy 3 times
+        List<AtomicStep.DeployElement> nodeDeploySteps = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("node"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+        List<AtomicStep.DeployElement> cmdDeploySteps = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("command"))
+            .map(AtomicStep.DeployElement.class::cast)
+            .toList();
+        assertThat(nodeDeploySteps).hasSize(3);
+        assertThat(cmdDeploySteps).hasSize(3);
+
+        // DEDICATED instances are fully parallel — no cross-trial deps.
+        // Each deploy should only depend on steps within its own trial.
+        for (int i = 1; i < 3; i++) {
+            List<String> nodeDeps = nodeDeploySteps.get(i).dependencies();
+            assertThat(nodeDeps)
+                .as("node deploy #%d should have no cross-trial deps (parallel DEDICATED)", i)
+                .noneMatch(dep -> dep.contains("teardown_node"))
+                .noneMatch(dep -> dep.startsWith("deploy_node"));
+
+            List<String> cmdDeps = cmdDeploySteps.get(i).dependencies();
+            assertThat(cmdDeps)
+                .as("command deploy #%d should have no cross-trial deps (parallel DEDICATED)", i)
+                .noneMatch(dep -> dep.startsWith("deploy_command"))
+                .noneMatch(dep -> dep.startsWith("await_command"));
+        }
+    }
+
+    @Test
+    @DisplayName("SHARED dependency target does NOT redeploy when dependent's configuration changes")
+    void sharedDependencyTargetDoesNotRedeployWithDependent() {
+        Element db = MockElement.of("db");
+        var threadsParam = IntegerParameter.range("threads", 1, 4);
+        Element app = MockElement.builder("app")
+            .parameter(threadsParam)
+            .dependency(db) // default: SHARED
+            .build();
+
+        Axis<Integer> threadsAxis = MockAxis.of("threads", 1, 2);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("shared-test")
+            .axis(threadsAxis)
+            .element(db)
+            .element(app)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan);
+        List<AtomicStep> steps = context.steps().get();
+
+        // db should only deploy once (run-scoped, SHARED) regardless of app's changes
+        long dbDeploys = steps.stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
+            .count();
+        assertThat(dbDeploys)
+            .as("SHARED target should deploy once and be reused")
+            .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Custom strategy can be selected via customOptions")
+    void customStrategySelectedViaCustomOptions() {
+        // Register a no-op strategy
+        StepGenerationStage.register(new StepGenerationStrategy() {
+            @Override public String strategyName() { return "noop"; }
+            @Override public String description() { return "no-op test strategy"; }
+            @Override public void generateSteps(CompilationContext context) {
+                context.setSteps(List.of());
+                context.setBarriers(List.of());
+                context.recordMetric("steps_generated", 0);
+            }
+        });
+
+        Element db = MockElement.of("db");
+        Axis<String> axis = MockAxis.of("mode", "read", "write");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("strategy-test")
+            .axis(axis)
+            .element(db)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of(StepGenerationStage.OPTION_STRATEGY, "noop"));
+
+        // The noop strategy produces zero steps
+        assertThat(context.steps().get()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Unknown strategy name produces a compilation error")
+    void unknownStrategyProducesError() {
+        Element db = MockElement.of("db");
+        Axis<String> axis = MockAxis.of("mode", "read");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("unknown-strategy-test")
+            .axis(axis)
+            .element(db)
+            .build();
+
+        DefaultCompilationContext context = runPipeline(plan,
+            Map.of(StepGenerationStage.OPTION_STRATEGY, "nonexistent"));
+
+        assertThat(context.hasErrors()).isTrue();
+        assertThat(context.errors().getFirst().message()).contains("nonexistent");
+    }
+
+    @Test
+    @DisplayName("Default strategy is used when OPTION_STRATEGY is absent")
+    void defaultStrategyUsedWhenOptionAbsent() {
+        Element db = MockElement.of("db");
+        Axis<String> axis = MockAxis.of("mode", "read", "write");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("default-strategy-test")
+            .axis(axis)
+            .element(db)
+            .build();
+
+        // No OPTION_STRATEGY in customOptions — should behave exactly as before
+        DefaultCompilationContext context = runPipeline(plan);
+
+        List<AtomicStep> steps = context.steps().get();
+        long deploys = steps.stream().filter(s -> s instanceof AtomicStep.DeployElement).count();
+        assertThat(deploys).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("registeredStrategies() includes default and simple")
+    void registeredStrategiesIncludesBuiltIns() {
+        Map<String, StepGenerationStrategy> strategies = StepGenerationStage.registeredStrategies();
+        assertThat(strategies).containsKeys("default", "simple");
     }
 
     private DefaultCompilationContext runPipeline(TestPlan plan) {

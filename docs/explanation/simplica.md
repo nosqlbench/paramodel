@@ -75,9 +75,10 @@ specification. It combines:
   health check specification, and lifecycle hooks.
 - **Relationships** -- how elements relate to their dependencies, expressed
   as `RelationshipType` values on each dependency edge: `SHARED` (concurrent
-  access, the default), `EXCLUSIVE` (serialized access), `DEDICATED`
-  (dedicated instance per dependent), or `LIFELINE` (target's teardown
-  subsumes dependent). Element instance lifecycle is derived by the
+    access, the default), `EXCLUSIVE` (serialized access), `DEDICATED`
+    (dedicated instance per dependent), `LINEAR` (strict ordering within trial),
+    or `LIFELINE` (target's teardown subsumes dependent).
+   Element instance lifecycle is derived by the
   compilation pipeline from parameter-axis overlap, not from relationship
   type.
 - **Policies** -- `ExecutionPolicies` (in
@@ -95,7 +96,7 @@ compilation pipeline in `DefaultCompiler` (from
 `io.nosqlbench.paramodel.engine.compiler`) transforms it into an immutable
 `ExecutionPlan`. The execution plan contains:
 
-- **AtomicSteps** -- `DEPLOY_ELEMENT`, `EXECUTE_TRIAL`,
+- **AtomicSteps** -- `DEPLOY_ELEMENT`, `TRIAL_STEP`, `AWAIT_ELEMENT`,
   `TEARDOWN_ELEMENT`, `BARRIER`, and `CHECKPOINT` steps, each independently
   executable and recoverable.
 - **ExecutionGraph** -- a directed acyclic graph capturing dependencies and
@@ -126,6 +127,12 @@ uses element relationships to make concurrency decisions:
 - **DEDICATED** edges provision a dedicated instance per dependent element.
 - **LIFELINE** edges couple the dependent's lifecycle to the target's --
   tearing down the target implicitly destroys the dependent.
+
+**The Trial Element**:
+The duration and outcome of a trial are bounded by the lifecycle of exactly
+one designated **Trial Element** (the leaf element in the trial scope).
+The compiler emits either a `TrialStep` or an `AwaitElement` step to
+represent this operative action.
 Element instance lifecycle (when elements are redeployed vs. persisted) is
 determined by the fingerprint-based group mechanism in the compilation
 pipeline, based on parameter-axis overlap. The scheduler manages instance
@@ -261,13 +268,17 @@ concurrent access is allowed.
 | `SHARED`    | Shared    | Yes | No  |
 | `EXCLUSIVE` | Shared    | No  | Yes |
 | `DEDICATED` | Dedicated | N/A | No  |
+| `LINEAR`    | Shared    | No* | No**|
 | `LIFELINE`  | Shared    | Yes | No  |
 
-These four types cover the fundamental patterns of resource sharing in
+These five types cover the fundamental patterns of resource sharing in
 distributed systems. Relationship types are a directional property of
 each dependency edge (declared by the dependent element). Element instance
 lifecycle (redeployment vs. persistence) is determined by the
 fingerprint-based group mechanism, not by relationship type.
+
+\* `LINEAR` enforces strict ordering between trial elements in the same scope.
+\** Coordination is handled via step dependencies within the trial, not global barriers.
 
 ### Barriers
 

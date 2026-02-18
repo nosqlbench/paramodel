@@ -50,26 +50,68 @@ Compilation proceeds through eight conceptual stages:
 | Stage | Name                       | What Happens                                                 |
 |-------|----------------------------|--------------------------------------------------------------|
 | 1     | Validation                 | Structural and semantic checks on the test plan              |
-| 2     | Trial space enumeration    | Cartesian product of axes, ordering applied                  |
-| 3     | Element instantiation      | Determine how many instances of each element are needed      |
-| 4     | Dependency analysis        | Build element dependency graph, topological sort             |
-| 5     | Step generation            | Create `AtomicStep` records for deploy, execute, teardown    |
-| 6     | Barrier placement          | Insert synchronization barriers per relationship semantics   |
+| 2     | Normalization              | Canonicalize representation and derive instancing scopes     |
+| 3     | Trial space enumeration    | Cartesian product of axes, ordering applied                  |
+| 4     | Instantiation              | Determine element instance counts and binding hierarchy      |
+| 5     | Step generation            | Create `AtomicStep` records for lifecycle and trial boundaries|
+| 6     | Dependency analysis        | Build execution graph, detect cycles, analyze critical path  |
 | 7     | Optimization               | Apply the chosen `OptimizationStrategy` (prune, reorder)     |
 | 8     | Finalization               | Produce the immutable `ExecutionPlan` with metadata          |
 
 ## AtomicStep
 
 An `AtomicStep` is the indivisible unit of work in an execution plan.
-It is a sealed interface with five subtypes:
+It is a sealed interface with several record types that support element
+lifecycles and trial bracketing:
 
 | Subtype             | Purpose                                          | Key Fields                             |
 |---------------------|--------------------------------------------------|----------------------------------------|
-| `DeployElement`     | Provision and start an element instance           | `elementId`, `configuration`, `healthChecks` |
-| `ExecuteTrial`      | Run one trial with bound element instances        | `trialId`, `elementBindings`           |
+| `DeployElement`     | Provision and start an element instance           | `elementId`, `configuration`, `tags`   |
+| `NotifyTrialStart`  | Notify elements that a trial is starting          | `trialId`, `elementNames`              |
+| `TrialStep`         | The operative action of the designated **Trial Element** | `trialId`, `elementBindings`           |
+| `AwaitElement`      | Await completion of a `COMMAND` trial element     | `trialId`, `elementId`                 |
+| `NotifyTrialEnd`    | Notify elements that a trial has ended           | `trialId`, `elementNames`, `reason`    |
 | `TeardownElement`   | Shut down and clean up an element instance        | `elementId`, `collectArtifacts`        |
-| `BarrierSync`       | Wait for all listed dependencies to complete      | `barrierId`, `dependencies`            |
+| `BarrierSync`       | Synchronize concurrent steps at dependency boundaries | `barrierId`, `dependencies`            |
 | `CheckpointState`   | Persist execution state for recovery              | `checkpointId`                         |
+
+## The Trial Elements
+
+Trial elements are the **innermost leaf nodes** in the dependency graph —
+the elements that actually perform the trial workload.  This
+identification applies regardless of binding depth: even when all
+elements are run-scoped (depth 0), the leaf nodes are still the trial
+elements.
+
+Trial element identity is determined by a scope-aware, override-respecting
+algorithm:
+
+1. Explicit overrides from `Element.trialElement()` take priority.
+2. When trial-scoped (bound) elements exist, leaf nodes among them are
+   auto-detected.
+3. When all elements are run-scoped, the classic leaf-node heuristic
+   applies across all elements.
+
+### Notification Scope
+
+The full lifecycle of every trial element — **deploy, execute,
+completion** — falls within the `NotifyTrialStart` / `NotifyTrialEnd`
+bracket.  Non-trial elements deploy *before* `NotifyTrialStart` so they
+are running and able to observe trial lifecycle events as notification
+receivers.
+
+```
+(non-trial deploys) → NotifyTrialStart → (trial deploys) → (operative steps) → NotifyTrialEnd
+```
+
+### Ordering and Linearization
+
+The compiler determines the relative order of these elements' actions
+using topological sorting of their dependencies. A new dependency type,
+**LINEAR**, can be used to explicitly force a specific sequence between
+trial elements within the same trial scope. Elements must occur in order,
+as strict serialization is required and further, data flow may be
+implied between elements in the same trial scope (parameter group).
 
 Every step carries:
 

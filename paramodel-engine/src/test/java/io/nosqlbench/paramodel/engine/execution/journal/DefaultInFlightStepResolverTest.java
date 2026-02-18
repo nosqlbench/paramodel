@@ -82,7 +82,7 @@ class DefaultInFlightStepResolverTest {
             1, EXEC_ID, PLAN_ID, now, Optional.empty(), Map.of()));
         journalStore.append(new JournalEvent.StepStarted(
             2, EXEC_ID, PLAN_ID, now, "step-1",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
         journalStore.append(new JournalEvent.ExecutionSuspended(
             3, EXEC_ID, PLAN_ID, now, "User pause"));
 
@@ -127,7 +127,7 @@ class DefaultInFlightStepResolverTest {
             1, EXEC_ID, PLAN_ID, now, Optional.empty(), Map.of()));
         journalStore.append(new JournalEvent.StepStarted(
             2, EXEC_ID, PLAN_ID, now, "step-1",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
 
         ExecutionSnapshot snapshot = reconstructor.reconstruct(
             EXEC_ID, StubExecutionPlan.withId(PLAN_ID),
@@ -194,7 +194,7 @@ class DefaultInFlightStepResolverTest {
             AtomicStep.StepType.DEPLOY_ELEMENT, Optional.of(pastDeadline)));
         journalStore.append(new JournalEvent.StepStarted(
             3, EXEC_ID, PLAN_ID, past, "step-retryable",
-            AtomicStep.StepType.EXECUTE_TRIAL, Optional.empty()));
+            AtomicStep.StepType.TRIAL_STEP, Optional.empty()));
         journalStore.append(new JournalEvent.StepStarted(
             4, EXEC_ID, PLAN_ID, past, "step-barrier",
             AtomicStep.StepType.CHECKPOINT_STATE, Optional.empty()));

@@ -31,6 +31,7 @@ Mental models and foundational ideas for understanding Paramodel.
 - [Test Plans and Axes](concepts/test-plans-and-axes.md) — Declarative study specification, axes, ordering strategies, barriers
 - [Execution Plans](concepts/execution-plans.md) — Compiled plans, atomic steps, execution graphs, policies
 - [Elements and Relationships](concepts/elements-and-relationships.md) — Deployable resources, relationship types, dependency semantics
+- [Cardinality and Costs](concepts/cardinality-and-costs.md) — How element instances are derived and their operational impact
 
 ## Tutorials
 
@@ -48,6 +49,7 @@ Task-oriented recipes for common goals.
 - [Define Parameters](howto/define-parameters.md) — Create domains, typed parameters, and boundary values
 - [Compose Constraints](howto/compose-constraints.md) — Build and combine constraints with AND/OR/NOT
 - [Build a Test Plan](howto/build-test-plan.md) — Construct a TestPlan with axes, elements, and policies
+- [Manage Cardinality](howto/manage-cardinality.md) — Optimize element instances and operational costs
 - [Implement a Contract](howto/implement-a-contract.md) — Create your own Paramodel implementation
 - [Validate with TCK](howto/validate-with-tck.md) — Run TCK tests against your implementation
 
@@ -58,7 +60,6 @@ Technical lookup material.
 - [API Packages](reference/api-packages.md) — Package-by-package listing of all contracts in paramodel-api
 - [Contract Types](reference/contract-types.md) — Detailed specification of each contract interface
 - [Compilation Stages](reference/compilation-stages.md) — The 8 stages from TestPlan to ExecutionPlan
-- [Build and Quality Gates](reference/build-and-quality-gates.md) — Maven build, coverage thresholds, javadoc enforcement
 - [Glossary](reference/glossary.md) — Alphabetical term definitions
 
 ## Explanation

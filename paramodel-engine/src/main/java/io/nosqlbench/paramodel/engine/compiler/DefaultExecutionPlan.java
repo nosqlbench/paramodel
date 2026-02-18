@@ -137,7 +137,7 @@ public class DefaultExecutionPlan implements ExecutionPlan {
 
         @Override public int trialCount() {
             return (int) plan.steps.stream()
-                .filter(s -> s instanceof AtomicStep.ExecuteTrial)
+                .filter(s -> s instanceof AtomicStep.TrialStep)
                 .count();
         }
 

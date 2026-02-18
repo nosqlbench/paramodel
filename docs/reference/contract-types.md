@@ -449,14 +449,15 @@ public interface ExecutionGraph {
 
 **Package:** `io.nosqlbench.paramodel.plan`
 
-**Responsibility:** Sealed interface representing an indivisible unit of work. Five
-permitted record types cover the complete execution lifecycle.
+**Responsibility:** Sealed interface representing an indivisible unit of work.
+Permitted record types cover element lifecycles and trial bracketing.
 
 ```java
 public sealed interface AtomicStep
-    permits AtomicStep.DeployElement, AtomicStep.ExecuteTrial,
-            AtomicStep.TeardownElement, AtomicStep.BarrierSync,
-            AtomicStep.CheckpointState {
+    permits AtomicStep.DeployElement, AtomicStep.TrialStep,
+            AtomicStep.AwaitElement, AtomicStep.TeardownElement,
+            AtomicStep.BarrierSync, AtomicStep.CheckpointState,
+            AtomicStep.NotifyTrialStart, AtomicStep.NotifyTrialEnd {
 
     String id();
     StepType type();
@@ -471,11 +472,19 @@ public sealed interface AtomicStep
 ```
 
 **Step Types:**
-- `DeployElement` -- provisions infrastructure and runs health checks.
-- `ExecuteTrial` -- executes a trial with bound element instances.
-- `TeardownElement` -- cleans up resources and collects artifacts.
-- `BarrierSync` -- synchronization point waiting for dependencies.
-- `CheckpointState` -- persists execution state for resumability.
+- `DeployElement` — Provisions infrastructure and waits for initial readiness.
+- `NotifyTrialStart` — Delivers start notification to all elements in trial scope.
+- `TrialStep` — Represents the operative action of the designated **Trial Element**.
+- `AwaitElement` — Awaits natural completion of a `COMMAND`-type trial element.
+- `NotifyTrialEnd` — Delivers end notification to all elements in trial scope.
+- `TeardownElement` — Shuts down resources and collects artifacts.
+- `BarrierSync` — Synchronization point waiting for prerequisite steps.
+- `CheckpointState` — Persists execution state for resumability.
+
+**Trial Element Rule:**
+Each trial is bounded by exactly one element designated as the trial element
+(the leaf node with no dependents). Its lifecycle defines the trial's timing
+and outcome.
 
 ---
 
@@ -514,6 +523,11 @@ public interface Barrier {
 
 **Barrier Types:** `ELEMENT_READY`, `ELEMENT_SCOPE_END`, `TRIAL_BATCH`,
 `CHECKPOINT_BOUNDARY`, `CUSTOM`.
+
+**Relationship Types:** `SHARED`, `EXCLUSIVE`, `DEDICATED`, `LINEAR`, `LIFELINE`.
+`LINEAR` indicates that elements must occur in order, as strict serialization
+is required and further, data flow may be implied between elements in the same
+trial scope (parameter group).
 
 ---
 

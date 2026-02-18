@@ -94,16 +94,16 @@ import java.util.Set;
 ///           │                                                                  │
 ///           │    ┌─────────────────────────────────────────────────────────────┘
 ///           │    │
-///           │    ├─→ EXECUTE_TRIAL(t1) ──┐
-///           │    ├─→ EXECUTE_TRIAL(t2) ──┼─→ BARRIER(trials_done)
-///           │    └─→ EXECUTE_TRIAL(t3) ──┘        │
-///           │                                      │
-///           └──────────────────────────────────────┴─→ TEARDOWN_ALL → END
+///   │    ├─→ TRIAL_STEP(t1) ──┐
+///   │    ├─→ TRIAL_STEP(t2) ──┼─→ BARRIER(trials_done)
+///   │    └─→ TRIAL_STEP(t3) ──┘        │
+///   │                                  │
+///   └──────────────────────────────────┴─→ TEARDOWN_ALL → END
 ///
 /// Barrier Dependencies:
 ///   - db_ready depends on: [DEPLOY_ELEMENT(db)]
 ///   - caches_ready depends on: [DEPLOY_ELEMENT(cache_1), DEPLOY_ELEMENT(cache_2)]
-///   - trials_done depends on: [EXECUTE_TRIAL(t1), EXECUTE_TRIAL(t2), EXECUTE_TRIAL(t3)]
+///   - trials_done depends on: [TRIAL_STEP(t1), TRIAL_STEP(t2), TRIAL_STEP(t3)]
 /// ```
 ///
 /// ## Fan-Out and Fan-In Patterns
@@ -176,9 +176,9 @@ import java.util.Set;
 ///   │
 ///   └─→ BARRIER(cache_1_ready)
 ///         │
-///         ├─→ EXECUTE_TRIAL(t1, cache=cache_1) ──┐
-///         ├─→ EXECUTE_TRIAL(t2, cache=cache_1) ──┼─→ BARRIER(cache_1_scope_end)
-///         └─→ EXECUTE_TRIAL(t3, cache=cache_1) ──┘        │
+///         ├─→ TRIAL_STEP(t1, cache=cache_1) ──┐
+///         ├─→ TRIAL_STEP(t2, cache=cache_1) ──┼─→ BARRIER(cache_1_scope_end)
+///         └─→ TRIAL_STEP(t3, cache=cache_1) ──┘        │
 ///                                                          │
 ///                                                          └─→ TEARDOWN_ELEMENT(cache_1)
 ///

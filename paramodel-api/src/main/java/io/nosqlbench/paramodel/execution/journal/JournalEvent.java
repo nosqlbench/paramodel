@@ -63,7 +63,7 @@ import java.util.Optional;
 ///    passed, the step is resolved as `TIMED_OUT`.
 /// 2. **Clean shutdown**: if an {@link ExecutionSuspended} event is the
 ///    last event, in-flight steps are resolved as `RESUME`.
-/// 3. **Idempotency**: steps of type `DEPLOY_ELEMENT` or `EXECUTE_TRIAL`
+/// 3. **Idempotency**: steps of type `DEPLOY_ELEMENT` or `TRIAL_STEP`
 ///    are idempotent and resolved as `RETRY`.
 /// 4. **Otherwise**: the step is resolved as `FAIL`.
 ///
@@ -97,7 +97,7 @@ import java.util.Optional;
 /// ### Enum types referenced by events
 ///
 /// - {@link io.nosqlbench.paramodel.plan.AtomicStep.StepType StepType}:
-///   `DEPLOY_ELEMENT`, `EXECUTE_TRIAL`, `TEARDOWN_ELEMENT`,
+///   `DEPLOY_ELEMENT`, `TRIAL_STEP`, `TEARDOWN_ELEMENT`,
 ///   `BARRIER_SYNC`, `CHECKPOINT_STATE`
 /// - {@link io.nosqlbench.paramodel.execution.Executor.ExecutionPhase
 ///   ExecutionPhase}: `INITIALIZING`, `DEPLOYING`, `EXECUTING`,
@@ -220,7 +220,7 @@ public sealed interface JournalEvent
     ///
     /// The {@code stepType} determines the idempotency of the step
     /// during resolution:
-    /// - {@code DEPLOY_ELEMENT} and {@code EXECUTE_TRIAL} are
+    /// - {@code DEPLOY_ELEMENT} and {@code TRIAL_STEP} are
     ///   considered idempotent and safe to retry.
     /// - {@code BARRIER_SYNC}, {@code CHECKPOINT_STATE}, and
     ///   {@code TEARDOWN_ELEMENT} are non-idempotent and will be

@@ -129,7 +129,7 @@ public class MockImplementationProvider implements ImplementationProvider {
 
     @Override
     public AtomicStep createAtomicStep(String id, Trial trial) {
-        return MockAtomicStep.executeTrial(id, trial.id());
+        return MockAtomicStep.trialStep(id, trial.id());
     }
 
     @Override
