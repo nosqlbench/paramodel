@@ -353,6 +353,14 @@ The cardinality of trials is taken as the product of all axis cardinalities acro
 rank of a parameter in the plan is determined by its position in the list of axes, depth first
 across all ordered elements.
 
+Parameters that do not have an axis (fixed parameters) have a single constant value across all
+trials. They do not contribute a rank to the enumeration, do not affect the cardinality of the
+trial space, and do not participate in the mixed-radix decomposition. However, fixed parameter
+values are part of the element prototype's identity and are included in every instance's
+configuration when activated. Two element prototypes that differ only in fixed parameter values
+are distinct prototypes in the element stack. For binding state purposes, fixed parameters are
+always bound — they do not affect the group level at which an element becomes concretely bound.
+
 A stable and unique identifier for each bound coordinate within the parameter space is computed
 using mixed-radix enumeration (also known as the combinatorial number system for cartesian
 products). This method provides a bijective mapping between a single trial number and the
