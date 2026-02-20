@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -278,6 +279,16 @@ class PipelineCornerCaseIntegrationTest {
     private Compiler.CompilationResult compile(TestPlan plan) {
         DefaultCompiler compiler = DefaultCompiler.builder()
             .standardPipeline()
+            .options(new Compiler.CompilerOptions() {
+                @Override public Compiler.CompilationStrategy strategy() { return Compiler.CompilationStrategy.BALANCED; }
+                @Override public Compiler.OptimizationLevel optimizationLevel() { return Compiler.OptimizationLevel.STANDARD; }
+                @Override public long maxTrialSpaceSize() { return 1_000_000; }
+                @Override public boolean parallelCompilation() { return false; }
+                @Override public boolean dryRun() { return false; }
+                @Override public Map<String, Object> customOptions() {
+                    return Map.of(StepGenerationStage.OPTION_STRATEGY, "fingerprint");
+                }
+            })
             .build();
         return compiler.compile(plan);
     }

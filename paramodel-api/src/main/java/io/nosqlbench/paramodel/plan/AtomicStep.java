@@ -733,6 +733,10 @@ public sealed interface AtomicStep
     ///
     /// @param id Step identifier
     /// @param trialId Trial about to start
+    /// @param trialIndex Zero-based trial sequence index within the plan
+    /// @param trialCode Human-readable hex encoding of the trial's parameter offsets
+    ///                   (e.g. {@code "0x11"}), or empty if the strategy does not compute
+    ///                   trial codes
     /// @param elementNames Elements to notify (all elements in the trial scope)
     /// @param dependencies Prerequisite step IDs
     /// @param estimatedDuration Estimated notification time
@@ -743,6 +747,8 @@ public sealed interface AtomicStep
     record NotifyTrialStart(
         String id,
         String trialId,
+        int trialIndex,
+        Optional<String> trialCode,
         List<String> elementNames,
         List<String> dependencies,
         Optional<Duration> estimatedDuration,
@@ -758,7 +764,8 @@ public sealed interface AtomicStep
 
         @Override
         public String description() {
-            return "Notify trial start: " + trialId + " (" + elementNames.size() + " elements)";
+            String codeStr = trialCode.map(c -> " " + c).orElse("");
+            return "Notify trial start: " + trialId + " [" + trialIndex + "]" + codeStr + " (" + elementNames.size() + " elements)";
         }
 
         @Override
@@ -785,6 +792,10 @@ public sealed interface AtomicStep
     ///
     /// @param id Step identifier
     /// @param trialId Trial that has ended
+    /// @param trialIndex Zero-based trial sequence index within the plan
+    /// @param trialCode Human-readable hex encoding of the trial's parameter offsets
+    ///                   (e.g. {@code "0x11"}), or empty if the strategy does not compute
+    ///                   trial codes
     /// @param elementNames Elements to notify (all elements in the trial scope)
     /// @param plannedReason Expected shutdown reason (runtime may override)
     /// @param dependencies Prerequisite step IDs
@@ -796,6 +807,8 @@ public sealed interface AtomicStep
     record NotifyTrialEnd(
         String id,
         String trialId,
+        int trialIndex,
+        Optional<String> trialCode,
         List<String> elementNames,
         ShutdownReason plannedReason,
         List<String> dependencies,
@@ -812,7 +825,8 @@ public sealed interface AtomicStep
 
         @Override
         public String description() {
-            return "Notify trial end: " + trialId + " (" + plannedReason + ")";
+            String codeStr = trialCode.map(c -> " " + c).orElse("");
+            return "Notify trial end: " + trialId + " [" + trialIndex + "]" + codeStr + " (" + plannedReason + ")";
         }
 
         @Override

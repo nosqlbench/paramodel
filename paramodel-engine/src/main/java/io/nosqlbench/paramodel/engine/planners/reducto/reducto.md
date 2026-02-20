@@ -157,6 +157,55 @@ or deactivates itself.
 A command element must be waited for by a specific "wait for" execution step. Other _service_
 elements must be stopped by a specific "deactivate" step.
 
+### Instance Lifecycle Invariant
+
+Every element instance in the execution graph must have exactly one activation step and exactly one
+deactivation step (or await step, for command elements). This is a structural invariant of the
+graph — no instance may be activated without a corresponding deactivation, and no instance may be
+deactivated more than once. Coalescing (Rule 3) must preserve this invariant: when per-trial
+lifecycle nodes are merged into group-level nodes, the result must be a single activation and a
+single deactivation per group-level instance.
+
+The one exception is lifeline dependencies. When element X has a LIFELINE dependency on element Y,
+X's deactivation is subsumed by Y's — tearing down Y implicitly tears down X. In this case, X's
+explicit deactivation step is removed from the graph (by Rule 2), and X has only an activation step.
+Having only an activation step for an instance is valid if and only if that instance is connected to
+another instance via a lifeline dependency. In all other cases, an instance without a matching
+deactivation step indicates a bug in the planner.
+
+This invariant is enforced by a validation check in `ReductoStepGenerationStrategy` that runs after
+all rules have been applied. For each element, the validator counts ACTIVATE nodes and
+DEACTIVATE/AWAIT nodes in the finalized graph and verifies they are equal — unless the element has
+a LIFELINE dependency, in which case its deactivation count must be zero. A violation throws an
+`IllegalStateException` with details of the mismatched element.
+
+### Coalescing Congruence Principle
+
+Any rule that coalesces element instances must also produce a congruent coalescing of the
+activations and deactivations of those instances. When multiple per-trial instances are merged into
+a single group-level instance, all per-trial lifecycle nodes (activate, deactivate/await) and all
+edges referencing those nodes must be correspondingly merged into group-level equivalents. This
+means:
+
+1. **Activation congruence:** If K per-trial activate nodes are coalesced into one group activate,
+   all incoming and outgoing edges of the removed activate nodes must be remapped to the surviving
+   group activate node.
+
+2. **Deactivation congruence:** If K per-trial deactivate/await nodes are coalesced into one group
+   deactivate, all incoming and outgoing edges of the removed deactivate nodes must be remapped to
+   the surviving group deactivate node. This includes the first trial's deactivate — coalescing
+   loops that start at i=1 (to preserve the first trial's activate as the group activate) must
+   still explicitly handle the first trial's deactivate.
+
+3. **Dependency congruence:** Any rule that establishes edges to or from lifecycle nodes must
+   account for the coalesced group structure. If a non-trial element's deactivation depends on
+   trial-scoped events (e.g. notify_trial_end), the dependency must cover ALL trials in the group,
+   not just the last one, since trials within a group may execute concurrently.
+
+Violations of this principle produce orphaned lifecycle nodes, missing edge remappings, or
+incomplete dependency coverage — all of which manifest as incorrect execution ordering or
+invariant violations at validation time.
+
 No explicit steps are used to represent a trial as such in the execution graph. Instead, a trial is
 an inferred boundary around the trial element instances which have fully bound parameters. Every
 set of fully bound parameters implies a trial, and the window or lifespan of a trial is defined as
@@ -269,6 +318,226 @@ configuration error. Certain combinations are inherently contradictory:
 
 The planner validates that each element pair has exactly one relationship type and rejects
 configurations with conflicting types.
+
+### Transitive Dependency Chains (A → B → C)
+
+When three elements form a chain — A depends on B via relationship R1, and B depends on C via
+relationship R2 — the combined behavior follows from the independent application of each
+relationship's rules. This section enumerates all 25 combinations and describes their validity,
+semantics, and any notable interactions with the reducto rules.
+
+In each combination below, A is the outermost dependent, B is the intermediary, and C is the
+innermost dependency target. The dependency direction is: A depends on B, B depends on C.
+
+#### SHARED → SHARED: A shares B, B shares C
+
+**Valid.** Standard transitive sharing. C is activated first, then B, then A. All three may have
+concurrent instances sharing C and B. This is the simplest composition — no serialization
+constraints beyond activation ordering.
+
+*Example:* A is a test workload, B is a monitoring agent, C is a telemetry backend. Multiple
+workloads share the monitoring agent, which shares the telemetry backend.
+
+#### SHARED → EXCLUSIVE: A shares B, B exclusively accesses C
+
+**Valid.** B serializes on C — only one instance of B may use C at a time. A shares B normally,
+so multiple A instances may reference the same B instance. The exclusivity constraint is between
+B and C only; A is unaffected. If B has multiple instances (e.g., from parameterization), each
+must wait for exclusive access to C.
+
+*Example:* A is a test client, B is a benchmark driver, C is a database instance. Multiple
+clients share the driver, but the driver requires exclusive access to the database.
+
+#### SHARED → DEDICATED: A shares B, B has dedicated C
+
+**Valid.** Each instance of B gets its own dedicated instance of C. A shares B normally. The
+dedicated C instances are scoped to B's lifecycle, not A's. If B is coalesced across a group,
+its dedicated C is also coalesced across that group.
+
+*Example:* A is a test workload, B is a compute node, C is a local scratch volume. Multiple
+workloads share the node, but each node gets its own scratch volume.
+
+#### SHARED → LINEAR: A shares B, B comes after C
+
+**Valid.** C must fully activate and deactivate before B activates (within shared trial scope).
+A depends on B via sharing, so A activates after B. The effective ordering within a trial is:
+`activate(C) → deactivate(C) → activate(B) → activate(A)`.
+
+*Example:* A is an analysis step, B is a data pipeline, C is a data preparation step. The
+pipeline only starts after preparation completes, and multiple analyses share the pipeline.
+
+#### SHARED → LIFELINE: A shares B, B has lifeline to C
+
+**Valid.** B dies when C dies — B's deactivation is subsumed by C's. A shares B and must
+deactivate before B (which means before C). When C deactivates, B is implicitly deactivated
+as a side-effect.
+
+*Example:* A is a monitoring dashboard, B is a container, C is a cloud host. The dashboard
+shares the container. When the host stops, the container dies automatically.
+
+#### EXCLUSIVE → SHARED: A exclusively accesses B, B shares C
+
+**Valid.** A serializes on B — only one A instance at a time may use B. B shares C normally.
+The exclusivity is between A and B only; C is unaffected by the serialization.
+
+*Example:* A is a test scenario, B is a rate-limited API gateway, C is a backend database.
+Scenarios need exclusive gateway access but the gateway shares the database.
+
+#### EXCLUSIVE → EXCLUSIVE: A exclusively accesses B, B exclusively accesses C
+
+**Valid.** Double serialization chain. A serializes on B, and B serializes on C. This creates
+a fully serialized pipeline: only one A instance is active at a time (exclusive on B), and
+within that instance, only one B is active at a time (exclusive on C). The serialization
+constraints are applied independently by Rule 2.
+
+*Example:* A is a benchmark run, B is a test driver, C is a target cluster. Each run needs
+exclusive access to the driver, and each driver needs exclusive access to the cluster.
+
+#### EXCLUSIVE → DEDICATED: A exclusively accesses B, B has dedicated C
+
+**Valid.** Each B instance gets its own dedicated C. A serializes on B. Since B already gets
+exclusive access from A, and C is dedicated to B, the three-element chain is fully isolated
+during A's lifetime.
+
+*Example:* A is a load test, B is a compute instance, C is a local SSD. The load test
+exclusively accesses the compute instance, which has its own SSD.
+
+#### EXCLUSIVE → LINEAR: A exclusively accesses B, B comes after C
+
+**Valid.** C completes before B activates, and A serializes on B. Within a trial:
+`activate(C) → deactivate(C) → activate(B) → activate(A)`.
+
+#### EXCLUSIVE → LIFELINE: A exclusively accesses B, B has lifeline to C
+
+**Valid.** A exclusively accesses B, and B dies when C dies. The exclusive serialization on B
+still applies — A instances take turns using B. When C deactivates, B dies as a side-effect.
+
+#### DEDICATED → SHARED: A has dedicated B, B shares C
+
+**Valid.** Each A instance gets its own dedicated B. All B instances share C. C is activated
+before any B, and deactivated after all B instances. Since B is dedicated to A, B's lifecycle
+mirrors A's. If A is a trial element, B gets per-trial instances (not coalesced). Each
+per-trial B depends on C via SHARED edges.
+
+*Example:* A is a benchmark command, B is a dedicated driver process, C is a shared
+configuration service. Each command gets its own driver, but all drivers share the config
+service.
+
+#### DEDICATED → EXCLUSIVE: A has dedicated B, B exclusively accesses C
+
+**Valid, with notable Rule 4 interaction.** Each A instance gets its own B, and each B must
+have exclusive access to C. If A is a trial element, B is non-trial but gets per-trial
+instances (Rule 3 does not coalesce DEDICATED targets with trial-element owners).
+
+Rule 2 creates serialization edges between B instances: `deactivate(B, Ti) → activate(B, Ti+1)`
+when C is the same instance at both trials. This ensures only one B uses C at a time.
+
+**Critical Rule 4 interaction:** The exclusive serialization rerouting in Rule 4 applies only
+to trial elements. Since B is non-trial, its serialization edges are left intact as direct
+edges. This is essential — for non-trial elements, the notify wiring direction is reversed
+(`activate(B) → notify_start`, `notify_end → deactivate(B)`), so rerouting through notify
+boundaries would allow B instances to overlap. See the "Non-trial elements are not rerouted"
+note in Rule 4.
+
+*Example:* A is a test command (trial element), B is a dedicated compute node (non-trial),
+C is a shared storage cluster. Each command gets its own node, but nodes take turns accessing
+the shared storage.
+
+#### DEDICATED → DEDICATED: A has dedicated B, B has dedicated C
+
+**Valid.** Full isolation chain. Each A gets its own B, and each B gets its own C. The three
+form a completely private stack per trial (or per group, depending on coalescing). No sharing
+occurs at any level.
+
+*Example:* A is a benchmark, B is a dedicated app server, C is a dedicated database. Each
+benchmark gets its own server with its own database.
+
+#### DEDICATED → LINEAR: A has dedicated B, B comes after C
+
+**Valid.** Each A gets its own B, and B activates only after C completes. C's lifecycle is
+independent of the DEDICATED relationship between A and B.
+
+#### DEDICATED → LIFELINE: A has dedicated B, B has lifeline to C
+
+**Valid.** Each A gets its own B, and B dies when C dies. When C deactivates, all B instances
+that have a lifeline to C are implicitly deactivated, which in turn affects their owning A
+instances (A must deactivate before B dies, per the DEDICATED dependency ordering).
+
+#### LINEAR → SHARED: A comes after B, B shares C
+
+**Valid.** B completes before A starts, and B shares C during its lifetime. A's dependency on B
+is purely sequential — A activates after B deactivates. C may still be active when A starts
+(if other elements also share C).
+
+#### LINEAR → EXCLUSIVE: A comes after B, B exclusively accesses C
+
+**Valid.** B completes before A starts. During B's lifetime, B has exclusive access to C. Once
+B deactivates and releases C, A can start. A has no direct relationship with C.
+
+#### LINEAR → DEDICATED: A comes after B, B has dedicated C
+
+**Valid.** B completes before A starts. During B's lifetime, B has its own dedicated C. When B
+deactivates, its dedicated C also deactivates. Then A activates.
+
+#### LINEAR → LINEAR: A comes after B, B comes after C
+
+**Valid.** Fully sequential chain: `activate(C) → deactivate(C) → activate(B) → deactivate(B)
+→ activate(A)`. Each element's full lifecycle completes before the next begins.
+
+*Example:* C is a data import, B is a data transformation, A is an analysis step. They run
+in strict sequence.
+
+#### LINEAR → LIFELINE: A comes after B, B has lifeline to C
+
+**Valid.** B completes before A starts. B dies when C dies. Since LINEAR requires B to
+deactivate before A activates, and B's deactivation is subsumed by C's, the effective ordering
+is: C deactivates (killing B) → A activates.
+
+#### LIFELINE → SHARED: A has lifeline to B, B shares C
+
+**Valid.** A dies when B dies. B shares C. A has no explicit deactivation step — it is
+subsumed by B's deactivation. B's SHARED relationship with C is independent.
+
+#### LIFELINE → EXCLUSIVE: A has lifeline to B, B exclusively accesses C
+
+**Valid.** A dies when B dies. B serializes on C. The lifeline means A's lifecycle is bounded
+by B's, and B's lifecycle is constrained by exclusive access to C.
+
+#### LIFELINE → DEDICATED: A has lifeline to B, B has dedicated C
+
+**Valid.** A dies when B dies. Each B gets its own dedicated C. When B deactivates (taking A
+with it as a side-effect), the dedicated C also deactivates.
+
+#### LIFELINE → LINEAR: A has lifeline to B, B comes after C
+
+**Valid.** A dies when B dies, and B only activates after C completes. The effective chain
+is: C completes → B activates (A implicitly activates with B) → B deactivates (A dies).
+
+#### LIFELINE → LIFELINE: A has lifeline to B, B has lifeline to C
+
+**Valid.** Transitive lifeline cluster. When C deactivates, B dies (lifeline to C), and A dies
+(lifeline to B). All three form a lifeline cluster where C is the root. All deactivation edges
+are remapped to C's deactivation node. Only C has an explicit deactivation step in the graph;
+A and B have only activation steps.
+
+*Example:* A is a container process, B is a container, C is a cloud host. Stopping the host
+kills the container, which kills the process. All three are deactivated as one event.
+
+#### Summary of Notable Interactions
+
+| Chain Pattern | Key Behavior |
+|--------------|-------------|
+| DEDICATED → EXCLUSIVE | Non-trial B serializes on C via direct edges (NOT rerouted through notify) |
+| EXCLUSIVE → EXCLUSIVE | Double serialization — fully sequential pipeline |
+| DEDICATED → DEDICATED | Full isolation — no sharing at any level |
+| LINEAR → LINEAR | Fully sequential chain of lifecycles |
+| LIFELINE → LIFELINE | Transitive lifeline cluster — single root deactivation |
+| DEDICATED → LIFELINE | Dedicated B dies with C — A loses its resource when C stops |
+| SHARED → EXCLUSIVE | Shared intermediary serializes on inner target |
+
+All 25 combinations are structurally valid. No transitive chain produces a configuration error
+on its own. However, operational warnings may still be emitted (e.g., W001 for broad-scope
+exclusivity) depending on the specific element scoping.
 
 ## Element Graph Semantics
 
@@ -410,6 +679,28 @@ without any additional tracking structures. This is the basis for determining el
 scope — an element's activation and deactivation boundaries in the execution graph are defined by
 the group level at which it becomes concretely bound.
 
+### Trial Codes
+
+There is also a "trial code" which corresponds to the trial number but which makes the radix 
+structure and offsets more human-readable. This is used in error messages and logs. The format 
+should essentially be a hex-string. If the maximum number of values of any given parameter is 16 
+or less, then each character in the trial code is just the hexadecimal character for the offset 
+of each axis. If there are more than 16 values for any parameter, then the resolution each 
+position is 16 bits instead of 8, which makes each axis represented by a two-digit hex string. 
+Examples:
+- The 5th trial (id=4) of a plan with axes `a=[1,2,3] b=[asm,dra,ghi] c=yo` will have values 
+  `a=2 b=dra c=yo`, and trial code `0x110`, including the third parameter as if it were an axis 
+  with a single value (which is valid).
+- The 11th trial (id=10) of a plan with axes=`v1=[a,b,c],v2=[u,v],v3=[w,x,y,z]` will have values
+  `v1=b,v2=u,v3=y`, and trial code `0x102`.
+- The 38th trial (id=37) of a plan with axes=`a=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16] b=[what, 
+up]` will have values `a=2,b=up` and trial code `0x0200`, because you can't 
+  encode 17 unique values into 4 bits with hex.
+
+The trial code should be passed back along with the trial number in any execution planning 
+results, since providing the trial code makes it easy to show users where there is structural 
+congruency for simple cross-checking and combinatoric exploration.
+
 ## Stage Two, naive graph seeding
 
 In this stage, a graph structure is created as the working space (data structure) for the graph
@@ -490,6 +781,14 @@ simultaneously. The planner emits warning **W002** (see Planner Warnings Catalog
 
 For the same element prototype appearing across consecutive trials, the serialization ensures
 each instance completes before the next begins. The serialization order follows trial order.
+
+**Instance-scoped serialization:** Serialization edges are only added between consecutive trials
+where the exclusive target Y is the **same instance** — i.e., trials T and T+1 are in the same
+group for Y. When Y has different parameter values at T vs T+1 (different group), they are
+distinct physical instances with no resource conflict, and the dependent elements may run in
+parallel. For example, if `command-1` exclusively depends on `node-for-command-1` and the node
+has an `instance_type` axis with values `[i4i-4xlarge, m5d-4xlarge]`, each trial uses a different
+node instance — no serialization is needed between them.
 
 Because Rule 2 runs before Rule 3 (group coalescing), all EXCLUSIVE serialization edges are
 established against the per-trial nodes. When Rule 3 subsequently coalesces the target Y across
@@ -613,15 +912,34 @@ assembled and aware of the trial before the trial window opens. Non-trial elemen
 start notification before trial elements begin, and the end notification after trial elements
 complete, allowing them to bracket metrics windows and other trial-scoped observations.
 
-**Group boundary ordering:** When a coalesced non-trial element is deactivated at a group
-boundary, its deactivate node must depend on the notify-trial-end of the last trial in the
-outgoing group. This ensures that non-trial elements have the opportunity to receive and
-process the final trial-end notification (and any synchronous work that results from it)
-before they are torn down. The constraint is:
+**Group deactivation ordering:** When a coalesced non-trial element is deactivated at a group
+boundary, its deactivate node must depend on the `notify_trial_end` of EVERY trial in the
+outgoing group, not just the last one. Without this, when trials run concurrently within a
+group, earlier trials' `notify_trial_end` events could still be in-flight when the non-trial
+element begins deactivation, creating a race condition for any synchronous work or data
+collection triggered by the notify-end event. The constraint is:
 
 ```
-notify-trial-end(T_last_in_group) → deactivate(E_coalesced, G_outgoing)
+notify_trial_end(Ti) → deactivate(E_coalesced, G)    for every trial Ti in group G
 ```
+
+This applies to ALL trials in the group, not just the final one. For sequential trials the
+edges to earlier notify_end nodes are redundant (since each trial completes before the next
+starts), but the edges are still inserted to maintain correctness when trials can overlap.
+
+**DEDICATED target handling:** DEDICATED targets whose owner is a trial element are not coalesced
+by Rule 3 (each trial gets its own dedicated instance). This means per-trial deactivation nodes
+remain in the graph rather than being merged into a single group deactivation. Each per-trial
+deactivation must depend on its corresponding `notify_trial_end`:
+
+```
+notify_trial_end(Ti) → deactivate(dedicated_target, Ti)    for each trial Ti
+```
+
+The wiring method detects un-coalesced per-trial deactivation nodes and wires them individually,
+rather than searching only for the group-level deactivation at the last trial. This is an instance
+of the coalescing congruence principle: since DEDICATED targets are not coalesced, their notify_end
+wiring must match the per-trial granularity.
 
 Note that notification nodes are operational actions that signal the trial boundary to non-trial
 elements — they do not represent the trial itself (which remains an inferred boundary around the
@@ -630,6 +948,49 @@ element is activated and ends after all trial elements are inactive. Any mechani
 this invariant — whether dedicated notification nodes, callbacks on activation/deactivation
 steps, or another approach — is valid. The planner should use whichever form produces the
 clearest graph structure for the executor.
+
+**Exclusive serialization rerouting:** Rule 2 creates direct exclusive serialization edges of the
+form `deactivate/await(X, Ti) → activate(X, Ti+1)` (and cross-element variants) for elements with
+EXCLUSIVE dependencies. After inserting the notify nodes, Rule 4 detects these direct edges between
+**trial elements** and reroutes them through the notify boundaries. The direct edge is removed and
+replaced by `notify_end(Ti) → notify_start(Ti+1)`, since `deactivate/await(X, Ti) → notify_end(Ti)`
+and `notify_start(Ti+1) → activate(X, Ti+1)` already exist from Rule 4's normal wiring. This
+ensures that the trial notification lifecycle is properly coupled to the exclusive serialization
+order — a control path cannot pass through multiple notify-start steps concurrently when the
+downstream trial elements are mutually exclusive. The resulting path becomes:
+
+```
+deactivate/await(X, Ti) → notify_end(Ti) → notify_start(Ti+1) → activate(X, Ti+1)
+```
+
+This rerouting applies to both self-serialization edges (same element across consecutive trials)
+and cross-element serialization edges (different elements that exclusively depend on the same
+target).
+
+**Non-trial elements are not rerouted.** For non-trial elements with EXCLUSIVE dependencies
+(such as a DEDICATED target whose owner is a trial element), the notify wiring direction is
+the opposite of trial elements: `activate(B) → notify_start` (B activates before the trial
+starts) and `notify_end → deactivate(B)` (B deactivates after the trial ends). If the
+serialization edge `deactivate(B, Ti) → activate(B, Ti+1)` were rerouted through notify
+boundaries, the next trial's B activation could run in parallel with the current trial's B
+deactivation — both happen "before" `notify_start(Ti+1)` without any ordering between them.
+This would violate the exclusive constraint by allowing two B instances to be active
+simultaneously. Therefore, non-trial serialization edges are left intact as direct edges.
+
+**Non-trial deactivation enforcement:** After wiring all notify_end nodes to group deactivations,
+Rule 4 removes any direct edges from trial element termination nodes to non-trial element
+deactivation nodes. These direct edges (originating from Rule 2's dependency wiring, possibly
+remapped by Rule 3's coalescing) would allow a non-trial element to begin deactivation
+concurrently with or before `notify_trial_end` processing. The correct control path is:
+
+```
+trial_terminate(X, Ti) → notify_end(Ti) → deactivate(non_trial, G)
+```
+
+The indirect path through `notify_end` is established by the group deactivation ordering
+(all notify_ends in the group precede the deactivation) and the main wiring loop (trial
+terminations precede notify_end). The direct edges are redundant and potentially unsafe,
+so they are removed.
 
 ### Rule 5: Health check readiness gates
 
@@ -672,6 +1033,26 @@ Two sentinel nodes are added to finalize the graph:
 
 After materialization, the graph is validated as a proper DAG (no cycles). A cycle indicates a
 configuration error in the element dependencies.
+
+### Rule 8: Transitive reduction
+
+After all structural rules have been applied (including start/end sentinel connections from Rule 7),
+the graph may contain transitive edges — direct edges A → C where an indirect path A → B → C also
+exists. These transitive edges are redundant because `DefaultExecutionGraph` already provides
+`transitiveDependencies()` for runtime queries.
+
+Rule 8 performs a standard transitive reduction on the DAG:
+
+```
+For each node N in topological order:
+  For each successor S of N:
+    If S is reachable from any other successor of N (via BFS/DFS):
+      Remove the direct edge N → S
+```
+
+This reduces visual clutter and ensures that the graph contains only the essential ordering
+constraints. The transitive reduction preserves the reachability relation — the set of nodes
+reachable from any given node is unchanged.
 
 ### Worked example
 
@@ -728,10 +1109,14 @@ different param_x/param_y values is activated.
 
 **Rule 4 (notifications):** 18 notify-trial-start and 18 notify-trial-end nodes inserted. Each
 notify-trial-start depends on the group-level activate(a) being complete. Each trial's activate(b)
-depends on the corresponding notify-trial-start. At group boundaries, the coalesced deactivation
-depends on the last trial-end notification in the group:
-`notify-trial-end(T2) → deactivate(a, G0)`, `notify-trial-end(T5) → deactivate(a, G1)`, etc.
-This ensures `a` processes all trial-end notifications before being torn down.
+depends on the corresponding notify-trial-start. Each group's deactivation depends on ALL
+notify-trial-end nodes within that group:
+`notify-trial-end(T0), notify-trial-end(T1), notify-trial-end(T2) → deactivate(a, G0)`,
+`notify-trial-end(T3), notify-trial-end(T4), notify-trial-end(T5) → deactivate(a, G1)`, etc.
+This ensures `a` has processed every trial-end notification in the group before being torn down,
+even when trials within a group run concurrently. Direct edges from trial terminations to
+non-trial deactivations (from Rule 2) are also removed, forcing the control path through
+notify_end.
 
 **Rule 5 (health checks):** If `a` defines a health check, 6 readiness-gate nodes are inserted
 (one per group-level activation).
@@ -741,6 +1126,12 @@ instances of `b` are active simultaneously (delaying activations as needed).
 
 **Rule 7 (start/end):** Start node connects to the first activate(a) and any other root nodes. End
 node receives edges from the last deactivate(a) and any other leaf nodes.
+
+**Rule 8 (transitive reduction):** Any transitive edges are removed. For example, if
+`start → activate(a, G0)` and `start → notify_trial_start_0` both exist, but
+`activate(a, G0) → notify_trial_start_0` also exists, then the direct
+`start → notify_trial_start_0` edge is removed since it is transitively implied. This
+produces a minimal graph with only the essential ordering constraints.
 
 **Final graph summary:**
 - 6 activate/deactivate pairs for `a` (group-coalesced)

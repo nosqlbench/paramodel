@@ -57,7 +57,7 @@ public class DefaultStepGenerationStrategy implements StepGenerationStrategy {
 
     @Override
     public String strategyName() {
-        return "default";
+        return "fingerprint";
     }
 
     @Override
@@ -315,7 +315,7 @@ public class DefaultStepGenerationStrategy implements StepGenerationStrategy {
                 notifyStartId = "notify_trial_start_" + trialIdx + "_" + stepIndex++;
                 List<String> trialNesting = trialFullPaths.getOrDefault(trialIdx, List.of());
                 AtomicStep.NotifyTrialStart notifyStart = new AtomicStep.NotifyTrialStart(
-                    notifyStartId, trial.id(), allElementNames, notifyStartDeps,
+                    notifyStartId, trial.id(), trialIdx, Optional.empty(), allElementNames, notifyStartDeps,
                     Optional.empty(), AtomicStep.ResourceRequirements.none(), Optional.empty(),
                     meta("trial_index", trialIdx, "trial_id", trial.id(), "nesting_path", trialNesting)
                 );
@@ -401,7 +401,7 @@ public class DefaultStepGenerationStrategy implements StepGenerationStrategy {
                 notifyTrialEndId = "notify_trial_end_" + trialIdx + "_" + stepIndex++;
                 List<String> trialNesting = trialFullPaths.getOrDefault(trialIdx, List.of());
                 AtomicStep.NotifyTrialEnd notifyEnd = new AtomicStep.NotifyTrialEnd(
-                    notifyTrialEndId, trial.id(), allElementNames,
+                    notifyTrialEndId, trial.id(), trialIdx, Optional.empty(), allElementNames,
                     AtomicStep.ShutdownReason.NORMAL,
                     trialOperativeStepIds,
                     Optional.empty(), AtomicStep.ResourceRequirements.none(), Optional.empty(),

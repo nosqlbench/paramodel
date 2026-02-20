@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.engine.planners.StepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.fingerprint.DefaultStepGenerationStrategy;
+import io.nosqlbench.paramodel.engine.planners.reducto.ReductoStepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.simple.SimpleStepGenerationStrategy;
 
 import java.util.Collections;
@@ -19,7 +20,7 @@ import java.util.Map;
 ///
 /// The active strategy is selected via the {@value #OPTION_STRATEGY} key in
 /// {@link io.nosqlbench.paramodel.compilation.Compiler.CompilerOptions#customOptions()}.
-/// When the key is absent the {@link DefaultStepGenerationStrategy} is used.
+/// When the key is absent the {@link ReductoStepGenerationStrategy} is used.
 ///
 /// Custom strategies are registered with {@link #register(StepGenerationStrategy)}
 /// and can be enumerated via {@link #registeredStrategies()}.
@@ -43,6 +44,9 @@ public class StepGenerationStage implements CompilationStage {
     static {
         register(new DefaultStepGenerationStrategy());
         register(new SimpleStepGenerationStrategy());
+        ReductoStepGenerationStrategy reducto = new ReductoStepGenerationStrategy();
+        register(reducto);
+        STRATEGIES.put("default", reducto);
     }
 
     /// Registers a step generation strategy.
@@ -71,7 +75,7 @@ public class StepGenerationStage implements CompilationStage {
     @Override
     public void execute(CompilationContext context) {
         String name = (String) context.options().customOptions()
-            .getOrDefault(OPTION_STRATEGY, "default");
+            .getOrDefault(OPTION_STRATEGY, "reducto");
         StepGenerationStrategy strategy = STRATEGIES.get(name);
         if (strategy == null) {
             context.addError(

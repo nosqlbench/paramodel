@@ -887,7 +887,9 @@ class ScopeAndFingerprintCornerCaseTest {
             @Override public long maxTrialSpaceSize() { return 1_000_000; }
             @Override public boolean parallelCompilation() { return false; }
             @Override public boolean dryRun() { return false; }
-            @Override public Map<String, Object> customOptions() { return Map.of(); }
+            @Override public Map<String, Object> customOptions() {
+                return Map.of(StepGenerationStage.OPTION_STRATEGY, "fingerprint");
+            }
         };
     }
 }

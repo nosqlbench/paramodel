@@ -19,7 +19,7 @@ package io.nosqlbench.paramodel.elements;
 /// SHARED             Can overlap                      Single shared instance
 /// EXCLUSIVE          Cannot overlap                   Single instance, serialized
 /// DEDICATED          Isolated per dependent           Dedicated instance per dependent
-/// LINEAR             Serial within trial scope        Shared instance, ordered
+/// LINEAR             Full lifecycle ordering           Shared instance, serial within scope
 /// LIFELINE           Target subsumes dependent        Dependent torn down with target
 /// ```
 ///
@@ -42,8 +42,8 @@ package io.nosqlbench.paramodel.elements;
 ///           ^ Each dependent gets its own instance
 ///
 /// LINEAR:
-///   Trial1: [B operative action] → [A operative action]
-///           ^ Sequential actions within the same trial scope
+///   Trial1: [B activate → B deactivate] → [A activate → A deactivate]
+///           ^ Full lifecycle ordering within shared trial scope
 ///
 /// LIFELINE:
 ///   B teardown → A automatically torn down
@@ -95,7 +95,7 @@ package io.nosqlbench.paramodel.elements;
 /// SHARED:     → No barriers needed, single instance lifecycle
 /// EXCLUSIVE:  → Compiler inserts serialization barriers
 /// DEDICATED:  → Compiler creates per-dependent instances
-/// LINEAR:     → Compiler enforces serial TrialSteps for trial elements
+/// LINEAR:     → Compiler enforces full lifecycle ordering within trial scope
 /// LIFELINE:   → Dependent's final teardown step is omitted
 /// ```
 ///
@@ -123,10 +123,18 @@ public enum RelationshipType {
     /// is never shared with other elements.
     DEDICATED,
 
-    /// Indicates that the dependent and target are both trial elements
-    /// within the same trial scope and must occur in order, as strict
-    /// serialization is required and further, data flow may be implied
-    /// between elements in the same trial scope (parameter group).
+    /// Full lifecycle ordering within shared trial scope.
+    ///
+    /// The target element Y must be activated and fully deactivated — whether
+    /// by an explicit service deactivation or by awaiting a command element's
+    /// natural completion — before the dependent element X is activated. This
+    /// constraint applies only when X and Y share the same trial scope (same
+    /// configuration group). When X and Y are in different trial scopes, the
+    /// linear constraint does not apply and their lifecycles are independent.
+    ///
+    /// This means Y's resources are fully released before X begins, preventing
+    /// any residual state, measurement perturbation, or resource contention.
+    /// Data flow may be implied between elements in the same trial scope.
     LINEAR,
 
     /// The target's lifecycle subsumes the dependent's. When the target

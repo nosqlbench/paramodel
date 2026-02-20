@@ -198,7 +198,12 @@ public class TestPlanComposer {
         // Map element type to shutdown semantics.
         // "command" type elements are self-terminating — the scheduler awaits
         // natural completion instead of issuing a shutdown signal.
-        if ("command".equalsIgnoreCase(def.type())) {
+        // Elements with behavior=command (e.g. demo/dummy elements) also get
+        // COMMAND semantics so the planner emits Await instead of Teardown.
+        if ("command".equalsIgnoreCase(def.type())
+                || (def.parameters() != null
+                    && "command".equalsIgnoreCase(
+                        String.valueOf(def.parameters().getOrDefault("behavior", ""))))) {
             builder.shutdownSemantics(Element.ShutdownSemantics.COMMAND);
         }
 

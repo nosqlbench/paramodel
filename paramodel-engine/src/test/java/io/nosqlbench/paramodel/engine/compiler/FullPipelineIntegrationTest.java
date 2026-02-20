@@ -41,9 +41,7 @@ class FullPipelineIntegrationTest {
             .build();
 
         // Compile via DefaultCompiler
-        DefaultCompiler compiler = DefaultCompiler.builder()
-            .standardPipeline()
-            .build();
+        DefaultCompiler compiler = fingerprintCompiler();
 
         Compiler.CompilationResult result = compiler.compile(plan);
 
@@ -92,9 +90,7 @@ class FullPipelineIntegrationTest {
             .element(app)
             .build();
 
-        DefaultCompiler compiler = DefaultCompiler.builder()
-            .standardPipeline()
-            .build();
+        DefaultCompiler compiler = fingerprintCompiler();
 
         Compiler.CompilationResult result = compiler.compile(plan);
         assertThat(result.isSuccess()).isTrue();
@@ -126,9 +122,7 @@ class FullPipelineIntegrationTest {
             .element(svc)
             .build();
 
-        DefaultCompiler compiler = DefaultCompiler.builder()
-            .standardPipeline()
-            .build();
+        DefaultCompiler compiler = fingerprintCompiler();
 
         Compiler.CompilationResult result = compiler.compile(plan);
         assertThat(result.isSuccess()).isTrue();
@@ -144,5 +138,21 @@ class FullPipelineIntegrationTest {
             .filter(s -> s instanceof AtomicStep.TrialStep)
             .count();
         assertThat(execTrials).isEqualTo(4);
+    }
+
+    private DefaultCompiler fingerprintCompiler() {
+        return DefaultCompiler.builder()
+            .standardPipeline()
+            .options(new Compiler.CompilerOptions() {
+                @Override public Compiler.CompilationStrategy strategy() { return Compiler.CompilationStrategy.BALANCED; }
+                @Override public Compiler.OptimizationLevel optimizationLevel() { return Compiler.OptimizationLevel.STANDARD; }
+                @Override public long maxTrialSpaceSize() { return 1_000_000; }
+                @Override public boolean parallelCompilation() { return false; }
+                @Override public boolean dryRun() { return false; }
+                @Override public Map<String, Object> customOptions() {
+                    return Map.of(StepGenerationStage.OPTION_STRATEGY, "fingerprint");
+                }
+            })
+            .build();
     }
 }
