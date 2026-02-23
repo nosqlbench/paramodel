@@ -127,9 +127,16 @@ public final class StepGenerationUtils {
 
     /// Identifies trial elements using a scope-aware, override-respecting algorithm.
     ///
-    /// Implements **Design Rule 1** (trial element identity): trial elements
-    /// are the innermost leaf nodes, even when the innermost layer is also
-    /// the outermost layer.
+    /// Implements **Design Rule 1** (trial element identity): when axes define
+    /// trial-scoped bindings, the trial-scoped elements are used as the candidate
+    /// pool. When no axes are present, the candidate pool is all non-floating
+    /// elements — a "floating" element is one with no outgoing dependencies and
+    /// no incoming dependencies (nothing depends on it). Floating elements are
+    /// excluded because they have no relationship to the rest of the plan and
+    /// should not participate in trial scope.
+    ///
+    /// In both cases, trial elements are the leaf nodes of the candidate pool:
+    /// elements that no other candidate depends on.
     ///
     /// @param sortedElements    topologically sorted elements
     /// @param effectiveBindings resolved axis bindings per element
@@ -159,9 +166,24 @@ public final class StepGenerationUtils {
         if (!trialScoped.isEmpty()) {
             candidatePool = trialScoped;
         } else {
+            // No axes — exclude floating elements (no deps in or out).
+            // An element is floating if it has no outgoing dependencies AND
+            // no other element depends on it.
+            Set<String> hasOutgoing = new HashSet<>();
+            Set<String> hasIncoming = new HashSet<>();
+            for (Element e : sortedElements) {
+                for (Element.Dependency dep : e.dependencies()) {
+                    hasOutgoing.add(e.name());
+                    hasIncoming.add(dep.target().name());
+                }
+            }
+
             candidatePool = new HashSet<>();
             for (Element e : sortedElements) {
-                if (!forcedOff.contains(e.name())) {
+                if (forcedOff.contains(e.name())) continue;
+                boolean floating = !hasOutgoing.contains(e.name())
+                        && !hasIncoming.contains(e.name());
+                if (!floating) {
                     candidatePool.add(e.name());
                 }
             }
