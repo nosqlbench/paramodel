@@ -174,8 +174,8 @@ The compiler binds axis values to element parameters using prioritized matching:
 
 | Condition | Determined Scope | Result |
 |-----------|------------------|--------|
-| No parameters vary across axes | `GLOBAL` | 1 instance shared by all trials |
-| Parameters vary across axes | `PER_TRIAL` | N instances (one per unique trial config) |
+| No parameters vary across axes | Group level 0 | 1 instance shared by all trials |
+| Parameters vary across axes | Group level > 0 | N instances (one per unique config fingerprint) |
 
 ### Context Writes
 

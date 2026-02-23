@@ -51,12 +51,12 @@ TestPlan plan = TestPlan.builder()
 
 ## Use Scope Hints to Force Persistence
 
-If the compiler infers a `PER_TRIAL` scope but you know the resource is
-safely reusable, use an `instancing_hint`.
+If the compiler infers a deep group level but you know the resource is
+safely reusable, use an `instancing_hint` to force it to group level 0.
 
 ```java
 Element db = DefaultElement.builder("postgres")
-    .tag("instancing_hint", "per_run") // Force exactly 1 instance
+    .tag("instancing_hint", "global") // Force to group level 0: exactly 1 instance
     .build();
 ```
 

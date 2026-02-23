@@ -658,6 +658,79 @@ class ReductoIntegrationTest {
     }
 
     @Test
+    @DisplayName("DEDICATED chain with interior axis: leaf trial element, axis on middle element — all get silos")
+    void dedicatedChainInteriorAxisProducesSilos() {
+        // Regression: when the varying axis is on an interior element of the
+        // DEDICATED chain (database) rather than the leaf (testclient), the leaf
+        // inherits trial scope via NormalizationStage forward propagation, but
+        // BindingStateComputer gives it bindingLevel=0 (no owned params).
+        // resolveEffectiveBindingLevel must use the max binding level across
+        // the entire chain, not just the root's level.
+        //
+        // Chain: testclient (leaf, no params) → database (has axis) → victoria → globalconfig
+        // All deps are DEDICATED. testclient is the trial element.
+        Element globalconfig = MockElement.of("globalconfig");
+        Element victoria = MockElement.builder("victoria")
+            .dependency(globalconfig, RelationshipType.DEDICATED)
+            .build();
+        var paramDelay = IntegerParameter.range("startup_delay_ms", 1000, 7000);
+        Element database = MockElement.builder("database")
+            .parameter(paramDelay)
+            .dependency(victoria, RelationshipType.DEDICATED)
+            .build();
+        Element testclient = MockElement.builder("testclient")
+            .dependency(database, RelationshipType.DEDICATED)
+            .shutdownSemantics(Element.ShutdownSemantics.COMMAND)
+            .build();
+
+        var axisDelay = MockAxis.of("startup_delay_ms", 1000, 3000, 5000, 7000);
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("dedicated-interior-axis-silos")
+            .axis(axisDelay)
+            .element(globalconfig)
+            .element(victoria)
+            .element(database)
+            .element(testclient)
+            .build();
+
+        Compiler.CompilationResult result = compileReducto(plan);
+        assertThat(result.isSuccess()).isTrue();
+
+        ExecutionPlan execPlan = result.executionPlan().get();
+
+        // testclient (trial element, leaf) should have 4 deploys
+        long tcDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("testclient"))
+            .count();
+        assertThat(tcDeploys).as("testclient (trial element) should have 4 deploys").isEqualTo(4);
+
+        // database (owns the axis, DEDICATED to testclient) should have 4 instances
+        long dbDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("database"))
+            .count();
+        assertThat(dbDeploys).as("database (DEDICATED, owns axis) should have 4 instances").isEqualTo(4);
+
+        // victoria (no params, DEDICATED to database) should have 4 instances — not collapsed to 1
+        long vicDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("victoria"))
+            .count();
+        assertThat(vicDeploys)
+            .as("victoria (DEDICATED, no params) should have 4 instances via chain max binding level")
+            .isEqualTo(4);
+
+        // globalconfig (no params, DEDICATED to victoria) should have 4 instances
+        long gcDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("globalconfig"))
+            .count();
+        assertThat(gcDeploys)
+            .as("globalconfig (DEDICATED, no params) should have 4 instances via chain max binding level")
+            .isEqualTo(4);
+
+        assertThat(execPlan.executionGraph().isAcyclic()).isTrue();
+    }
+
+    @Test
     @DisplayName("Deep dependency chain: correct topological ordering")
     void deepDependencyChain() {
         Element e = MockElement.of("e");

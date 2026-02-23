@@ -40,6 +40,12 @@ public class CodeGenerationStage implements CompilationStage {
             .map(ExecutionGraph.class::cast)
             .orElseGet(() -> new DefaultExecutionGraph(steps));
 
+        @SuppressWarnings("unchecked")
+        List<String> trialElements = context.get("trialElements")
+            .filter(v -> v instanceof List)
+            .map(v -> (List<String>) v)
+            .orElse(List.of());
+
         String planId = CompactId.next();
         String fingerprint = "compiled:" + context.testPlan().name() + ":" + steps.size();
 
@@ -49,7 +55,8 @@ public class CodeGenerationStage implements CompilationStage {
             steps,
             barriers,
             graph,
-            TrialOrdering.SEQUENTIAL
+            TrialOrdering.SEQUENTIAL,
+            trialElements
         );
 
         context.put("executionPlan", plan);

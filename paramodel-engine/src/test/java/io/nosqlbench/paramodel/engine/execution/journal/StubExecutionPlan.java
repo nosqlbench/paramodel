@@ -47,6 +47,7 @@ class StubExecutionPlan implements ExecutionPlan {
     @Override public String id() { return id; }
     @Override public String testPlanFingerprint() { return "test-fingerprint"; }
     @Override public List<AtomicStep> steps() { return steps; }
+    @Override public List<String> trialElements() { return List.of(); }
     @Override public List<Barrier> barriers() { return List.of(); }
     @Override public ExecutionGraph executionGraph() {
         throw new UnsupportedOperationException("Stub");
@@ -73,6 +74,9 @@ class StubExecutionPlan implements ExecutionPlan {
         throw new UnsupportedOperationException("Stub");
     }
     @Override public ExecutionPlan withMaxConcurrency(int m) {
+        throw new UnsupportedOperationException("Stub");
+    }
+    @Override public ElementInstanceGraph elementInstanceGraph() {
         throw new UnsupportedOperationException("Stub");
     }
     @Override public ExecutionPlanMetadata metadata() {

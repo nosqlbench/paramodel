@@ -209,26 +209,42 @@ public final class Rule3_GroupCoalescing implements Rule {
     }
 
     /// Resolves the effective binding level for an element by walking up the
-    /// DEDICATED ownership chain. If the element is itself a DEDICATED target,
-    /// its effective binding level is determined by the root of the chain —
-    /// the first ancestor that is not a DEDICATED target.
+    /// DEDICATED ownership chain and returning the **maximum** binding level
+    /// found along the way.
+    ///
+    /// This is necessary because the varying parameter may live on an interior
+    /// element of the chain rather than the root. For example, if the chain is
+    /// `testclient → database → victoria → globalconfig` and only database
+    /// owns a varying axis, database has bindingLevel=1 while testclient has
+    /// bindingLevel=0. All DEDICATED targets must use the highest level in the
+    /// chain so they produce the correct number of per-group instances.
     ///
     /// @param context        rule context
     /// @param elementName    the element whose effective binding level to resolve
     /// @param dedicatedOwner mapping from DEDICATED target name to owner name
-    /// @return the effective binding level
+    /// @return the maximum binding level across the chain
     private int resolveEffectiveBindingLevel(RuleContext context, String elementName,
                                               Map<String, String> dedicatedOwner) {
+        int maxLevel = 0;
         String current = elementName;
         Set<String> visited = new HashSet<>();
+
+        // Check starting element
+        BindingStateComputer.ElementBinding binding = context.bindingState().binding(current);
+        if (binding != null) {
+            maxLevel = Math.max(maxLevel, binding.bindingLevel());
+        }
+
         while (dedicatedOwner.containsKey(current)) {
             if (!visited.add(current)) break; // cycle guard
             current = dedicatedOwner.get(current);
+            binding = context.bindingState().binding(current);
+            if (binding != null) {
+                maxLevel = Math.max(maxLevel, binding.bindingLevel());
+            }
         }
 
-        BindingStateComputer.ElementBinding binding = context.bindingState().binding(current);
-        if (binding == null) return 0;
-        return binding.bindingLevel();
+        return maxLevel;
     }
 
     private void checkExclusiveWarnings(RuleContext context,

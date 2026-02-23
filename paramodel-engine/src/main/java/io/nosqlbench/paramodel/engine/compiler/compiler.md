@@ -68,13 +68,14 @@ checks are applied in order:
 
 5. **Scope validation**
    - An element may not depend on another element with a shorter-lived scope.
-   - Specifically: ordinal comparison `upstream.scope < downstream.scope` is
-     an error (`SCOPE_VIOLATION`).  PER_RUN > PER_GROUP > PER_TRIAL in
-     lifetime.  A PER_RUN element cannot depend on a PER_TRIAL element.
+   - Specifically: an element at a lower group level (longer lifetime) cannot
+     depend on an element at a higher group level (shorter lifetime)
+     (`SCOPE_VIOLATION`).  Group level 0 has the longest lifetime;
+     higher levels are progressively shorter.
 
 6. **Axis validation**
    - Each axis must reference an existing element (`UNKNOWN_AXIS_ELEMENT`).
-   - PER_RUN-scoped elements cannot have varied parameters (`AXIS_LOCALITY`).
+   - Group level 0 elements cannot have varied parameters (`AXIS_LOCALITY`).
    - Axes must have values or a min/max range (`EMPTY_AXIS_VALUES`).
    - CONCURRENT mode is only valid on the innermost axis for a given element
      (`CONCURRENT_NOT_INNERMOST`).
@@ -146,45 +147,45 @@ Reads axis-level tags and assembles a `SamplingConfig`:
 If a `SamplingConfig` already exists in context (set by adopter code or
 tests), it is not overwritten.
 
-### Scope Derivation
+### Group Level Derivation
 
-The scope hierarchy encodes element lifetime:
+The group level hierarchy encodes element lifetime via `AxisBindingSet.depth()`:
 
 ```
-PER_TRIAL (ordinal 0)  — shortest lifetime, fresh per trial
-PER_GROUP (ordinal 1)  — persists for contiguous group with constant config
-PER_RUN   (ordinal 2)  — longest lifetime, outermost group = entire run
+Level N  (deepest)  — shortest lifetime, fresh per trial
+Level K  (1..N-1)   — persists for contiguous group with constant config
+Level 0             — longest lifetime, outermost group = entire run
 ```
 
-PER_RUN is a logical placeholder for the outermost group — the element has
-no varying axis, so its "group" spans the entire run.
+An element at level 0 has no bound axes, so its group spans the entire
+run. This is not a special case — it follows directly from having zero
+bound axes.
 
-For each `DefaultElement` without an explicit scope:
+For each `DefaultElement` without an explicit group level:
 
 **Pass 1 — Direct assignment:**
 
 1. Inference from axis targeting:
    - If any axis declares `targetElement()` matching this element's name
-     → `PER_GROUP` (persists for a contiguous group of trials with constant
-     config, redeployed at group boundaries when the configuration
+     → group level > 0 (persists for a contiguous group of trials with
+     constant config, redeployed at group boundaries when the configuration
      fingerprint changes)
-   - Otherwise → `PER_RUN` (outermost group — entire run)
+   - Otherwise → group level 0 (entire run)
 
-PER_TRIAL is **only** assigned when explicitly declared (via hint or
-builder).  It is never inferred from axis targeting.
+The deepest group level (leaf) is **only** assigned when explicitly
+declared (via hint or builder).  It is never inferred from axis targeting.
 
 **Pass 2 — Taint propagation (fixed-point):**
 
 Repeat until no changes occur:
 
-- If any dependency has a shorter-lived scope (lower ordinal) than the
+- If any dependency has a higher group level (shorter lifetime) than the
   current element, promote the element to match:
-  - PER_RUN element depending on PER_GROUP → promote to PER_GROUP
-  - PER_RUN element depending on PER_TRIAL → promote to PER_TRIAL
-  - PER_GROUP element depending on PER_TRIAL → promote to PER_TRIAL
+  - Level 0 element depending on level K → promote to level K
+  - Level K element depending on level N → promote to level N
 
-This ensures scope is monotonically non-decreasing along the dependency
-chain.
+This ensures group level is monotonically non-decreasing along the
+dependency chain.
 
 ---
 
@@ -268,7 +269,7 @@ element varies.
 - **Varies** (per-trial):  One `ElementInstance` per trial.
   Dependencies are resolved per-trial from the context instance registry.
 
-- **Does not vary** (global):  One `ElementInstance` covering all trials.
+- **Does not vary** (level 0):  One `ElementInstance` covering all trials.
   Dependencies are resolved using a representative trial (the first).
 
 Instances record: `instanceId`, `element`, `trials`, `scopeDescription`,
@@ -328,7 +329,7 @@ Two barrier types are used for lifecycle coordination:
 | Barrier Type         | Emitted when                                    | Purpose                                        |
 |----------------------|-------------------------------------------------|------------------------------------------------|
 | `ELEMENT_READY`      | After deploy of element with health check       | Downstream steps await element readiness       |
-| `TRIAL_BATCH`        | At each trial boundary (when PER_GROUP elements exist) | Marks trial completion for group-boundary sync |
+| `TRIAL_BATCH`        | At each trial boundary (when group level > 0 elements exist) | Marks trial completion for group-boundary sync |
 
 > **Note:** `ELEMENT_SCOPE_END` barriers are no longer emitted. Teardown
 > steps depend directly on execution steps, reducing plan complexity.
@@ -443,9 +444,9 @@ elements that depend on them (reverse dependency ordering).
 
 When ALL of an element's dependencies are marked as lifeline, the
 element's teardown step is omitted in Phase 3 final teardown and in
-Phase 2 PER_GROUP group-boundary teardown. The upstream element's
-teardown implicitly destroys the downstream. This only applies to
-final and group-boundary teardowns — PER_TRIAL eager teardowns in
+Phase 2 group-boundary teardown (for group level > 0 elements). The
+upstream element's teardown implicitly destroys the downstream. This
+only applies to final and group-boundary teardowns — leaf-level eager teardowns in
 Phase 2 still occur because the upstream remains alive between trials
 and the downstream instance needs recycling.
 
@@ -462,35 +463,36 @@ with the upstream element across any number of lifeline levels.
 
 ### Rule 11: Group-Boundary Teardowns Depend on Execution Steps
 
-A PER_GROUP group-boundary teardown depends directly on the last
+A group-boundary teardown (group level > 0) depends directly on the last
 execution step (`lastSequentialExecId`), preventing teardown from
 racing with an in-progress trial. Teardowns in the same group boundary
 are LIFO-chained to prevent concurrent teardown of dependent elements.
 
 ### Rule 12: Scope Derivation Propagates Through Dependencies
 
-If an element has no explicit scope but depends on a PER_GROUP element,
-it is promoted to PER_GROUP via taint propagation (fixed-point
-iteration using ordinal comparison).
+If an element has no explicit group level but depends on a group level K
+element, it is promoted to level K via taint propagation (fixed-point
+iteration using depth comparison).
 
-### Rule 13: Axis Targeting Implies PER_GROUP
+### Rule 13: Axis Targeting Implies Group Level > 0
 
 If any axis declares `targetElement()` matching an element, that element
-is inferred as PER_GROUP (not PER_TRIAL).  PER_TRIAL is only assigned
-when explicitly declared via hint or builder.
+is inferred as axis-bound (group level > 0, not leaf-level). The deepest
+group level (leaf) is only assigned when explicitly declared via hint
+or builder.
 
-### Rule 14: Explicit PER_TRIAL vs Inferred PER_GROUP
+### Rule 14: Explicit Leaf-Level vs Inferred Axis-Bound
 
-Only elements with **explicitly declared** PER_TRIAL scope
+Only elements with **explicitly declared** leaf-level scope
 (`isScopeExplicit() == true`) receive fresh independent instances per
-trial.  Elements inferred from axis targeting receive PER_GROUP scope
-and use fingerprint-based group lifecycle.
+trial.  Elements inferred from axis targeting receive an intermediate
+group level and use fingerprint-based group lifecycle.
 
 ### Rule 15: Optimization Respects Step Metadata
 
 The PruneRedundant optimisation pass uses step metadata (`scope`,
 `reason`, `trial_index`) to identify redundant pairs.  It only targets
-`PER_GROUP`-scoped deploys and `group_boundary` teardowns.
+group-level > 0 deploys and `group_boundary` teardowns.
 
 ### Rule 16: The Dependency Graph Must Be Acyclic
 

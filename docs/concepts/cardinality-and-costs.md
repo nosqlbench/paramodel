@@ -37,19 +37,19 @@ by the compiler based on three factors:
 
 If an axis targets a parameter of Element A, then Element A's configuration
 varies across the trial space. This "taints" the element, forcing it into a
-finer instancing scope (usually `PER_TRIAL` or `PER_GROUP`).
+finer instancing group level (group level > 0).
 
 **Taint Propagation**: If Element B depends on Element A, and A is tainted,
 then B is also tainted. This ensures that downstream elements are redeployed
 when their upstream dependencies change.
 
-### 2. Instancing Scopes
+### 2. Group Levels
 
-| Scope        | Cardinality Formula | Best For |
-|--------------|---------------------|----------|
-| **PER_RUN**  | Exactly 1           | Static infrastructure (e.g., a shared DB) |
-| **PER_GROUP**| Unique Fingerprints | Resources that persist while config is static |
-| **PER_TRIAL**| Number of Trials    | Total isolation (e.g., a fresh container per trial) |
+| Group Level       | Cardinality Formula | Best For |
+|-------------------|---------------------|----------|
+| **0**             | Exactly 1           | Static infrastructure (e.g., a shared DB) |
+| **1..N**          | Unique Fingerprints | Resources that persist while bound axis values are constant |
+| **Deepest**       | Number of Trials    | Total isolation (e.g., a fresh container per trial) |
 
 ### 3. Relationship Types
 
@@ -66,8 +66,8 @@ Operational costs are driven by the total number of **Lifecycle Transitions**
 (Deploy/Teardown steps) in the execution plan.
 
 ### Factors increasing cost:
-- **High Cardinality**: `PER_TRIAL` scope on a heavy resource (like a database).
-- **Frequent Redeployment**: `PER_GROUP` scope with axes that change frequently.
+- **High Cardinality**: Leaf-level (deepest group) scope on a heavy resource (like a database).
+- **Frequent Redeployment**: Intermediate group level with axes that change frequently.
 - **Dedicated Instances**: Using `DEDICATED` relationships for many dependents.
 
 ### Strategies for cost reduction:
@@ -112,5 +112,5 @@ Manage your test plan's efficiency by:
 1. **Monitoring the graph**: Use `executionPlan.executionGraph().statistics()`
    to see node counts and parallelism.
 2. **Prioritizing major axes**: Reduce redeployment churn by sorting axes.
-3. **Choosing scopes wisely**: Prefer `SHARED` and `PER_RUN` for expensive
+3. **Choosing group levels wisely**: Prefer `SHARED` relationships and group level 0 for expensive
    resources.

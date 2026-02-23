@@ -1,7 +1,11 @@
 package io.nosqlbench.paramodel.execution;
 
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
+import io.nosqlbench.paramodel.plan.ExecutionState;
+import io.nosqlbench.paramodel.plan.LiveElementGraph;
+import io.nosqlbench.paramodel.plan.LiveExecutionGraph;
 import io.nosqlbench.paramodel.plan.AtomicStep;
+import io.nosqlbench.paramodel.plan.StepStatus;
 import io.nosqlbench.paramodel.sequence.TrialResult;
 
 import java.time.Duration;
@@ -712,6 +716,113 @@ public interface Executor {
             ExecutorConfig build();
         }
     }
+
+    /// Begins a throttled stepping session (semaphore starts at 0).
+    ///
+    /// No steps will execute until {@link SteppingHandle#advance(int)} is
+    /// called to release permits. This is the default mode for interactive
+    /// step-by-step debugging.
+    ///
+    /// @param plan the execution plan to step through
+    /// @return a handle for controlling the stepping session
+    SteppingHandle executeStepping(ExecutionPlan plan);
+
+    /// Begins a stepping session with the given initial permit count.
+    ///
+    /// Use {@code Integer.MAX_VALUE} for unthrottled mode where all
+    /// frontier steps execute as soon as they become ready.
+    ///
+    /// @param plan the execution plan to step through
+    /// @param initialPermits initial number of permits (0 for fully throttled)
+    /// @return a handle for controlling the stepping session
+    SteppingHandle executeStepping(ExecutionPlan plan, int initialPermits);
+
+    /// Handle for controlling an asynchronous stepping session.
+    ///
+    /// A background thread executes frontier steps as semaphore permits
+    /// become available. The caller controls pacing via {@link #advance(int)}
+    /// and observes results via {@link #awaitNextOutcome()}.
+    interface SteppingHandle {
+
+        /// Returns the current live execution graph (updated asynchronously).
+        ///
+        /// @return current live graph snapshot
+        LiveExecutionGraph liveGraph();
+
+        /// Returns the current live element graph (updated asynchronously).
+        ///
+        /// @return current live element graph snapshot
+        LiveElementGraph liveElementGraph();
+
+        /// Returns the current execution state (updated asynchronously).
+        ///
+        /// @return current execution state
+        ExecutionState currentState();
+
+        /// Returns steps currently eligible for execution.
+        ///
+        /// @return frontier steps in topological order
+        List<AtomicStep> frontier();
+
+        /// Returns {@code true} if all steps have reached a terminal status.
+        ///
+        /// @return true if execution is complete
+        boolean isComplete();
+
+        /// Releases permits allowing up to {@code permits} more steps to execute.
+        ///
+        /// Steps are executed asynchronously by a background thread as permits
+        /// become available and frontier steps exist.
+        ///
+        /// @param permits number of permits to release
+        void advance(int permits);
+
+        /// Blocks until the next step completes and returns its outcome.
+        ///
+        /// Returns empty if the session completes with no more outcomes.
+        ///
+        /// @return the next step outcome, or empty if session is complete
+        Optional<StepOutcome> awaitNextOutcome();
+
+        /// Blocks until the next step completes, with timeout.
+        ///
+        /// Returns empty on timeout or if the session completes with no
+        /// more outcomes.
+        ///
+        /// @param timeout maximum time to wait
+        /// @return the next step outcome, or empty on timeout/completion
+        Optional<StepOutcome> awaitNextOutcome(Duration timeout);
+
+        /// Blocks until execution is complete.
+        ///
+        /// @throws InterruptedException if the calling thread is interrupted
+        void awaitCompletion() throws InterruptedException;
+
+        /// Blocks until execution is complete, with timeout.
+        ///
+        /// @param timeout maximum time to wait
+        /// @return {@code true} if completed, {@code false} on timeout
+        /// @throws InterruptedException if the calling thread is interrupted
+        boolean awaitCompletion(Duration timeout) throws InterruptedException;
+
+        /// Cancels the stepping session and releases resources.
+        void cancel();
+    }
+
+    /// Outcome of executing a single step.
+    ///
+    /// @param step the step that was executed
+    /// @param resultStatus the resulting status (COMPLETED or FAILED)
+    /// @param updatedGraph the live graph after this step's execution
+    /// @param updatedElementGraph the live element graph after this step's execution
+    /// @param elapsed wall-clock time taken by the step
+    record StepOutcome(
+        AtomicStep step,
+        StepStatus resultStatus,
+        LiveExecutionGraph updatedGraph,
+        LiveElementGraph updatedElementGraph,
+        Duration elapsed
+    ) {}
 
     ///
     /// Exception thrown when execution fails.

@@ -23,6 +23,8 @@ public class DefaultExecutionPlan implements ExecutionPlan {
     private final List<Barrier> barriers;
     private final ExecutionGraph executionGraph;
     private final TrialOrdering trialOrdering;
+    private final List<String> trialElements;
+    private volatile ElementInstanceGraph cachedInstanceGraph;
 
     public DefaultExecutionPlan(
         String id,
@@ -32,12 +34,25 @@ public class DefaultExecutionPlan implements ExecutionPlan {
         ExecutionGraph executionGraph,
         TrialOrdering trialOrdering
     ) {
+        this(id, testPlanFingerprint, steps, barriers, executionGraph, trialOrdering, List.of());
+    }
+
+    public DefaultExecutionPlan(
+        String id,
+        String testPlanFingerprint,
+        List<AtomicStep> steps,
+        List<Barrier> barriers,
+        ExecutionGraph executionGraph,
+        TrialOrdering trialOrdering,
+        List<String> trialElements
+    ) {
         this.id = Objects.requireNonNull(id);
         this.testPlanFingerprint = Objects.requireNonNull(testPlanFingerprint);
         this.steps = List.copyOf(steps);
         this.barriers = List.copyOf(barriers);
         this.executionGraph = Objects.requireNonNull(executionGraph);
         this.trialOrdering = trialOrdering != null ? trialOrdering : TrialOrdering.SEQUENTIAL;
+        this.trialElements = trialElements != null ? List.copyOf(trialElements) : List.of();
     }
 
     @Override public String id() { return id; }
@@ -46,6 +61,7 @@ public class DefaultExecutionPlan implements ExecutionPlan {
     @Override public List<Barrier> barriers() { return barriers; }
     @Override public ExecutionGraph executionGraph() { return executionGraph; }
     @Override public TrialOrdering trialOrdering() { return trialOrdering; }
+    @Override public List<String> trialElements() { return trialElements; }
 
     @Override
     public Optional<Duration> estimatedDuration() {
@@ -116,6 +132,16 @@ public class DefaultExecutionPlan implements ExecutionPlan {
     }
 
     @Override
+    public ElementInstanceGraph elementInstanceGraph() {
+        ElementInstanceGraph result = cachedInstanceGraph;
+        if (result == null) {
+            result = DefaultElementInstanceGraph.create(steps);
+            cachedInstanceGraph = result;
+        }
+        return result;
+    }
+
+    @Override
     public ExecutionPlanMetadata metadata() {
         return new DefaultExecutionPlanMetadata(this);
     }
@@ -143,7 +169,7 @@ public class DefaultExecutionPlan implements ExecutionPlan {
 
         @Override public int stepCount() { return plan.steps.size(); }
         @Override public int barrierCount() { return plan.barriers.size(); }
-        @Override public int elementInstanceCount() { return 0; }
+        @Override public int elementInstanceCount() { return plan.elementInstanceGraph().totalInstances(); }
 
         @Override public ResourceProfile resourceProfile() {
             return new ResourceProfile(0, 0, 0, 0, 0, 0);

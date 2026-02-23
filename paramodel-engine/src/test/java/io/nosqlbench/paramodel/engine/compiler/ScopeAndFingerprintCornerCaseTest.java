@@ -33,11 +33,11 @@ class ScopeAndFingerprintCornerCaseTest {
     // ── Scope derivation corner cases ──────────────────────────────────
 
     @Test
-    @DisplayName("Diamond dependency: D→{B,C}→A — all PER_GROUP, correct deploy ordering")
+    @DisplayName("Diamond dependency: D→{B,C}→A — all axis-bound, correct deploy ordering")
     void diamondDependencyDerivesScopeCorrectly() {
         // All elements share the same parameter so InstantiationStage
         // classifies them as non-global (Tier 3 matching). This forces
-        // them through the PER_GROUP fingerprint lifecycle.
+        // them through the axis-bound fingerprint lifecycle.
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element d = MockElement.builder("d")
             .parameter(portParam)
@@ -70,13 +70,13 @@ class ScopeAndFingerprintCornerCaseTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        // d has a parameter matching axis "port" → PER_GROUP with 2 deploys
+        // d has a parameter matching axis "port" → axis-bound with 2 deploys
         long dDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("d"))
             .count();
         assertThat(dDeploys).isEqualTo(2);
 
-        // All elements are PER_GROUP with changing config → 2 deploys each
+        // All elements are axis-bound with changing config → 2 deploys each
         for (String id : List.of("b", "c", "a")) {
             long deploys = steps.stream()
                 .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals(id))
@@ -102,10 +102,10 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Deep dependency chain: A→B→C→D — all PER_GROUP, topo order is D→C→B→A")
+    @DisplayName("Deep dependency chain: A→B→C→D — all axis-bound, topo order is D→C→B→A")
     void deepDependencyChainTaintPropagation() {
         // All elements share the port parameter so they are all classified
-        // as PER_GROUP via Tier 3 matching in InstantiationStage.
+        // as axis-bound via Tier 3 matching in InstantiationStage.
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element d = MockElement.builder("d")
             .parameter(portParam)
@@ -169,15 +169,15 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Mixed explicit scopes: PER_RUN, PER_GROUP, and PER_TRIAL together")
+    @DisplayName("Mixed group levels: L0, axis-bound, and leaf-level together")
     void mixedExplicitAndInferredScopes() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
-        Element db = MockElement.of("db"); // global (PER_RUN): no parameters match axis
+        Element db = MockElement.of("db"); // L0: no parameters match axis
         Element server = MockElement.builder("server")
             .parameter(portParam)
-            .build(); // PER_GROUP: parameter matches axis
+            .build(); // axis-bound: parameter matches axis
         Element worker = MockElement.builder("worker")
-            .build(); // PER_TRIAL via explicit binding override
+            .build(); // leaf-level via explicit binding override
 
         Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
 
@@ -193,7 +193,7 @@ class ScopeAndFingerprintCornerCaseTest {
             Map.of("worker", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
 
-        // db: PER_RUN → single deploy, single final teardown
+        // db: L0 → single deploy, single final teardown
         long dbDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
             .count();
@@ -205,7 +205,7 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(dbFinalTeardowns).isEqualTo(1);
 
-        // server: PER_GROUP with config change → 2 deploys
+        // server: axis-bound with config change → 2 deploys
         long serverDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("server"))
             .count();
@@ -234,14 +234,14 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("PER_GROUP element depending on PER_GROUP element: dependency fingerprint triggers redeploy")
+    @DisplayName("Axis-bound element depending on axis-bound element: dependency fingerprint triggers redeploy")
     void perRunElementIgnoresAxisOnDependency() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
             .parameter(portParam)
-            .build(); // PER_GROUP: parameter matches axis
+            .build(); // axis-bound: parameter matches axis
 
-        // Gateway has explicit PER_GROUP scope and depends on server.
+        // Gateway has explicit axis-bound scope and depends on server.
         // Without its own varying parameter, its fingerprint is static;
         // but the dependency fingerprint for server changes, causing
         // gateway to also redeploy.
@@ -262,13 +262,13 @@ class ScopeAndFingerprintCornerCaseTest {
             Map.of("gateway", AxisBindingSet.of(Set.of("port"))));
         List<AtomicStep> steps = context.steps().get();
 
-        // server: PER_GROUP → 2 deploys (config changes)
+        // server: axis-bound → 2 deploys (config changes)
         long serverDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("server"))
             .count();
         assertThat(serverDeploys).isEqualTo(2);
 
-        // gateway is PER_GROUP and its dependency fingerprint changes
+        // gateway is axis-bound and its dependency fingerprint changes
         // when server's config changes → 2 deploys
         long gatewayDeploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("gateway"))
@@ -335,7 +335,7 @@ class ScopeAndFingerprintCornerCaseTest {
             .parameter(portParam)
             .build();
 
-        // app has explicit PER_GROUP scope and depends on server, but has
+        // app has explicit axis-bound scope and depends on server, but has
         // no own parameter matching the axis. Its own fingerprint is static,
         // but the dependency fingerprint for server changes between trials.
         Element app = MockElement.builder("app")
@@ -416,7 +416,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Single trial PER_GROUP element: 1 deploy, 0 intermediate teardowns, 1 predictive eager teardown")
+    @DisplayName("Single trial axis-bound element: 1 deploy, 0 intermediate teardowns, 1 predictive eager teardown")
     void singleTrialProducesNoGroupBoundaries() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -464,7 +464,7 @@ class ScopeAndFingerprintCornerCaseTest {
     // ── Barrier generation corner cases ────────────────────────────────
 
     @Test
-    @DisplayName("Health check barrier emitted after PER_RUN deploy")
+    @DisplayName("Health check barrier emitted after L0 deploy")
     void healthCheckBarrierEmittedAfterDeploy() {
         Element db = MockElement.builder("db")
             .healthCheck(MockHealthCheckSpec.withTimeout(Duration.ofSeconds(30)))
@@ -536,7 +536,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Health check barrier emitted after PER_GROUP redeploy")
+    @DisplayName("Health check barrier emitted after axis-bound redeploy")
     void healthCheckBarrierOnPerGroupRedeploy() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -569,12 +569,12 @@ class ScopeAndFingerprintCornerCaseTest {
     @DisplayName("All three scopes together: correct barrier generation")
     void allThreeScopesMixedBarrierGeneration() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
-        Element db = MockElement.of("db"); // PER_RUN
+        Element db = MockElement.of("db"); // L0
         Element server = MockElement.builder("server")
             .parameter(portParam)
-            .build(); // PER_GROUP
+            .build(); // axis-bound
         Element worker = MockElement.builder("worker")
-            .build(); // PER_TRIAL via explicit binding override
+            .build(); // leaf-level via explicit binding override
 
         Axis<Integer> portAxis = MockAxis.of("port", 8080, 8081);
 
@@ -603,7 +603,7 @@ class ScopeAndFingerprintCornerCaseTest {
             .count();
         assertThat(scopeEndBarriers).isZero();
 
-        // PER_TRIAL worker has no barriers — eager teardowns instead
+        // leaf-level worker has no barriers — eager teardowns instead
         long workerBarrierSyncs = steps.stream()
             .filter(s -> s instanceof AtomicStep.BarrierSync bs
                 && "worker".equals(bs.metadata().get("element")))
@@ -628,7 +628,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("Single trial with PER_GROUP element: no barriers (no health check)")
+    @DisplayName("Single trial with axis-bound element: no barriers (no health check)")
     void singleTrialWithPerGroupElementProducesNoTrialBatchBarrier() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -653,7 +653,7 @@ class ScopeAndFingerprintCornerCaseTest {
     // ── Degenerate plan corner cases ───────────────────────────────────
 
     @Test
-    @DisplayName("All PER_RUN elements: no group boundaries")
+    @DisplayName("All L0 elements: no group boundaries")
     void allPerRunPlanProducesNoGroupBoundaries() {
         Element db = MockElement.of("db");
         Element cache = MockElement.of("cache");
@@ -690,7 +690,7 @@ class ScopeAndFingerprintCornerCaseTest {
             assertThat(intermediateTeardowns).as("intermediate teardowns for %s", elemId).isZero();
         }
 
-        // No TRIAL_BATCH barriers (no PER_GROUP elements)
+        // No TRIAL_BATCH barriers (no axis-bound elements)
         List<Barrier> barriers = context.barriers().orElse(List.of());
         long trialBatchBarriers = barriers.stream()
             .filter(b -> b.type() == Barrier.BarrierType.TRIAL_BATCH)
@@ -699,7 +699,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("All PER_TRIAL elements: no barriers of any kind")
+    @DisplayName("All leaf-level elements: no barriers of any kind")
     void allPerTrialPlanProducesNoBarriers() {
         Element worker1 = MockElement.builder("worker1")
             .build();
@@ -751,7 +751,7 @@ class ScopeAndFingerprintCornerCaseTest {
     }
 
     @Test
-    @DisplayName("All PER_GROUP same config: 1 deploy per element, 0 intermediate teardowns")
+    @DisplayName("All axis-bound same config: 1 deploy per element, 0 intermediate teardowns")
     void allPerGroupSameConfigPlan() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         var memParam = IntegerParameter.range("mem", 512, 1024);

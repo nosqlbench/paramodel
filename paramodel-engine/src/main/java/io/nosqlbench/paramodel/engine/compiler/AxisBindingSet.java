@@ -17,28 +17,34 @@ package io.nosqlbench.paramodel.engine.compiler;
 
 import java.util.Set;
 
-/// Describes which axes bind to an element, determining its group lifecycle.
+/// Describes which axes bind to an element, determining its group level
+/// and lifecycle.
+///
+/// The group level ({@link #depth()}) is the number of bound axes. An
+/// element at level K persists for contiguous trial blocks where all K
+/// bound axis values are constant, and is redeployed at group boundaries
+/// when the fingerprint changes. Level 0 is not a special case — it
+/// simply means zero bound axes, so the element's group spans the entire
+/// run (no boundaries exist to trigger redeployment).
 ///
 /// Computed by {@link NormalizationStage} from parameter-axis overlap and
 /// dependency propagation. This is a compilation artifact — elements
 /// themselves do not know or declare their binding set.
-///
-/// - Depth 0 (empty set): element deploys once for the entire run.
-/// - Depth K: element persists for contiguous trial blocks where all
-///   K bound axis values are constant. Redeployed at group boundaries
-///   when the fingerprint changes.
 public record AxisBindingSet(Set<String> boundAxes) {
     public AxisBindingSet {
         boundAxes = Set.copyOf(boundAxes);
     }
 
-    /// Returns the number of bound axes (binding depth).
+    /// Returns the group level — the number of bound axes.
+    ///
+    /// An element at level K is bound to K axes and redeploys at group
+    /// boundaries when bound axis values change.
     public int depth() { return boundAxes.size(); }
 
-    /// Returns true if this element is run-scoped (no bound axes).
+    /// Returns true if this element has no bound axes (group level 0).
     public boolean isRunScoped() { return boundAxes.isEmpty(); }
 
-    /// Creates a run-scoped binding set (depth 0).
+    /// Creates a binding set with no bound axes (group level 0).
     public static AxisBindingSet runScoped() { return new AxisBindingSet(Set.of()); }
 
     /// Creates a binding set with the given bound axes.

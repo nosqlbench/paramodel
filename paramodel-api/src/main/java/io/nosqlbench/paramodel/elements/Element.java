@@ -174,11 +174,11 @@ import java.util.Optional;
 /// parameter-axis overlap. Elements do not declare their own lifecycle:
 ///
 /// ```
-/// Depth 0 (no axes target this element's parameters):
-///   Run-scoped — deploys once at start, tears down once at end.
+/// Group level 0 (no axes target this element's parameters):
+///   Global — deploys once at start, tears down once at end.
 ///
-/// Depth K (K axes target this element's parameters):
-///   Grouped — persists for contiguous trial blocks where all K
+/// Group level K (K axes target this element's parameters):
+///   Axis-bound — persists for contiguous trial blocks where all K
 ///   bound axis values are constant. Redeployed at group boundaries
 ///   when the configuration fingerprint changes.
 /// ```

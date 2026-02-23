@@ -47,7 +47,7 @@ public class InstantiationStage implements CompilationStage {
              boolean dependsOnAxes = binding.depth() > 0;
 
              if (dependsOnAxes) {
-                 // Per-Trial Scope
+                 // Group level > 0: axis-bound, one instance per trial
                  for (Trial trial : trials) {
                      Set<String> depIds = new HashSet<>();
                      for (Element.Dependency dep : element.dependencies()) {
@@ -58,7 +58,7 @@ public class InstantiationStage implements CompilationStage {
                      context.planInstance(element, List.of(trial), "trial=" + trial.id(), depIds);
                  }
              } else {
-                 // Global Scope
+                 // Group level 0: global, single instance for entire run
                  Set<String> depIds = new HashSet<>();
                  if (!trials.isEmpty()) {
                      // Resolve dependencies using a representative trial

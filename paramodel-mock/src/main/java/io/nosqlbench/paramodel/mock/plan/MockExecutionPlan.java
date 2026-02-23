@@ -1,6 +1,8 @@
 package io.nosqlbench.paramodel.mock.plan;
 
 import io.nosqlbench.paramodel.plan.*;
+import io.nosqlbench.paramodel.plan.ElementInstanceGraph.InstanceNode;
+import io.nosqlbench.paramodel.plan.ElementInstanceGraph.InstanceEdge;
 import io.nosqlbench.paramodel.sequence.TrialResult;
 
 import java.time.Duration;
@@ -53,6 +55,11 @@ public class MockExecutionPlan implements ExecutionPlan {
     @Override
     public ExecutionGraph executionGraph() {
         return graph;
+    }
+
+    @Override
+    public List<String> trialElements() {
+        return List.of();
     }
 
     @Override
@@ -113,6 +120,19 @@ public class MockExecutionPlan implements ExecutionPlan {
     @Override
     public ExecutionPlan withMaxConcurrency(int maxConcurrency) {
         return this;
+    }
+
+    @Override
+    public ElementInstanceGraph elementInstanceGraph() {
+        return new ElementInstanceGraph() {
+            @Override public Set<InstanceNode> nodes() { return Set.of(); }
+            @Override public List<InstanceEdge> edges() { return List.of(); }
+            @Override public List<InstanceEdge> edgesFrom(String elementId) { return List.of(); }
+            @Override public List<InstanceEdge> edgesTo(String elementId) { return List.of(); }
+            @Override public List<String> topologicalOrder() { return List.of(); }
+            @Override public int instanceCount(String elementId) { return 0; }
+            @Override public int totalInstances() { return 0; }
+        };
     }
 
     @Override

@@ -549,12 +549,36 @@ public interface ExecutionPlan {
     ///
     ExecutionPlan withMaxConcurrency(int maxConcurrency);
 
+    /// Returns the names of elements identified as trial elements by the compiler.
+    ///
+    /// Trial elements are the innermost leaf nodes of the trial-scoped
+    /// dependency subgraph.  This list reflects explicit user overrides
+    /// (via {@link io.nosqlbench.paramodel.elements.Element#trialElement()})
+    /// validated against the compiled graph, falling back to auto-detection
+    /// when no overrides are provided.
+    ///
+    /// @return unmodifiable list of trial element names
+    List<String> trialElements();
+
     ///
     /// Returns metadata for this execution plan.
     ///
     /// @return Execution plan metadata
     ///
     ExecutionPlanMetadata metadata();
+
+    ///
+    /// Returns the static element-instance topology derived from this plan's
+    /// {@link AtomicStep.DeployElement} steps.
+    ///
+    /// The graph captures which elements are instantiated, how many times,
+    /// and the instance-level dependency edges — purely structural information
+    /// from the compiled plan with no runtime state required.
+    ///
+    /// @return the element instance graph for this plan
+    /// @see ElementInstanceGraph
+    ///
+    ElementInstanceGraph elementInstanceGraph();
 
     ///
     /// Resource requirements for execution.

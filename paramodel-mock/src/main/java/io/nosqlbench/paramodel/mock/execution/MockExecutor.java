@@ -83,6 +83,16 @@ public class MockExecutor implements Executor {
         return config;
     }
 
+    @Override
+    public SteppingHandle executeStepping(ExecutionPlan plan) {
+        throw new UnsupportedOperationException("MockExecutor does not support stepping");
+    }
+
+    @Override
+    public SteppingHandle executeStepping(ExecutionPlan plan, int initialPermits) {
+        throw new UnsupportedOperationException("MockExecutor does not support stepping");
+    }
+
     private record MockExecutionResult(
         String executionId,
         ExecutionPlan plan,

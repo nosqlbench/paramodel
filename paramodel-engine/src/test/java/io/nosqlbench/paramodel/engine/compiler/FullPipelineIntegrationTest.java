@@ -23,7 +23,7 @@ class FullPipelineIntegrationTest {
     @Test
     @DisplayName("End-to-end: TestPlan with axes + elements -> compile -> verify plan")
     void endToEndCompilation() {
-        // Setup: DB (global) + App (per-trial, depends on DB)
+        // Setup: DB (L0) + App (axis-bound, depends on DB)
         Element db = MockElement.of("db");
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element app = MockElement.builder("app")

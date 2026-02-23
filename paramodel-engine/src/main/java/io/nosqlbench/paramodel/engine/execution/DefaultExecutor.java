@@ -1,6 +1,9 @@
 package io.nosqlbench.paramodel.engine.execution;
 
+import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.engine.CompactId;
+import io.nosqlbench.paramodel.engine.compiler.DefaultLiveElementGraph;
+import io.nosqlbench.paramodel.engine.compiler.DefaultLiveExecutionGraph;
 import io.nosqlbench.paramodel.engine.execution.journal.DefaultInFlightStepResolver;
 import io.nosqlbench.paramodel.engine.execution.journal.DefaultJournalStateReconstructor;
 import io.nosqlbench.paramodel.engine.execution.journal.ExecutionSnapshot;
@@ -11,7 +14,13 @@ import io.nosqlbench.paramodel.execution.Executor;
 import io.nosqlbench.paramodel.persistence.CheckpointStore;
 import io.nosqlbench.paramodel.persistence.JournalStore;
 import io.nosqlbench.paramodel.plan.AtomicStep;
+import io.nosqlbench.paramodel.plan.ExecutionGraph;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
+import io.nosqlbench.paramodel.plan.ExecutionState;
+import io.nosqlbench.paramodel.plan.ImmutableExecutionState;
+import io.nosqlbench.paramodel.plan.LiveElementGraph;
+import io.nosqlbench.paramodel.plan.LiveExecutionGraph;
+import io.nosqlbench.paramodel.plan.StepStatus;
 import io.nosqlbench.paramodel.sequence.TrialResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,6 +29,10 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 ///
 /// Default executor implementation with concurrent execution support.
@@ -211,6 +224,230 @@ public class DefaultExecutor implements Executor {
         return config;
     }
 
+    @Override
+    public SteppingHandle executeStepping(ExecutionPlan plan) {
+        return executeStepping(plan, 0);
+    }
+
+    @Override
+    public SteppingHandle executeStepping(ExecutionPlan plan, int initialPermits) {
+        log.info("Starting stepping session for plan {} with {} initial permits",
+            plan.id(), initialPermits);
+        return new DefaultSteppingHandle(plan, initialPermits);
+    }
+
+    /// Asynchronous stepping handle backed by a semaphore and a background
+    /// daemon thread.
+    ///
+    /// The background thread loops: acquire a permit, pick the first frontier
+    /// step, execute it, update internal state, recompute the
+    /// {@link LiveExecutionGraph}, and enqueue a {@link StepOutcome}. Callers
+    /// control pacing via {@link #advance(int)} and observe results via
+    /// {@link #awaitNextOutcome()}.
+    private final class DefaultSteppingHandle implements SteppingHandle {
+
+        private final ExecutionPlan plan;
+        private final ExecutionGraph graph;
+        private final List<AtomicStep> topoOrder;
+        private final Set<String> completedStepIds = new LinkedHashSet<>();
+        private final Set<String> failedStepIds = new LinkedHashSet<>();
+        private final Set<String> skippedStepIds = new LinkedHashSet<>();
+        private final Set<String> inFlightStepIds = new LinkedHashSet<>();
+        private final Set<String> completedTrialIds = new LinkedHashSet<>();
+        private final Set<String> inFlightTrialIds = new LinkedHashSet<>();
+        private final Map<String, Element.OperationalState> elementStates = new LinkedHashMap<>();
+
+        private final Semaphore semaphore;
+        private final LinkedBlockingQueue<StepOutcome> outcomeQueue = new LinkedBlockingQueue<>();
+        private final CountDownLatch completionLatch = new CountDownLatch(1);
+        private final Thread backgroundThread;
+
+        private volatile LiveExecutionGraph currentLiveGraph;
+        private volatile LiveElementGraph currentLiveElementGraph;
+        private volatile boolean cancelled;
+
+        DefaultSteppingHandle(ExecutionPlan plan, int initialPermits) {
+            this.plan = plan;
+            this.graph = plan.executionGraph();
+            this.topoOrder = graph.topologicalSort();
+            this.semaphore = new Semaphore(initialPermits);
+            this.currentLiveGraph = recomputeLiveGraph();
+            this.currentLiveElementGraph = recomputeLiveElementGraph();
+
+            this.backgroundThread = Thread.ofPlatform()
+                .daemon(true)
+                .name("stepping-" + plan.id())
+                .start(this::executionLoop);
+        }
+
+        @Override
+        public LiveExecutionGraph liveGraph() {
+            return currentLiveGraph;
+        }
+
+        @Override
+        public LiveElementGraph liveElementGraph() {
+            return currentLiveElementGraph;
+        }
+
+        @Override
+        public ExecutionState currentState() {
+            return buildState();
+        }
+
+        @Override
+        public List<AtomicStep> frontier() {
+            LiveExecutionGraph snap = currentLiveGraph;
+            Set<AtomicStep> frontierSet = snap.frontier();
+            List<AtomicStep> ordered = new ArrayList<>();
+            for (AtomicStep step : topoOrder) {
+                if (frontierSet.contains(step)) {
+                    ordered.add(step);
+                }
+            }
+            return List.copyOf(ordered);
+        }
+
+        @Override
+        public boolean isComplete() {
+            return currentLiveGraph.isComplete();
+        }
+
+        @Override
+        public void advance(int permits) {
+            semaphore.release(permits);
+        }
+
+        @Override
+        public Optional<StepOutcome> awaitNextOutcome() {
+            try {
+                if (isComplete() && outcomeQueue.isEmpty()) {
+                    return Optional.empty();
+                }
+                StepOutcome outcome = outcomeQueue.take();
+                return Optional.of(outcome);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
+
+        @Override
+        public Optional<StepOutcome> awaitNextOutcome(Duration timeout) {
+            try {
+                StepOutcome outcome = outcomeQueue.poll(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                return Optional.ofNullable(outcome);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            }
+        }
+
+        @Override
+        public void awaitCompletion() throws InterruptedException {
+            completionLatch.await();
+        }
+
+        @Override
+        public boolean awaitCompletion(Duration timeout) throws InterruptedException {
+            return completionLatch.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        }
+
+        @Override
+        public void cancel() {
+            cancelled = true;
+            backgroundThread.interrupt();
+            completionLatch.countDown();
+        }
+
+        /// Background execution loop: acquires permits and executes frontier
+        /// steps until the session is complete or cancelled.
+        private void executionLoop() {
+            try {
+                while (!cancelled && !isComplete()) {
+                    semaphore.acquire();
+                    if (cancelled) break;
+
+                    List<AtomicStep> currentFrontier = frontier();
+                    if (currentFrontier.isEmpty()) {
+                        if (isComplete()) break;
+                        // No work available but not complete — release permit
+                        // and yield so state can change (e.g. another thread
+                        // completing a step may unblock new frontier steps).
+                        semaphore.release();
+                        Thread.yield();
+                        continue;
+                    }
+
+                    AtomicStep step = currentFrontier.getFirst();
+                    StepOutcome outcome = executeStep(step);
+                    outcomeQueue.put(outcome);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                completionLatch.countDown();
+            }
+        }
+
+        /// Executes a single step synchronously, updates internal state, and
+        /// recomputes the live graph.
+        private synchronized StepOutcome executeStep(AtomicStep step) {
+            inFlightStepIds.add(step.id());
+            if (step instanceof AtomicStep.TrialStep ts) {
+                inFlightTrialIds.add(ts.trialId());
+            }
+            currentLiveGraph = recomputeLiveGraph();
+            currentLiveElementGraph = recomputeLiveElementGraph();
+
+            Instant start = Instant.now();
+            StepStatus resultStatus;
+            try {
+                step.execute(null);
+                resultStatus = StepStatus.COMPLETED;
+                completedStepIds.add(step.id());
+                if (step instanceof AtomicStep.TrialStep ts) {
+                    completedTrialIds.add(ts.trialId());
+                    inFlightTrialIds.remove(ts.trialId());
+                }
+            } catch (Exception e) {
+                resultStatus = StepStatus.FAILED;
+                failedStepIds.add(step.id());
+                if (step instanceof AtomicStep.TrialStep ts) {
+                    inFlightTrialIds.remove(ts.trialId());
+                }
+            } finally {
+                inFlightStepIds.remove(step.id());
+            }
+
+            Duration elapsed = Duration.between(start, Instant.now());
+            currentLiveGraph = recomputeLiveGraph();
+            currentLiveElementGraph = recomputeLiveElementGraph();
+            return new StepOutcome(step, resultStatus, currentLiveGraph,
+                currentLiveElementGraph, elapsed);
+        }
+
+        private LiveExecutionGraph recomputeLiveGraph() {
+            return DefaultLiveExecutionGraph.create(graph, buildState());
+        }
+
+        private LiveElementGraph recomputeLiveElementGraph() {
+            return DefaultLiveElementGraph.create(plan, buildState());
+        }
+
+        private ExecutionState buildState() {
+            return new ImmutableExecutionState(
+                Set.copyOf(completedStepIds),
+                Set.copyOf(failedStepIds),
+                Set.copyOf(skippedStepIds),
+                Set.copyOf(inFlightStepIds),
+                Set.copyOf(completedTrialIds),
+                Set.copyOf(inFlightTrialIds),
+                Map.copyOf(elementStates)
+            );
+        }
+    }
+
     /// Creates a {@link JournalWriter} if a journal store is configured.
     private JournalWriter createWriter(String executionId, String executionPlanId) {
         if (journalStore == null) {
@@ -286,7 +523,7 @@ public class DefaultExecutor implements Executor {
         /// Builds the executor.
         public DefaultExecutor build() {
             if (config == null) {
-                config = ExecutorConfig.builder().build();
+                config = new DefaultExecutorConfig();
             }
             return new DefaultExecutor(config, journalStore, checkpointStore);
         }
@@ -556,5 +793,16 @@ public class DefaultExecutor implements Executor {
         public Map<String, Double> customMetrics() {
             return Map.of();
         }
+    }
+
+    /// Default executor configuration with sensible defaults.
+    private static class DefaultExecutorConfig implements ExecutorConfig {
+        @Override public int maxConcurrentTrials() { return 10; }
+        @Override public double maxCpu() { return 16.0; }
+        @Override public double maxMemoryGb() { return 64.0; }
+        @Override public double maxStorageGb() { return 200.0; }
+        @Override public Optional<Duration> checkpointInterval() { return Optional.empty(); }
+        @Override public boolean checkpointOnBarriers() { return false; }
+        @Override public Map<String, Object> customConfig() { return Map.of(); }
     }
 }

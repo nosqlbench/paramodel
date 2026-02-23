@@ -568,6 +568,7 @@ public class DefaultStepGenerationStrategy implements StepGenerationStrategy {
 
         context.setSteps(steps);
         context.setBarriers(barriers);
+        context.put("trialElements", trialElements);
         context.recordMetric("steps_generated", steps.size());
         context.recordMetric("barriers_generated", barriers.size());
     }

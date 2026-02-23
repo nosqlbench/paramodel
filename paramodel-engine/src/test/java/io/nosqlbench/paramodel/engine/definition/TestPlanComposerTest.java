@@ -69,7 +69,7 @@ class TestPlanComposerTest {
         // Both elements should be present
         assertThat(plan.elements()).hasSize(2);
 
-        // Both elements should be PER_RUN scope — no axes vary their parameters,
+        // Both elements should be L0 — no axes vary their parameters,
         // so the generic inference deploys each once for the study.
         // Execution plan should have deploy steps for both elements
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
@@ -261,7 +261,7 @@ class TestPlanComposerTest {
         assertThat(plan.size()).isEqualTo(6);
     }
 
-    /// Test: PER_RUN scope derivation for service without axes
+    /// Test: L0 scope derivation for service without axes
     @Test
     void testStudyScopeDerivation() throws IOException {
         String yaml = """
@@ -287,7 +287,7 @@ class TestPlanComposerTest {
         TestPlanDefinition def = parser.parseString(yaml);
         DefaultTestPlan plan = composer.compose(def);
 
-        // shared-db: no axes, no tainted upstream → PER_RUN scope (deployed once)
+        // shared-db: no axes, no tainted upstream → L0 (deployed once)
         // server: has axis → redeployed at group boundaries
         // client: depends on server → redeployed when server changes
     }
@@ -508,7 +508,7 @@ class TestPlanComposerTest {
 
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
 
-        // Server deployed once (PER_RUN scope, no axes)
+        // Server deployed once (L0, no axes)
         assertThat(deploysFor(execPlan, "server")).isEqualTo(1);
 
         // Client deployed 3 times (once per trial)
@@ -551,7 +551,7 @@ class TestPlanComposerTest {
 
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
 
-        // Server deployed once (PER_RUN scope)
+        // Server deployed once (L0)
         assertThat(deploysFor(execPlan, "server")).isEqualTo(1);
 
         // Client deployed 3 times
@@ -700,7 +700,7 @@ class TestPlanComposerTest {
         }
     }
 
-    /// Test: PER_RUN-scoped element gets instance 0 on deploy and teardown.
+    /// Test: L0 element gets instance 0 on deploy and teardown.
     @Test
     void testStudyScopeInstanceNumberZero() throws IOException {
         String yaml = """
@@ -722,7 +722,7 @@ class TestPlanComposerTest {
 
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
 
-        // PER_RUN-scoped server should have instance number 0 on deploy
+        // L0 server should have instance number 0 on deploy
         var serverDeploys = deploysForElement(execPlan, "server");
         assertThat(serverDeploys).hasSize(1);
         assertThat(serverDeploys.getFirst().instanceNumber()).isEqualTo(0);
@@ -762,7 +762,7 @@ class TestPlanComposerTest {
 
         ExecutionPlan execPlan = plan.getExecutionPlan().orElseThrow();
 
-        // Database (PER_RUN scope) should have instance 0
+        // Database (L0) should have instance 0
         var dbDeploys = deploysForElement(execPlan, "database");
         assertThat(dbDeploys).hasSize(1);
         assertThat(dbDeploys.getFirst().instanceNumber()).isEqualTo(0);

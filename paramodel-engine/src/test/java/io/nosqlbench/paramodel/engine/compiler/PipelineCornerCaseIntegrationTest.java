@@ -155,7 +155,7 @@ class PipelineCornerCaseIntegrationTest {
 
         ExecutionPlan execPlan = result.executionPlan().get();
 
-        // All elements are PER_RUN (no parameters matching axes),
+        // All elements are L0 (no parameters matching axes),
         // deployed once each in topo order
         List<AtomicStep.DeployElement> deploys = execPlan.steps().stream()
             .filter(s -> s instanceof AtomicStep.DeployElement)
@@ -170,7 +170,7 @@ class PipelineCornerCaseIntegrationTest {
     }
 
     @Test
-    @DisplayName("Plan with elements but no axes: single trial, all PER_RUN deploys")
+    @DisplayName("Plan with elements but no axes: single trial, all L0 deploys")
     void emptyPlanSingleTrial() {
         Element db = MockElement.of("db");
         Element cache = MockElement.of("cache");
@@ -196,7 +196,7 @@ class PipelineCornerCaseIntegrationTest {
             .count();
         assertThat(execTrials).isEqualTo(2);
 
-        // Each element: 1 deploy (PER_RUN), 1 final teardown
+        // Each element: 1 deploy (L0), 1 final teardown
         long deploys = execPlan.steps().stream()
             .filter(s -> s instanceof AtomicStep.DeployElement)
             .count();

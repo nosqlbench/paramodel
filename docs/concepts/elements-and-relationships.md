@@ -102,11 +102,11 @@ An element's **Cardinality** (how many instances are created) is derived from:
 2.  **Taint Propagation**: If A depends on B, and B is tainted (varied),
     then A is also tainted and may require redeployment.
 
-| Scope | Cardinality | Persistence |
-|-------|-------------|-------------|
-| `PER_RUN` | 1 | Persists for the whole study. |
-| `PER_GROUP`| N (Unique Fingerprints) | Persists while config is constant. |
-| `PER_TRIAL`| Number of Trials | Fresh instance every time. |
+| Group Level | Cardinality | Persistence |
+|-------------|-------------|-------------|
+| 0 | 1 | Persists for the whole study (no bound axes). |
+| 1..N | Unique Fingerprints | Persists while bound axis values are constant. |
+| Deepest | Number of Trials | Fresh instance every trial. |
 
 For a deep dive into optimizing these numbers, see [Cardinality and Costs](cardinality-and-costs.md).
 

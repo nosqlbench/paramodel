@@ -51,7 +51,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("PER_GROUP element deploys at group boundary when config changes")
+    @DisplayName("Axis-bound element deploys at group boundary when config changes")
     void perTrialElementDeploysOnConfigChange() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         Element server = MockElement.builder("server")
@@ -70,7 +70,7 @@ class StepGenerationStageTest {
 
         List<AtomicStep> steps = context.steps().get();
 
-        // PER_GROUP element with changing config: deploy for trial 0, teardown+deploy for trial 1
+        // Axis-bound element with changing config: deploy for trial 0, teardown+deploy for trial 1
         long deploys = steps.stream()
             .filter(s -> s instanceof AtomicStep.DeployElement d && d.elementId().equals("server"))
             .count();
@@ -188,7 +188,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("No barriers for global-only and PER_TRIAL-only plans")
+    @DisplayName("No barriers for L0-only and leaf-level-only plans")
     void noBarriersWhenNoRecyclingElements() {
         // Global element without health check: no barriers of any kind.
         // Final teardowns depend directly on exec steps without intermediaries.
@@ -213,7 +213,7 @@ class StepGenerationStageTest {
             .count();
         assertThat(globalScopeEndBarriers).isZero();
 
-        // PER_TRIAL element: bound to the axis per trial, no barriers of any kind
+        // Leaf-level element: bound to the axis per trial, no barriers of any kind
         // (all teardowns are eager, no final teardowns, so no barrier needed)
         Element worker = MockElement.builder("worker")
             .parameter(StringParameter.of("mode"))
@@ -372,7 +372,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Global (PER_RUN) element gets instance number 0")
+    @DisplayName("L0 element gets instance number 0")
     void testGlobalElementGetsInstanceZero() {
         Element db = MockElement.of("db");
         Axis<String> axis = MockAxis.of("mode", "read", "write");
@@ -518,7 +518,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("PER_TRIAL elements are eagerly torn down after each trial execution")
+    @DisplayName("Leaf-level elements are eagerly torn down after each trial execution")
     void perTrialElementsEagerTeardown() {
         Element worker = MockElement.builder("worker")
             .parameter(StringParameter.of("mode"))
@@ -561,7 +561,7 @@ class StepGenerationStageTest {
 
         assertThat(finalTeardowns).hasSize(1); // last trial's instance
 
-        // No barriers for fully-PER_TRIAL plans (they would be dangling leaves)
+        // No barriers for fully leaf-level plans (they would be dangling leaves)
         long barrierCount = steps.stream()
             .filter(s -> s instanceof AtomicStep.BarrierSync)
             .count();
@@ -687,9 +687,9 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Mixed PER_RUN and PER_TRIAL elements: PER_RUN gets final teardown, PER_TRIAL does not")
+    @DisplayName("Mixed L0 and leaf-level elements: L0 gets final teardown, leaf-level does not")
     void mixedScopeElementsTeardownCorrectly() {
-        Element db = MockElement.of("db"); // global (PER_RUN)
+        Element db = MockElement.of("db"); // L0
         Element worker = MockElement.builder("worker")
             .parameter(StringParameter.of("mode"))
             .dependency(db)
@@ -707,7 +707,7 @@ class StepGenerationStageTest {
         DefaultCompilationContext context = runPipeline(plan);
         List<AtomicStep> steps = context.steps().get();
 
-        // db (global) should have exactly one final teardown
+        // db (L0) should have exactly one final teardown
         List<AtomicStep.TeardownElement> dbFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("db")
@@ -716,7 +716,7 @@ class StepGenerationStageTest {
             .toList();
         assertThat(dbFinalTeardowns).hasSize(1);
 
-        // worker (PER_TRIAL) should have eager teardowns, no final teardown
+        // worker (leaf-level) should have eager teardowns, no final teardown
         List<AtomicStep.TeardownElement> workerEagerTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("worker")
@@ -766,7 +766,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("PER_TRIAL teardowns are chained for safe concurrent execution")
+    @DisplayName("Leaf-level teardowns are chained for safe concurrent execution")
     void perTrialTeardownsChainedForConcurrency() {
         Element db = MockElement.builder("db")
             .parameter(StringParameter.of("mode"))
@@ -818,7 +818,7 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("PER_GROUP boundary teardowns are chained for safe concurrent execution")
+    @DisplayName("Group-boundary teardowns are chained for safe concurrent execution")
     void perGroupBoundaryTeardownsChainedForConcurrency() {
         var portParam = IntegerParameter.range("port", 8080, 8081);
         var memParam = IntegerParameter.range("mem", 512, 1024);
@@ -882,7 +882,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("Lifeline-subsumed element skips final teardown but keeps eager teardowns")
     void lifelineSubsumedElementSkipsTeardown() {
-        // node is PER_RUN, service is PER_TRIAL with lifeline on node
+        // node is L0, service is leaf-level with lifeline on node
         Element node = MockElement.of("node");
         Element service = MockElement.builder("service")
             .parameter(StringParameter.of("mode"))
@@ -912,7 +912,7 @@ class StepGenerationStageTest {
             .toList();
         assertThat(serviceEagerTeardowns).isEmpty();
 
-        // node (PER_RUN, no lifeline deps) should have a final teardown
+        // node (L0, no lifeline deps) should have a final teardown
         List<AtomicStep.TeardownElement> nodeFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("node")
@@ -921,8 +921,8 @@ class StepGenerationStageTest {
             .toList();
         assertThat(nodeFinalTeardowns).hasSize(1);
 
-        // service should NOT have a final teardown (PER_TRIAL are already skipped,
-        // but even if it were PER_RUN, the lifeline would skip it)
+        // service should NOT have a final teardown (leaf-level elements are already skipped,
+        // but even if it were L0, the lifeline would skip it)
         List<AtomicStep.TeardownElement> serviceFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("service")
@@ -933,9 +933,9 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("Lifeline-subsumed PER_RUN element skips final teardown")
+    @DisplayName("Lifeline-subsumed L0 element skips final teardown")
     void lifelineSubsumedPerRunElementSkipsFinalTeardown() {
-        // Both PER_RUN: node has no deps, service depends on node with lifeline
+        // Both L0: node has no deps, service depends on node with lifeline
         Element node = MockElement.of("node");
         Element service = MockElement.builder("service")
             .dependency(node, RelationshipType.LIFELINE)
@@ -1366,7 +1366,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("NotifyTrialStart emitted before trial element deploy")
     void notifyTrialStartBeforeTrialElementDeploy() {
-        Element node = MockElement.of("node"); // PER_RUN
+        Element node = MockElement.of("node"); // L0
         Element app = MockElement.builder("app")
             .dependency(node)
             .parameter(StringParameter.of("mode"))
@@ -1413,9 +1413,9 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("NotifyTrialStart emitted before ExecuteTrial when trial element is PER_RUN")
+    @DisplayName("NotifyTrialStart emitted before ExecuteTrial when trial element is L0")
     void notifyTrialStartBeforeExecWhenTrialElementIsPerRun() {
-        Element db = MockElement.of("db"); // PER_RUN, also the trial element (only element)
+        Element db = MockElement.of("db"); // L0, also the trial element (only element)
 
         Axis<String> axis = MockAxis.of("mode", "a", "b");
 
@@ -1464,7 +1464,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("Run-scoped trial element (COMMAND) deploys within notification scope")
     void runScopedTrialElementDeploysAfterNotifyStart() {
-        // node (PER_RUN, non-trial) → command (PER_RUN, COMMAND, trial element)
+        // node (L0, non-trial) → command (L0, COMMAND, trial element)
         // All run-scoped, classic fallback: command is the leaf → trial element.
         // command must deploy AFTER NotifyTrialStart, while node deploys BEFORE.
         Element node = MockElement.of("node");
@@ -1541,9 +1541,9 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("NotifyTrialEnd emitted after trial element teardown (PER_TRIAL)")
+    @DisplayName("NotifyTrialEnd emitted after leaf-level trial element teardown")
     void notifyTrialEndAfterTrialElementTeardown() {
-        Element node = MockElement.of("node"); // PER_RUN
+        Element node = MockElement.of("node"); // L0
         Element app = MockElement.builder("app")
             .dependency(node)
             .parameter(StringParameter.of("mode"))
@@ -1589,9 +1589,9 @@ class StepGenerationStageTest {
     }
 
     @Test
-    @DisplayName("NotifyTrialEnd emitted after ExecuteTrial when trial element is PER_RUN")
+    @DisplayName("NotifyTrialEnd emitted after ExecuteTrial when trial element is L0")
     void notifyTrialEndAfterExecWhenTrialElementIsPerRun() {
-        Element db = MockElement.of("db"); // PER_RUN, also the trial element
+        Element db = MockElement.of("db"); // L0, also the trial element
 
         Axis<String> axis = MockAxis.of("mode", "a", "b");
 
@@ -1769,13 +1769,13 @@ class StepGenerationStageTest {
             .count();
         assertThat(appTeardowns).as("COMMAND trial element should have no teardown").isZero();
 
-        // Node should still have a final teardown (PER_RUN, not COMMAND)
+        // Node should still have a final teardown (L0, not COMMAND)
         long nodeFinalTeardowns = steps.stream()
             .filter(s -> s instanceof AtomicStep.TeardownElement t
                 && t.elementId().equals("node")
                 && "cleanup".equals(t.metadata().get("phase")))
             .count();
-        assertThat(nodeFinalTeardowns).as("PER_RUN node should have final teardown").isEqualTo(1);
+        assertThat(nodeFinalTeardowns).as("L0 node should have final teardown").isEqualTo(1);
 
         // Should have AwaitElement for each trial
         long awaitCount = steps.stream()
@@ -1824,7 +1824,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("Default: NotifyTrialStart depends only on non-trial deploys (minimal deps)")
     void minimalDepsOnlyLeafDeploysLinkedToExec() {
-        // node → db → app chain; all PER_RUN.  Classic fallback: app is the
+        // node → db → app chain; all L0.  Classic fallback: app is the
         // trial element (leaf).  app deploys AFTER NotifyTrialStart (within the
         // notification scope), so NotifyTrialStart depends only on non-trial
         // deploys — minimally just deploy_db (the non-trial leaf).
@@ -1916,7 +1916,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("Independent element deploy depends on its dependency's deploy (Phase 2a)")
     void trialElementDeployMinimalDepsAfterNotifyStart() {
-        // node (PER_RUN) -> service (independent) -> benchmark (independent, COMMAND)
+        // node (L0) -> service (independent) -> benchmark (independent, COMMAND)
         // In the unified model, independent elements deploy in Phase 2a
         // (before NotifyTrialStart), so benchmark's deploy depends on
         // service's deploy, not on NotifyTrialStart.
@@ -1962,7 +1962,7 @@ class StepGenerationStageTest {
     @Test
     @DisplayName("First final teardown depends on latest-per-trial steps, not all exec step IDs")
     void firstFinalTeardownMinimalDeps() {
-        Element db = MockElement.of("db"); // global (PER_RUN)
+        Element db = MockElement.of("db"); // L0
         Element worker = MockElement.builder("worker")
             .parameter(StringParameter.of("mode"))
             .dependency(db)

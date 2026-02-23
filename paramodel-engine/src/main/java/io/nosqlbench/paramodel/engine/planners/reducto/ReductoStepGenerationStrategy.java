@@ -132,6 +132,7 @@ public class ReductoStepGenerationStrategy implements StepGenerationStrategy {
 
         context.setSteps(result.steps());
         context.setBarriers(result.barriers());
+        context.put("trialElements", trialElementNames);
         context.recordMetric("steps_generated", result.steps().size());
         context.recordMetric("barriers_generated", result.barriers().size());
     }
