@@ -33,8 +33,8 @@ import static org.assertj.core.api.Assertions.*;
 class BindingStateComputerTest {
 
     @Test
-    @DisplayName("Run-scoped element: binding level 0, no varying parameters")
-    void runScopedElement() {
+    @DisplayName("Element with no parameters: binding level 0")
+    void noParameterElement() {
         Element db = MockElement.of("db");
 
         var enumerator = new MixedRadixEnumerator(
@@ -44,7 +44,6 @@ class BindingStateComputerTest {
 
         var binding = bsc.binding("db");
         assertThat(binding).isNotNull();
-        assertThat(binding.isRunScoped()).isTrue();
         assertThat(binding.bindingLevel()).isEqualTo(0);
         assertThat(binding.parameterCount()).isEqualTo(0);
     }
@@ -63,7 +62,6 @@ class BindingStateComputerTest {
         BindingStateComputer bsc = BindingStateComputer.compute(List.of(svc), enumerator);
 
         var binding = bsc.binding("svc");
-        assertThat(binding.isRunScoped()).isFalse();
         assertThat(binding.bindingLevel()).isEqualTo(1);
         assertThat(binding.firstRank()).isEqualTo(0);
         assertThat(binding.parameterCount()).isEqualTo(1);
@@ -123,8 +121,8 @@ class BindingStateComputerTest {
     }
 
     @Test
-    @DisplayName("sameGroupForElement: run-scoped always returns true")
-    void sameGroupForRunScoped() {
+    @DisplayName("sameGroupForElement: level 0 element always returns true")
+    void sameGroupForLevelZeroElement() {
         Element db = MockElement.of("db");
 
         var enumerator = new MixedRadixEnumerator(

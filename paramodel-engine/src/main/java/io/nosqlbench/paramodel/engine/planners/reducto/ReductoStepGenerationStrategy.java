@@ -34,7 +34,7 @@ import java.util.*;
 /// Constructs a mutable DAG of trial lifecycle operations and applies eight
 /// named transformation rules in sequence to produce the final execution plan.
 /// Each transformation is independently testable and the algorithm is more
-/// transparent than the imperative fingerprint-based approach.
+/// transparent than an imperative approach.
 ///
 /// ## Pipeline
 ///

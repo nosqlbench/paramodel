@@ -18,7 +18,6 @@ package io.nosqlbench.paramodel.engine.planners.simple;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.engine.planners.StepGenerationStrategy;
-import io.nosqlbench.paramodel.engine.planners.fingerprint.DefaultStepGenerationStrategy;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.Barrier;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -29,17 +28,16 @@ import java.util.*;
 import static io.nosqlbench.paramodel.engine.planners.StepGenerationUtils.*;
 
 ///
-/// Naive baseline step generation strategy with no fingerprint grouping.
+/// Naive baseline step generation strategy with no grouping.
 ///
 /// For every trial this strategy deploys all elements, emits a
-/// {@link AtomicStep.TrialStep}, and tears them all down.  No fingerprint
-/// comparison, no element reuse across trials, and no notification scoping.
+/// {@link AtomicStep.TrialStep}, and tears them all down.  No element
+/// reuse across trials and no notification scoping.
 ///
 /// This strategy exists as a minimal reference implementation for writing
 /// new strategies.  It is not intended for production use.
 ///
 /// @see StepGenerationStrategy
-/// @see DefaultStepGenerationStrategy
 ///
 public class SimpleStepGenerationStrategy implements StepGenerationStrategy {
 
@@ -50,7 +48,7 @@ public class SimpleStepGenerationStrategy implements StepGenerationStrategy {
 
     @Override
     public String description() {
-        return "Naive per-trial deploy/teardown with no fingerprint grouping — "
+        return "Naive per-trial deploy/teardown with no grouping — "
             + "baseline reference strategy";
     }
 

@@ -17,7 +17,6 @@ package io.nosqlbench.paramodel.engine.planners;
 
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.engine.compiler.StepGenerationStage;
-import io.nosqlbench.paramodel.engine.planners.fingerprint.DefaultStepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.reducto.ReductoStepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.simple.SimpleStepGenerationStrategy;
 
@@ -31,7 +30,6 @@ import io.nosqlbench.paramodel.engine.planners.simple.SimpleStepGenerationStrate
 ///
 /// @see StepGenerationStage
 /// @see ReductoStepGenerationStrategy
-/// @see DefaultStepGenerationStrategy
 /// @see SimpleStepGenerationStrategy
 ///
 public interface StepGenerationStrategy {

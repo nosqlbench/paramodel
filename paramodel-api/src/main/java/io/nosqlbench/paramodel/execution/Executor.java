@@ -777,6 +777,20 @@ public interface Executor {
         /// @param permits number of permits to release
         void advance(int permits);
 
+        /// Snapshots the current frontier and advances exactly those steps
+        /// as a breadth-first wave. Newly-unblocked downstream steps are not
+        /// eligible until the entire frontier batch completes.
+        ///
+        /// The default implementation falls back to {@code advance(frontier().size())}
+        /// which does not enforce batch restriction. Override for strict semantics.
+        ///
+        /// @return the number of frontier steps that will be advanced
+        default int advanceFrontier() {
+            int size = frontier().size();
+            if (size > 0) advance(size);
+            return size;
+        }
+
         /// Blocks until the next step completes and returns its outcome.
         ///
         /// Returns empty if the session completes with no more outcomes.

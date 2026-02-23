@@ -731,6 +731,69 @@ class ReductoIntegrationTest {
     }
 
     @Test
+    @DisplayName("SHARED intermediary inherits upstream binding level from dependency chain")
+    void sharedIntermediaryInheritsUpstreamBindingLevel() {
+        // A (with axis, 2 values) → B (no axis, SHARED on A) → C (with axis, 3 values, trial element)
+        // B has no axes of its own, but sits inside A's dependency chain.
+        // B must inherit A's group level (2 groups), not collapse into a single group.
+        // Total trials: 2×3 = 6.
+        var paramX = IntegerParameter.range("param_x", 1, 2);
+        Element a = MockElement.builder("a")
+            .parameter(paramX)
+            .build();
+
+        Element b = MockElement.builder("b")
+            .dependency(a)
+            .build();
+
+        var paramU = StringParameter.of("param_u");
+        Element c = MockElement.builder("c")
+            .parameter(paramU)
+            .dependency(b)
+            .build();
+
+        var axisX = MockAxis.of("param_x", 1, 2);
+        var axisU = MockAxis.of("param_u", "p", "q", "r");
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("shared-intermediary-propagation")
+            .axis(axisX)
+            .axis(axisU)
+            .element(a)
+            .element(b)
+            .element(c)
+            .build();
+
+        Compiler.CompilationResult result = compileReducto(plan);
+        assertThat(result.isSuccess()).isTrue();
+
+        ExecutionPlan execPlan = result.executionPlan().get();
+
+        // A: 2 deploys (coalesced at level 1, one per axis value)
+        long aDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("a"))
+            .count();
+        assertThat(aDeploys).as("A should have 2 deploys (one per axis value)").isEqualTo(2);
+
+        // B: 2 deploys (inherited A's group level, matching A's groups)
+        // NOT 1 — the pre-fix behavior that collapsed B into a single group
+        long bDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("b"))
+            .count();
+        assertThat(bDeploys)
+            .as("B should have 2 deploys (inherits A's group level from dependency chain)")
+            .isEqualTo(2);
+
+        // C: 6 deploys (trial element, not coalesced)
+        long cDeploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("c"))
+            .count();
+        assertThat(cDeploys).as("C (trial element) should have 6 deploys").isEqualTo(6);
+
+        assertThat(execPlan.executionGraph().isAcyclic()).isTrue();
+    }
+
+    @Test
     @DisplayName("Deep dependency chain: correct topological ordering")
     void deepDependencyChain() {
         Element e = MockElement.of("e");
@@ -785,74 +848,10 @@ class ReductoIntegrationTest {
             .anyMatch(w -> w.message().contains("no elements"));
     }
 
-    @Test
-    @DisplayName("Cross-strategy comparison: simple case produces equivalent results")
-    void crossStrategyComparison() {
-        Element db = MockElement.of("db");
-        var paramM = IntegerParameter.range("mode", 1, 2);
-        Element app = MockElement.builder("app")
-            .parameter(paramM)
-            .dependency(db)
-            .build();
-
-        var axis = MockAxis.of("mode", 1, 2);
-
-        // Each strategy needs its own plan (MockTestPlan can't be compiled twice)
-        TestPlan planForReducto = MockTestPlan.builder()
-            .name("cross-strategy-test")
-            .axis(axis)
-            .element(db)
-            .element(app)
-            .build();
-
-        TestPlan planForFingerprint = MockTestPlan.builder()
-            .name("cross-strategy-test")
-            .axis(axis)
-            .element(db)
-            .element(app)
-            .build();
-
-        // Compile with reducto
-        Compiler.CompilationResult reductoResult = compileReducto(planForReducto);
-        // Compile with fingerprint
-        Compiler.CompilationResult fingerprintResult = compileFingerprint(planForFingerprint);
-
-        assertThat(reductoResult.isSuccess()).isTrue();
-        assertThat(fingerprintResult.isSuccess()).isTrue();
-
-        ExecutionPlan reductoExec = reductoResult.executionPlan().get();
-        ExecutionPlan fingerprintExec = fingerprintResult.executionPlan().get();
-
-        // Both should have 1 db deploy, 2 app deploys
-        long reductoDbDeploys = reductoExec.steps().stream()
-            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
-            .count();
-        long fingerprintDbDeploys = fingerprintExec.steps().stream()
-            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("db"))
-            .count();
-        assertThat(reductoDbDeploys).isEqualTo(fingerprintDbDeploys);
-
-        long reductoAppDeploys = reductoExec.steps().stream()
-            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("app"))
-            .count();
-        long fingerprintAppDeploys = fingerprintExec.steps().stream()
-            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("app"))
-            .count();
-        assertThat(reductoAppDeploys).isEqualTo(fingerprintAppDeploys);
-
-        // Both should have acyclic graphs
-        assertThat(reductoExec.executionGraph().isAcyclic()).isTrue();
-        assertThat(fingerprintExec.executionGraph().isAcyclic()).isTrue();
-    }
-
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private Compiler.CompilationResult compileReducto(TestPlan plan) {
         return compile(plan, "reducto");
-    }
-
-    private Compiler.CompilationResult compileFingerprint(TestPlan plan) {
-        return compile(plan, "fingerprint");
     }
 
     private Compiler.CompilationResult compile(TestPlan plan, String strategy) {

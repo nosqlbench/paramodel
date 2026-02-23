@@ -3,7 +3,6 @@ package io.nosqlbench.paramodel.engine.compiler;
 import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.engine.planners.StepGenerationStrategy;
-import io.nosqlbench.paramodel.engine.planners.fingerprint.DefaultStepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.reducto.ReductoStepGenerationStrategy;
 import io.nosqlbench.paramodel.engine.planners.simple.SimpleStepGenerationStrategy;
 
@@ -26,7 +25,6 @@ import java.util.Map;
 /// and can be enumerated via {@link #registeredStrategies()}.
 ///
 /// @see StepGenerationStrategy
-/// @see DefaultStepGenerationStrategy
 /// @see SimpleStepGenerationStrategy
 ///
 public class StepGenerationStage implements CompilationStage {
@@ -34,15 +32,9 @@ public class StepGenerationStage implements CompilationStage {
     /// Custom option key for selecting the step generation strategy.
     public static final String OPTION_STRATEGY = "stepGenerationStrategy";
 
-    /// Custom option key that controls whether execution steps include
-    /// explicit dependencies on transitively-reachable upstream deploy
-    /// steps.
-    public static final String OPTION_EXPLICIT_TRANSITIVE_DEPS = "explicitTransitiveDeps";
-
     private static final Map<String, StepGenerationStrategy> STRATEGIES = new LinkedHashMap<>();
 
     static {
-        register(new DefaultStepGenerationStrategy());
         register(new SimpleStepGenerationStrategy());
         ReductoStepGenerationStrategy reducto = new ReductoStepGenerationStrategy();
         register(reducto);

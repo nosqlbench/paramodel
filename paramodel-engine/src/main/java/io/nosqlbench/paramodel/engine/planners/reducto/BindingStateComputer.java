@@ -16,6 +16,7 @@
 package io.nosqlbench.paramodel.engine.planners.reducto;
 
 import io.nosqlbench.paramodel.elements.Element;
+import io.nosqlbench.paramodel.elements.RelationshipType;
 
 import java.util.*;
 
@@ -26,8 +27,13 @@ import java.util.*;
 /// becomes concretely bound at group level R+K. This means all its parameters have
 /// determined values at that level, and it can be activated.
 ///
-/// Elements with no varying parameters (fixed or no parameters) are run-scoped
-/// (binding level 0) and need only a single activation for the entire graph.
+/// After computing each element's own binding level from its parameters, a forward
+/// propagation pass (in topological order) ensures that elements inherit the group
+/// level of their enclosing dependency chain. For SHARED and EXCLUSIVE dependencies,
+/// an element's effective binding level is the maximum of its own level and the
+/// binding levels of all its upstream dependencies. This ensures that an interstitial
+/// element with no axes of its own is grouped at the same level as the upstream
+/// elements it depends on, rather than collapsing into a single group.
 ///
 public final class BindingStateComputer {
 
@@ -35,13 +41,10 @@ public final class BindingStateComputer {
     ///
     /// @param elementName   element name
     /// @param bindingLevel  the group level at which the element becomes concretely bound
-    /// @param firstRank     the first parameter rank owned by this element (-1 if run-scoped)
+    /// @param firstRank     the first parameter rank owned by this element (-1 if no owned parameters)
     /// @param parameterCount number of varying parameters
     public record ElementBinding(String elementName, int bindingLevel,
                                   int firstRank, int parameterCount) {
-
-        /// Returns true if this element is run-scoped (no varying parameters).
-        public boolean isRunScoped() { return parameterCount == 0; }
 
         /// Returns true if this element is bound at the per-trial level.
         ///
@@ -80,6 +83,28 @@ public final class BindingStateComputer {
 
             int bindingLevel = (paramCount > 0) ? (firstRank + paramCount) : 0;
             bindings.put(elem.name(), new ElementBinding(elem.name(), bindingLevel, firstRank, paramCount));
+        }
+
+        // Propagate binding levels through SHARED/EXCLUSIVE dependencies.
+        // Each element inherits the group level of its enclosing dependency chain.
+        // Since sortedElements is in topological order (dependencies first), a single
+        // forward pass handles transitive chains (A → B → C).
+        for (Element elem : sortedElements) {
+            ElementBinding current = bindings.get(elem.name());
+            int maxLevel = current.bindingLevel();
+            for (Element.Dependency dep : elem.dependencies()) {
+                if (dep.type() == RelationshipType.SHARED
+                        || dep.type() == RelationshipType.EXCLUSIVE) {
+                    ElementBinding depBinding = bindings.get(dep.target().name());
+                    if (depBinding != null) {
+                        maxLevel = Math.max(maxLevel, depBinding.bindingLevel());
+                    }
+                }
+            }
+            if (maxLevel > current.bindingLevel()) {
+                bindings.put(elem.name(), new ElementBinding(
+                    elem.name(), maxLevel, current.firstRank(), current.parameterCount()));
+            }
         }
 
         return new BindingStateComputer(bindings, enumerator.rankCount());
@@ -122,7 +147,7 @@ public final class BindingStateComputer {
     public boolean sameGroupForElement(String elementName, MixedRadixEnumerator enumerator,
                                         long t1, long t2) {
         ElementBinding eb = bindings.get(elementName);
-        if (eb == null || eb.isRunScoped()) return true;
+        if (eb == null) return true;
         return enumerator.sameGroup(t1, t2, eb.bindingLevel());
     }
 
@@ -135,7 +160,7 @@ public final class BindingStateComputer {
     public int groupIndexForElement(String elementName, MixedRadixEnumerator enumerator,
                                      long trialNumber) {
         ElementBinding eb = bindings.get(elementName);
-        if (eb == null || eb.isRunScoped()) return 0;
+        if (eb == null) return 0;
         return enumerator.groupIndex(trialNumber, eb.bindingLevel());
     }
 }
