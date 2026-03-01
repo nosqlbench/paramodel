@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -378,13 +379,16 @@ public class DefaultTestPlan implements TestPlan, Sequence {
         @Override public Optional<String> version() { return Optional.empty(); }
     }
 
-    /// Topologically sorts elements so that dependencies appear before
-    /// dependents, producing the "element stack" order for user display.
-    /// Elements with no dependencies come first; elements at the leaves
-    /// of the dependency graph come last.
+    /// Topologically sorts elements, producing the "element stack" order
+    /// for user display.  "Floating" elements — those with no dependencies
+    /// in either direction — are placed first (top of the stack), preserving
+    /// their original insertion order.  Connected elements follow in
+    /// dependency order (upstream before downstream).
     private static LinkedHashMap<String, Element> topologicalSort(Map<String, Element> elements) {
         Map<String, Integer> inDegree = new HashMap<>();
         Map<String, List<String>> adj = new HashMap<>();
+        Set<String> hasOutgoing = new HashSet<>();
+        Set<String> hasIncoming = new HashSet<>();
         for (Element e : elements.values()) {
             inDegree.putIfAbsent(e.name(), 0);
             for (Element.Dependency dep : e.dependencies()) {
@@ -392,14 +396,27 @@ public class DefaultTestPlan implements TestPlan, Sequence {
                     adj.computeIfAbsent(dep.target().name(), k -> new ArrayList<>()).add(e.name());
                     inDegree.merge(e.name(), 1, Integer::sum);
                     inDegree.putIfAbsent(dep.target().name(), 0);
+                    hasOutgoing.add(e.name());
+                    hasIncoming.add(dep.target().name());
                 }
             }
         }
+        // Seed the BFS queue with non-floating roots only
         Queue<String> queue = new LinkedList<>();
+        LinkedHashMap<String, Element> floating = new LinkedHashMap<>();
         for (var entry : inDegree.entrySet()) {
-            if (entry.getValue() == 0) queue.add(entry.getKey());
+            if (entry.getValue() == 0) {
+                String name = entry.getKey();
+                if (!hasOutgoing.contains(name) && !hasIncoming.contains(name)) {
+                    Element e = elements.get(name);
+                    if (e != null) floating.put(name, e);
+                } else {
+                    queue.add(name);
+                }
+            }
         }
-        LinkedHashMap<String, Element> sorted = new LinkedHashMap<>();
+        // Floating elements first, then connected in dependency order
+        LinkedHashMap<String, Element> sorted = new LinkedHashMap<>(floating);
         while (!queue.isEmpty()) {
             String name = queue.poll();
             Element e = elements.get(name);
@@ -409,7 +426,7 @@ public class DefaultTestPlan implements TestPlan, Sequence {
                 if (inDegree.get(dependent) == 0) queue.add(dependent);
             }
         }
-        // Include any elements not in the graph (no deps, not depended upon)
+        // Include any elements missed by the graph (safety net)
         for (var entry : elements.entrySet()) {
             sorted.putIfAbsent(entry.getKey(), entry.getValue());
         }

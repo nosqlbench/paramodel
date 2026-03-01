@@ -45,6 +45,31 @@ trial deactivation. This allows any elements which participated in the trial win
 but which exist before or after it, to mark important data points in the trial lifetime, like
 metrics windows, etc.
 
+### Trial Element Identification Algorithm
+
+Trial elements are identified by `StepGenerationUtils.identifyTrialElements()` using a
+scope-aware, override-respecting algorithm:
+
+1. **Explicit overrides:** Elements may declare `trialElement(true)` (forced on) or
+   `trialElement(false)` (forced off). Forced-on elements are always included in the result.
+   Forced-off elements are excluded from all candidate pools.
+
+2. **Candidate pool construction:**
+   - When axes define trial-scoped bindings (at least one element has a non-run-scoped axis
+     binding), the trial-scoped elements form the candidate pool.
+   - When no axes are present, the candidate pool is all non-floating elements. A "floating"
+     element is one with no outgoing dependencies and no incoming dependencies (nothing depends
+     on it and it depends on nothing). Floating elements are excluded because they have no
+     relationship to the rest of the plan and should not participate in trial scope.
+
+3. **Leaf selection:** From the candidate pool, trial elements are the *leaf nodes* — elements
+   that no other candidate depends on. An element is a leaf if no other element in the candidate
+   pool lists it as a dependency target. This selects the most dependent (innermost) elements
+   as the trial boundary.
+
+The result is the union of forced-on elements and inferred leaf elements, excluding any
+forced-off elements.
+
 ## Trial Outcomes
 
 Each trial has a set of outcomes which are defined by the elements in the trial. The trial outcome
@@ -156,6 +181,15 @@ or deactivates itself.
 
 A command element must be waited for by a specific "wait for" execution step. Other _service_
 elements must be stopped by a specific "deactivate" step.
+
+### Topological Sorting and Floating Elements
+
+Elements in the stack are topologically sorted before processing. The sort places "floating"
+elements first — elements that have no dependencies in either direction (no outgoing dependencies
+and no incoming dependencies from other elements). Floating elements are placed at the top of the
+element stack in their original insertion order, followed by connected elements in dependency order
+(upstream before downstream). This sorting is performed both in `DefaultTestPlan` (for the stored
+element order) and in `StepGenerationUtils.topologicalSort()` (for the reducto pipeline input).
 
 ### Instance Lifecycle Invariant
 
@@ -679,27 +713,50 @@ without any additional tracking structures. This is the basis for determining el
 scope — an element's activation and deactivation boundaries in the execution graph are defined by
 the group level at which it becomes concretely bound.
 
+### Binding Level Propagation
+
+An element's effective binding level may be higher than what its own parameters dictate. The
+`BindingStateComputer` performs a forward propagation pass (in topological order) to ensure that
+elements inherit the binding level of their enclosing dependency chain for SHARED and EXCLUSIVE
+dependencies. Specifically, an element's effective binding level is the **maximum** of its own
+computed level and the binding levels of all its SHARED/EXCLUSIVE upstream dependencies.
+
+This prevents an interstitial element with no axes of its own from collapsing into a single
+group when its upstream dependencies are parameterized. For example, if element B depends on
+element A (SHARED), and A has a binding level of 2 but B has no parameters (level 0), B's
+effective binding level is raised to 2 so it coalesces at the same granularity as A.
+
+DEDICATED and LIFELINE dependencies do not participate in this propagation because their
+coalescing is handled separately (DEDICATED targets coalesce with their owner via
+`resolveEffectiveBindingLevel`, and LIFELINE targets have their deactivation subsumed).
+
 ### Trial Codes
 
-There is also a "trial code" which corresponds to the trial number but which makes the radix 
-structure and offsets more human-readable. This is used in error messages and logs. The format 
-should essentially be a hex-string. If the maximum number of values of any given parameter is 16 
-or less, then each character in the trial code is just the hexadecimal character for the offset 
-of each axis. If there are more than 16 values for any parameter, then the resolution each 
-position is 16 bits instead of 8, which makes each axis represented by a two-digit hex string. 
+There is also a "trial code" which corresponds to the trial number but which makes the radix
+structure and offsets more human-readable. This is used in error messages and logs. The format
+should essentially be a hex-string. If the maximum number of values of any given parameter is 16
+or less, then each character in the trial code is just the hexadecimal character for the offset
+of each axis. If there are more than 16 values for any parameter, then the resolution each
+position is 16 bits instead of 8, which makes each axis represented by a two-digit hex string.
 Examples:
-- The 5th trial (id=4) of a plan with axes `a=[1,2,3] b=[asm,dra,ghi] c=yo` will have values 
-  `a=2 b=dra c=yo`, and trial code `0x110`, including the third parameter as if it were an axis 
+- The 5th trial (id=4) of a plan with axes `a=[1,2,3] b=[asm,dra,ghi] c=yo` will have values
+  `a=2 b=dra c=yo`, and trial code `0x110`, including the third parameter as if it were an axis
   with a single value (which is valid).
 - The 11th trial (id=10) of a plan with axes=`v1=[a,b,c],v2=[u,v],v3=[w,x,y,z]` will have values
   `v1=b,v2=u,v3=y`, and trial code `0x102`.
-- The 38th trial (id=37) of a plan with axes=`a=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16] b=[what, 
-up]` will have values `a=2,b=up` and trial code `0x0200`, because you can't 
+- The 38th trial (id=37) of a plan with axes=`a=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16] b=[what,
+up]` will have values `a=2,b=up` and trial code `0x0200`, because you can't
   encode 17 unique values into 4 bits with hex.
 
-The trial code should be passed back along with the trial number in any execution planning 
-results, since providing the trial code makes it easy to show users where there is structural 
+The trial code should be passed back along with the trial number in any execution planning
+results, since providing the trial code makes it easy to show users where there is structural
 congruency for simple cross-checking and combinatoric exploration.
+
+Trial codes are stamped onto graph nodes as metadata (`trial_code`) after all rules have been
+applied but before linearization. The `GraphLinearizer` propagates this metadata into the
+resulting `AtomicStep` records. `NotifyTrialStart` and `NotifyTrialEnd` steps carry the trial
+code as an explicit field (`Optional<String> trialCode`), which downstream consumers use to
+associate trials with their human-readable identifiers.
 
 ## Stage Two, naive graph seeding
 
@@ -711,6 +768,9 @@ At this point the graph is merely expressing the trials, or parameter space coor
 trial. It does not yet know about any rules which must be applied to make it executable in a
 practical sense, or optimal from an operational standpoint.
 
+The `GraphSeeder` creates one `TRIAL_SEED` node per trial, each carrying its trial index. No
+edges are added at this stage.
+
 ## Stage Three, graph structuring
 
 At this point, the graph is ready to be transformed by named graph transformation rules. The
@@ -718,7 +778,10 @@ element axes and relationship types imply the rules which should be used to tran
 These transformations are applied in a defined order, and may be iterated until no further reduction
 is possible.
 
-Each transformation rule is described below. The rules are applied in the order listed.
+Each transformation rule is described below. The rules are applied in the order listed. All rules
+share a `RuleContext` that provides access to the topologically sorted elements, the
+`BindingStateComputer`, the `MixedRadixEnumerator`, trial element names, lifeline clusters, and
+DEDICATED reverse dependency mappings.
 
 ### Rule 1: Element lifecycle expansion
 
@@ -747,7 +810,13 @@ the trial's notification phase (Rule 4), and their deactivation occurs at group 
 at graph end.
 
 After this rule, the graph contains N × E lifecycle subgraphs (where N is the number of trials and
-E is the number of elements), with no inter-element or inter-trial edges yet.
+E is the number of elements), with no inter-element or inter-trial edges yet. The original
+`TRIAL_SEED` nodes are removed from the graph.
+
+**Node naming convention:** Activate nodes are named `activate_{elementName}_t{trialIndex}`,
+deactivate nodes `deactivate_{elementName}_t{trialIndex}`, and await nodes
+`await_{elementName}_t{trialIndex}`. These predictable IDs are relied upon by subsequent rules
+for node lookup.
 
 ### Rule 2: Dependency edge materialization
 
@@ -809,8 +878,9 @@ activate(Y_for_X, Ti) → activate(X, Ti)
 deactivate(X, Ti) → deactivate(Y_for_X, Ti)
 ```
 
-The dedicated Y instance is tagged as belonging to X and participates in X's group coalescing (Rule
-3). If X is coalesced across multiple trials, X's dedicated Y is also coalesced with it.
+The dedicated Y instance is tagged as belonging to X (via `dedicated_to` metadata on the activate
+node) and participates in X's group coalescing (Rule 3). If X is coalesced across multiple trials,
+X's dedicated Y is also coalesced with it.
 
 **LINEAR**: Element X comes after element Y (full lifecycle ordering within shared trial scope). Y
 must be activated and deactivated before X is activated:
@@ -821,6 +891,11 @@ deactivate(Y, Ti) → activate(X, Ti)
 
 This constraint applies only when X and Y share the same trial scope (same configuration group). If
 X and Y are in different trial scopes, no linear edge is added and their lifecycles are independent.
+
+**Implementation note:** The current code in `Rule2_DependencyEdges.applyLinear()` applies the
+linear edge unconditionally for every trial. The same-group-scope check described above is the
+intended design but is not yet implemented. The `BindingStateComputer.sameGroupForElement()` method
+(already used by `applyExclusive()`) would be the correct mechanism to add this check.
 
 **LIFELINE**: Element X has a lifeline to element Y. X's deactivation is subsumed by Y's
 deactivation — when Y deactivates, X is automatically deactivated as a side-effect:
@@ -872,6 +947,12 @@ now depend on the group-level activate/deactivate nodes.
 - **DEDICATED targets coalesce with their owner.** If X dedicatedly depends on Y, then Y's
   coalescing follows X's coalescing. If X is coalesced across a group, Y is also coalesced across
   that same group. If X is a trial element (not coalesced), Y also gets per-trial instances.
+  The effective binding level for a DEDICATED target is resolved by walking up the DEDICATED
+  ownership chain and taking the **maximum** binding level found along the way. This is necessary
+  because the varying parameter may live on an interior element of the chain rather than the root.
+  For example, if the chain is `testclient → database → victoria → globalconfig` (all DEDICATED)
+  and only `database` owns a varying axis at binding level 1, then all DEDICATED targets must use
+  level 1 so they produce the correct number of per-group instances.
 
 - **Elements with no axes (or no varying parameters) are run-scoped.** They coalesce to a single
   activate/deactivate spanning the entire graph (group level 0). Their activation appears at graph
@@ -888,6 +969,13 @@ new activate node is placed before the first trial in the incoming group. Depend
 applies to these boundary transitions: if element A depends on element B, and both change at the
 same group boundary, A is deactivated before B, and B is activated before A (reverse dependency
 order for teardown, forward dependency order for activation).
+
+**Coalescing mechanics:** The first trial's activate node in a group becomes the group activate.
+The last trial's deactivate/await node becomes the group deactivate. The first trial's
+deactivate node (which is NOT the group deactivate) is explicitly removed and its edges remapped
+to the group deactivate. Then for each subsequent trial (i=1..K-1) in the group, both the
+per-trial activate and per-trial deactivate nodes are removed and their edges remapped to the
+corresponding group-level nodes. This ensures the Coalescing Congruence Principle is maintained.
 
 ### Rule 4: Trial notification insertion
 
@@ -912,6 +1000,13 @@ assembled and aware of the trial before the trial window opens. Non-trial elemen
 start notification before trial elements begin, and the end notification after trial elements
 complete, allowing them to bracket metrics windows and other trial-scoped observations.
 
+**Coalesced activate resolution:** When Rule 3 has coalesced a non-trial element, the per-trial
+activate node no longer exists. Rule 4's `findActivateForTrial()` resolves this by:
+1. Looking up the per-trial node directly (handles un-coalesced elements).
+2. If not found, collecting all remaining activate nodes for the element.
+3. If only one activate node remains (single-group or run-scoped), returning it directly.
+4. If multiple groups exist, matching by `groupIndex` using `BindingStateComputer.groupIndexForElement()`.
+
 **Group deactivation ordering:** When a coalesced non-trial element is deactivated at a group
 boundary, its deactivate node must depend on the `notify_trial_end` of EVERY trial in the
 outgoing group, not just the last one. Without this, when trials run concurrently within a
@@ -926,6 +1021,10 @@ notify_trial_end(Ti) → deactivate(E_coalesced, G)    for every trial Ti in gro
 This applies to ALL trials in the group, not just the final one. For sequential trials the
 edges to earlier notify_end nodes are redundant (since each trial completes before the next
 starts), but the edges are still inserted to maintain correctness when trials can overlap.
+
+The wiring method handles coalesced elements by walking forward from a trial's expected
+deactivation node position to find the group's actual deactivation node at the last trial
+in the group.
 
 **DEDICATED target handling:** DEDICATED targets whose owner is a trial element are not coalesced
 by Rule 3 (each trial gets its own dedicated instance). This means per-trial deactivation nodes
@@ -1006,6 +1105,10 @@ The readiness gate represents the health check loop: the executor retries the he
 to the element's `HealthCheckSpec` (timeout, max retries, retry interval) until the element reports
 ready. No node that depends on E may proceed until the readiness gate is satisfied.
 
+The readiness gate is NOT inserted between the activate node and the element's own deactivation
+or await node. The deactivation/await edge remains directly connected to the activate node so
+that the element can be torn down even if the health check has not yet passed.
+
 If the health check fails (exhausts retries or times out), the readiness gate node fails and the
 element's error handling policy is invoked.
 
@@ -1014,6 +1117,10 @@ element's error handling policy is invoked.
 For each element that declares a global concurrency limit (`max_concurrency`) or a group concurrency
 limit (`max_group_concurrency`), the planner annotates the relevant activate nodes with concurrency
 directives. These directives are metadata on the nodes, not structural edges.
+
+The annotation is stored as a `max_concurrency` metadata key on `ACTIVATE` nodes. The value is
+read from `DefaultElement.maxConcurrency()` or from an element's `max_concurrency` tag as a
+fallback.
 
 The executor is responsible for observing these annotations and ensuring that no more than the
 specified number of instances of the element are active at any given time. When the limit would be
@@ -1053,6 +1160,82 @@ For each node N in topological order:
 This reduces visual clutter and ensures that the graph contains only the essential ordering
 constraints. The transitive reduction preserves the reachability relation — the set of nodes
 reachable from any given node is unchanged.
+
+## Post-Rule Validation and Metadata Stamping
+
+After all eight rules have been applied:
+
+1. **Lifecycle invariant validation:** `ReductoStepGenerationStrategy.validateLifecycleInvariant()`
+   checks that every element has equal ACTIVATE and DEACTIVATE/AWAIT counts (or zero deactivations
+   for LIFELINE-subsumed elements). This catches any coalescing or edge-remapping bugs.
+
+2. **Trial code stamping:** For every node with a valid `trialIndex`, the enumerator's
+   `trialCode()` is computed and stored as `trial_code` metadata on the node. This propagates
+   through linearization into the resulting `AtomicStep` records.
+
+## Stage Four: Graph Linearization
+
+The finalized graph is converted into a flat list of `AtomicStep` records by `GraphLinearizer`.
+The graph is topologically sorted, and each `ReductoNode` is mapped to the appropriate
+`AtomicStep` subtype based on its `ReductoNodeType`:
+
+| ReductoNodeType | AtomicStep Subtype | Notes |
+|----------------|-------------------|-------|
+| `START` | `CheckpointState` | metadata `type=start` |
+| `END` | `CheckpointState` | metadata `type=end` |
+| `ACTIVATE` | `DeployElement` | Carries instance number, configuration, element deps metadata |
+| `DEACTIVATE` | `TeardownElement` | Carries instance number |
+| `AWAIT` | `AwaitElement` | Carries trial ID and element binding snapshot |
+| `NOTIFY_TRIAL_START` | `NotifyTrialStart` | Carries trial code, trial element names |
+| `NOTIFY_TRIAL_END` | `NotifyTrialEnd` | Carries trial code, shutdown reason |
+| `READINESS_GATE` | `BarrierSync` | Also produces a `Barrier` record |
+| `TRIAL_SEED` | *(error)* | Should have been expanded by Rule 1 |
+
+**Instance tracking:** The linearizer maintains a per-element instance counter. Each `ACTIVATE`
+node increments the counter to produce a new instance number. `DEACTIVATE` and `AWAIT` nodes
+reference the current (most recent) instance number for their element. This produces monotonically
+increasing instance numbers that uniquely identify each element instance within the plan.
+
+**Configuration overlay:** For `ACTIVATE` nodes, the linearizer starts with the element's static
+configuration and overlays trial-specific parameter assignments from the trial's `assignments()`
+map. Parameters are matched either by qualified name (`elementName.paramName`) or by bare
+parameter name.
+
+**Element dependency metadata:** `ACTIVATE` nodes carry an `element_deps` metadata key listing
+the names of all elements the activated element directly depends on. This metadata is consumed
+by `DefaultElementInstanceGraph` to reconstruct the element-level dependency graph from
+linearized steps and compute transitive instance-level edges.
+
+## Element Instance Graph
+
+After linearization, the `ElementInstanceGraph` can be derived from the step list to provide a
+static view of the instance-level topology. This graph is synthesized by
+`DefaultElementInstanceGraph` and captures which element instances exist and which instance
+depends on which other instance, without requiring runtime state.
+
+**Derivation algorithm:**
+
+1. Scan steps for `DeployElement` to discover all `(elementId, instanceNumber)` pairs and their
+   configurations.
+
+2. Build a trial-index → trial-code lookup from `NotifyTrialStart` steps. Each `InstanceNode`
+   carries an `Optional<String> trialCode` resolved from the deploy step's `trial_index` metadata
+   cross-referenced against this lookup.
+
+3. Extract element-level transitive dependencies from `element_deps` metadata on deploy steps.
+   This uses a BFS transitive closure to build a set of all transitively depended-on element names
+   for each element.
+
+4. For each deploy step, walk dependencies via BFS, passing through barriers and non-deploy steps,
+   until upstream `DeployElement` steps are found. These produce instance-level edges, filtered
+   against the transitive element dependency set to prevent spurious edges from notification fan-in.
+   When a deploy step for the **same** element is encountered (serial reuse), the BFS walks
+   through it to find the upstream element instances behind it.
+
+5. Compute topological order via Kahn's algorithm on the resulting instance-level edge set.
+
+The `ElementInstanceGraph` is available via `ExecutionPlan.elementInstanceGraph()` for UI
+rendering, validation, and static analysis of the compiled plan.
 
 ### Worked example
 
@@ -1144,6 +1327,33 @@ produces a minimal graph with only the essential ordering constraints.
 The key reduction is element `a`: instead of 18 deploy/teardown cycles, it has 6 — one per unique
 configuration. Within each level-2 group of 3 trials, `a` stays active while `b` cycles through its
 3 param_u values.
+
+# Source File Map
+
+The reducto planner implementation is spread across the following files:
+
+| File | Role |
+|------|------|
+| `ReductoStepGenerationStrategy` | Entry point; orchestrates the pipeline, validates lifecycle invariant, stamps trial codes |
+| `MixedRadixEnumerator` | Stage One: mixed-radix decomposition, trial codes, group index/count computation |
+| `BindingStateComputer` | Computes per-element binding levels with SHARED/EXCLUSIVE propagation |
+| `GraphSeeder` | Stage Two: creates `TRIAL_SEED` nodes |
+| `ReductoGraph` / `ReductoNode` | Mutable DAG data structure |
+| `ReductoNodeType` | Enum of node types (TRIAL_SEED, ACTIVATE, DEACTIVATE, AWAIT, NOTIFY_*, READINESS_GATE, START, END) |
+| `rules/Rule` | Rule interface |
+| `rules/RuleContext` | Shared context: sorted elements, binding state, enumerator, trial element names, lifeline clusters, DEDICATED dependents |
+| `rules/Rule1_LifecycleExpansion` | Replaces TRIAL_SEED with activate/deactivate/await node pairs |
+| `rules/Rule2_DependencyEdges` | Adds edges for SHARED, EXCLUSIVE, DEDICATED, LINEAR, LIFELINE |
+| `rules/Rule3_GroupCoalescing` | Core reduction: merges per-trial nodes into group-level nodes; resolves DEDICATED chains |
+| `rules/Rule4_TrialNotifications` | Inserts NOTIFY_TRIAL_START/END, reroutes exclusive serialization, enforces non-trial deactivation ordering |
+| `rules/Rule5_HealthCheckGates` | Inserts READINESS_GATE after activations with health checks |
+| `rules/Rule6_ConcurrencyAnnotation` | Annotates ACTIVATE nodes with `max_concurrency` metadata |
+| `rules/Rule7_StartEndMaterialization` | Adds START/END sentinels, validates acyclicity |
+| `rules/Rule8_TransitiveReduction` | Removes redundant transitive edges |
+| `GraphLinearizer` | Stage Four: topological sort, node-to-AtomicStep mapping, instance tracking |
+| `StepGenerationUtils` | Shared utilities: topological sort, trial element identification, fingerprinting, lifeline clustering |
+| `DefaultElementInstanceGraph` | Post-linearization: derives instance-level topology from AtomicStep list |
+| `ElementInstanceGraph` | API interface for static instance topology (in paramodel-api) |
 
 # Planner Warnings Catalog
 

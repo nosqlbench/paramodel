@@ -17,6 +17,7 @@ package io.nosqlbench.paramodel.plan;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 ///
@@ -58,12 +59,20 @@ public interface ElementInstanceGraph {
     /// @param elementId       the element name (e.g. {@code "cassandra"})
     /// @param instanceNumber  zero-based instance index within the element
     /// @param configuration   the bound parameter configuration for this instance
+    /// @param trialCode       the trial code identifying this instance's trial context,
+    ///                        or empty for instances that span the entire run (group level 0)
     ///
     record InstanceNode(
         String elementId,
         int instanceNumber,
-        Map<String, Object> configuration
+        Map<String, Object> configuration,
+        Optional<String> trialCode
     ) {
+        /// Convenience constructor without trial code (for test/mock usage).
+        public InstanceNode(String elementId, int instanceNumber, Map<String, Object> configuration) {
+            this(elementId, instanceNumber, configuration, Optional.empty());
+        }
+
         /// Returns the composite node identifier {@code "elementId:instanceNumber"}.
         public String nodeId() {
             return elementId + ":" + instanceNumber;

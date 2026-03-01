@@ -117,6 +117,10 @@ public final class GraphLinearizer {
                     meta.put("element", node.elementName());
                     if (node.trialIndex() >= 0) meta.put("trial_index", node.trialIndex());
                     if (node.groupIndex() >= 0) meta.put("group_index", node.groupIndex());
+                    if (elem != null && !elem.dependencies().isEmpty()) {
+                        meta.put("element_deps", elem.dependencies().stream()
+                            .map(d -> d.target().name()).toList());
+                    }
 
                     steps.add(new AtomicStep.DeployElement(
                         node.id(),

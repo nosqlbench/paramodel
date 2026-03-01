@@ -35,38 +35,58 @@ public final class StepGenerationUtils {
 
     /// Performs a topological sort of elements by their dependency graph.
     ///
-    /// Elements with no dependencies appear first; dependents follow their
-    /// targets.  Ties are broken by insertion order.
+    /// "Floating" elements — those with no dependencies in either direction —
+    /// are placed first (at the top of the element stack), preserving their
+    /// original insertion order.  Connected elements follow in dependency
+    /// order (upstream before downstream).
     ///
     /// @param elements elements to sort
-    /// @return topologically sorted list
+    /// @return topologically sorted list with floating elements first
     public static List<Element> topologicalSort(List<Element> elements) {
         Map<String, Element> byName = new LinkedHashMap<>();
         for (Element e : elements) byName.put(e.name(), e);
         Map<String, Integer> inDegree = new HashMap<>();
         Map<String, List<String>> adj = new HashMap<>();
+        Set<String> hasOutgoing = new HashSet<>();
+        Set<String> hasIncoming = new HashSet<>();
         for (Element e : elements) {
             inDegree.putIfAbsent(e.name(), 0);
             for (Element.Dependency dep : e.dependencies()) {
                 adj.computeIfAbsent(dep.target().name(), k -> new ArrayList<>()).add(e.name());
                 inDegree.merge(e.name(), 1, Integer::sum);
                 inDegree.putIfAbsent(dep.target().name(), 0);
+                hasOutgoing.add(e.name());
+                hasIncoming.add(dep.target().name());
             }
         }
+        // Seed the BFS queue with non-floating roots only
         Queue<String> queue = new LinkedList<>();
+        List<Element> floating = new ArrayList<>();
         for (var entry : inDegree.entrySet()) {
-            if (entry.getValue() == 0) queue.add(entry.getKey());
+            if (entry.getValue() == 0) {
+                String name = entry.getKey();
+                if (!hasOutgoing.contains(name) && !hasIncoming.contains(name)) {
+                    Element e = byName.get(name);
+                    if (e != null) floating.add(e);
+                } else {
+                    queue.add(name);
+                }
+            }
         }
-        List<Element> result = new ArrayList<>();
+        // Floating elements first, then connected elements in dependency order
+        List<Element> connected = new ArrayList<>();
         while (!queue.isEmpty()) {
             String name = queue.poll();
             Element e = byName.get(name);
-            if (e != null) result.add(e);
+            if (e != null) connected.add(e);
             for (String dependent : adj.getOrDefault(name, List.of())) {
                 inDegree.put(dependent, inDegree.get(dependent) - 1);
                 if (inDegree.get(dependent) == 0) queue.add(dependent);
             }
         }
+        List<Element> result = new ArrayList<>(floating.size() + connected.size());
+        result.addAll(floating);
+        result.addAll(connected);
         return result;
     }
 

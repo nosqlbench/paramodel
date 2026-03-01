@@ -19,6 +19,7 @@ import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.ElementInstanceGraph;
 
 import java.util.*;
+import java.util.Optional;
 
 ///
 /// Default implementation of {@link ElementInstanceGraph} that eagerly derives
@@ -73,26 +74,55 @@ public class DefaultElementInstanceGraph implements ElementInstanceGraph {
             }
         }
 
-        // Step 3: Build instance nodes
+        // Step 3: Build trial-index → trial-code lookup from NotifyTrialStart steps
+        Map<Integer, String> trialCodeByIndex = new LinkedHashMap<>();
+        for (AtomicStep step : steps) {
+            if (step instanceof AtomicStep.NotifyTrialStart n) {
+                n.trialCode().ifPresent(code -> trialCodeByIndex.put(n.trialIndex(), code));
+            }
+        }
+
+        // Step 4: Build instance nodes with trial codes
         Set<InstanceNode> nodes = new LinkedHashSet<>();
         Map<String, Integer> counts = new LinkedHashMap<>();
-        for (InstanceKey key : deploysByInstance.keySet()) {
+        for (var entry : deploysByInstance.entrySet()) {
+            InstanceKey key = entry.getKey();
             Map<String, Object> config = configByInstance.getOrDefault(key, Map.of());
-            nodes.add(new InstanceNode(key.elementId(), key.instanceNumber(), config));
+
+            // Resolve trial code from the deploy step's trial_index metadata
+            Optional<String> trialCode = Optional.empty();
+            for (AtomicStep.DeployElement d : entry.getValue()) {
+                Object trialIdx = d.metadata().get("trial_index");
+                if (trialIdx instanceof Number n) {
+                    String code = trialCodeByIndex.get(n.intValue());
+                    if (code != null) {
+                        trialCode = Optional.of(code);
+                        break;
+                    }
+                }
+            }
+
+            nodes.add(new InstanceNode(key.elementId(), key.instanceNumber(), config, trialCode));
             counts.merge(key.elementId(), 1, Integer::sum);
         }
         this.nodeSet = Collections.unmodifiableSet(nodes);
         this.instanceCounts = Collections.unmodifiableMap(counts);
 
-        // Step 4: Infer instance-level edges from deploy step dependencies
+        // Step 4: Compute element-level transitive dependencies, then infer
+        // instance-level edges filtered to only declared relationships.
+        Map<String, Set<String>> transitiveElementDeps =
+            computeTransitiveElementDeps(deploysByInstance);
+
         Set<String> edgeKeys = new LinkedHashSet<>();
         List<InstanceEdge> rawEdges = new ArrayList<>();
 
         for (var entry : deploysByInstance.entrySet()) {
             InstanceKey targetInstance = entry.getKey();
+            Set<String> allowed = transitiveElementDeps.getOrDefault(
+                targetInstance.elementId(), Set.of());
             for (AtomicStep.DeployElement deployStep : entry.getValue()) {
                 Set<InstanceKey> upstreamInstances = findUpstreamInstances(
-                    deployStep, stepById, targetInstance);
+                    deployStep, stepById, targetInstance, allowed);
                 for (InstanceKey sourceInstance : upstreamInstances) {
                     String edgeKey = sourceInstance.nodeId() + "->" + targetInstance.nodeId();
                     if (edgeKeys.add(edgeKey)) {
@@ -132,12 +162,25 @@ public class DefaultElementInstanceGraph implements ElementInstanceGraph {
     }
 
     /// Walks dependencies transitively from a deploy step to find upstream deploy
-    /// steps, yielding instance-level edges. Stops at deploy steps and passes
-    /// through barriers, notifications, and other non-deploy steps.
+    /// steps, yielding instance-level edges.  Stops at deploy steps and passes
+    /// through all non-deploy steps (including notification barriers).
+    ///
+    /// The discovered upstream deploy steps are then filtered against the
+    /// element-level dependency set so that only elements the target actually
+    /// declares a (transitive) dependency on produce edges.  This prevents
+    /// notification fan-in from creating spurious edges between unrelated
+    /// elements that happen to share the same trial lifecycle boundary.
+    ///
+    /// When a deploy step for the **same** element is encountered (a different
+    /// instance produced by serial reuse), the BFS walks through it instead of
+    /// stopping.  This allows the graph to discover the upstream element
+    /// instances that serial-reuse instances transitively depend on through
+    /// the teardown/notify/redeploy chain.
     private static Set<InstanceKey> findUpstreamInstances(
             AtomicStep.DeployElement deployStep,
             Map<String, AtomicStep> stepById,
-            InstanceKey selfInstance) {
+            InstanceKey selfInstance,
+            Set<String> allowedUpstreamElements) {
 
         Set<InstanceKey> upstreamInstances = new LinkedHashSet<>();
         Deque<String> workList = new ArrayDeque<>(deployStep.dependencies());
@@ -152,16 +195,62 @@ public class DefaultElementInstanceGraph implements ElementInstanceGraph {
 
             if (depStep instanceof AtomicStep.DeployElement d) {
                 InstanceKey upstreamKey = new InstanceKey(d.elementId(), d.instanceNumber());
-                if (!upstreamKey.equals(selfInstance)) {
+                if (!upstreamKey.equals(selfInstance)
+                        && allowedUpstreamElements.contains(d.elementId())) {
+                    // Found an allowed upstream element — add edge and stop here
                     upstreamInstances.add(upstreamKey);
+                } else if (d.elementId().equals(selfInstance.elementId())) {
+                    // Same element, different instance (serial reuse boundary) —
+                    // walk through to find the upstream element instances behind it
+                    workList.addAll(depStep.dependencies());
                 }
-                // Don't walk further past deploy steps
+                // For unrelated elements not in the allowed set, stop walking
             } else {
-                // Walk through non-deploy steps transitively
+                // Walk through all non-deploy steps (barriers, notifications, etc.)
                 workList.addAll(depStep.dependencies());
             }
         }
         return upstreamInstances;
+    }
+
+    /// Builds the transitive element-level dependency set for each element
+    /// from the {@code element_deps} metadata embedded in deploy steps by
+    /// the graph linearizer.
+    ///
+    /// @return map from element name → set of all transitively depended-on element names
+    @SuppressWarnings("unchecked")
+    private static Map<String, Set<String>> computeTransitiveElementDeps(
+            Map<InstanceKey, List<AtomicStep.DeployElement>> deploysByInstance) {
+
+        // Extract direct deps from deploy step metadata
+        Map<String, Set<String>> directDeps = new LinkedHashMap<>();
+        for (var entry : deploysByInstance.entrySet()) {
+            String element = entry.getKey().elementId();
+            directDeps.putIfAbsent(element, new LinkedHashSet<>());
+            for (AtomicStep.DeployElement deploy : entry.getValue()) {
+                Object depsMeta = deploy.metadata().get("element_deps");
+                if (depsMeta instanceof List<?> list) {
+                    for (Object item : list) {
+                        directDeps.get(element).add(item.toString());
+                    }
+                }
+            }
+        }
+
+        // Transitive closure
+        Map<String, Set<String>> transitive = new LinkedHashMap<>();
+        for (String element : directDeps.keySet()) {
+            Set<String> closed = new LinkedHashSet<>();
+            Deque<String> stack = new ArrayDeque<>(directDeps.getOrDefault(element, Set.of()));
+            while (!stack.isEmpty()) {
+                String dep = stack.poll();
+                if (closed.add(dep)) {
+                    stack.addAll(directDeps.getOrDefault(dep, Set.of()));
+                }
+            }
+            transitive.put(element, closed);
+        }
+        return transitive;
     }
 
     /// Kahn's algorithm topological sort on the instance node IDs.

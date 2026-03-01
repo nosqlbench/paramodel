@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.compilation.*;
 import io.nosqlbench.paramodel.elements.*;
 import io.nosqlbench.paramodel.execution.*;
 import io.nosqlbench.paramodel.execution.Runtime;
+import io.nosqlbench.paramodel.mock.execution.MockExecutionStateManager;
 import io.nosqlbench.paramodel.mock.compilation.MockCompilationContext;
 import io.nosqlbench.paramodel.mock.compilation.MockCompilationStage;
 import io.nosqlbench.paramodel.mock.compilation.MockCompiler;
@@ -276,6 +277,16 @@ public class MockImplementationProvider implements ImplementationProvider {
     @Override
     public MetadataStore createMetadataStore() {
         return new MockMetadataStore();
+    }
+
+    @Override
+    public ExecutionStateManager createExecutionStateManager() {
+        return new MockExecutionStateManager();
+    }
+
+    @Override
+    public io.nosqlbench.paramodel.persistence.JournalStore createJournalStore() {
+        return new io.nosqlbench.paramodel.mock.persistence.MockJournalStore();
     }
 
     @Override

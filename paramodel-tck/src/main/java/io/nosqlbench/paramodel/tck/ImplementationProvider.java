@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.compilation.*;
 import io.nosqlbench.paramodel.elements.*;
 import io.nosqlbench.paramodel.execution.*;
 import io.nosqlbench.paramodel.execution.Runtime;
+import io.nosqlbench.paramodel.persistence.JournalStore;
 import io.nosqlbench.paramodel.parameters.*;
 import io.nosqlbench.paramodel.persistence.*;
 import io.nosqlbench.paramodel.plan.*;
@@ -90,6 +91,10 @@ public interface ImplementationProvider {
     ResourceManager.ResourceRequest createResourceRequest(double cpu, double memoryGb,
                                                           double storageGb, String owner);
     ArtifactCollector createArtifactCollector();
+
+    // Execution state management contracts
+    ExecutionStateManager createExecutionStateManager();
+    JournalStore createJournalStore();
 
     // Persistence contracts
     ArtifactStore createArtifactStore();

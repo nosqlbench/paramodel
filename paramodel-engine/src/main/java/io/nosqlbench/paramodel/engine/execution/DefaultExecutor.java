@@ -10,9 +10,11 @@ import io.nosqlbench.paramodel.engine.execution.journal.ExecutionSnapshot;
 import io.nosqlbench.paramodel.engine.execution.journal.InFlightStepResolver;
 import io.nosqlbench.paramodel.engine.execution.journal.JournalStateReconstructor;
 import io.nosqlbench.paramodel.engine.execution.journal.JournalWriter;
+import io.nosqlbench.paramodel.execution.ExecutionStateManager;
 import io.nosqlbench.paramodel.execution.Executor;
 import io.nosqlbench.paramodel.persistence.CheckpointStore;
 import io.nosqlbench.paramodel.persistence.JournalStore;
+import io.nosqlbench.paramodel.persistence.ResultStore;
 import io.nosqlbench.paramodel.plan.AtomicStep;
 import io.nosqlbench.paramodel.plan.ExecutionGraph;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
@@ -120,19 +122,55 @@ public class DefaultExecutor implements Executor {
     private final CheckpointStore checkpointStore;
     private final JournalStateReconstructor reconstructor;
     private final InFlightStepResolver stepResolver;
+    private final ExecutionStateManager stateManager;
 
     /// Creates a new executor with the given configuration and optional journal support.
     ///
     /// @param config executor configuration
     /// @param journalStore journal store for durable event recording, or null to disable
     /// @param checkpointStore checkpoint store for state snapshots, or null to disable
+    /// @param resultStore result store for trial result persistence, or null to disable
     public DefaultExecutor(ExecutorConfig config, JournalStore journalStore,
-                           CheckpointStore checkpointStore) {
+                           CheckpointStore checkpointStore, ResultStore resultStore) {
         this.config = Objects.requireNonNull(config);
         this.journalStore = journalStore;
         this.checkpointStore = checkpointStore;
         this.reconstructor = new DefaultJournalStateReconstructor();
         this.stepResolver = new DefaultInFlightStepResolver();
+        // Construct DefaultExecutionStateManager if stores are available; noop otherwise
+        if (journalStore != null && checkpointStore != null && resultStore != null) {
+            this.stateManager = new DefaultExecutionStateManager(journalStore, checkpointStore, resultStore);
+        } else {
+            this.stateManager = ExecutionStateManager.noop();
+        }
+    }
+
+    /// Creates a new executor with an explicit {@link ExecutionStateManager}.
+    ///
+    /// When an {@code ExecutionStateManager} is provided directly, it is used
+    /// for all state management operations. The journal and checkpoint stores
+    /// are still accepted for backward compatibility with code that accesses
+    /// them directly.
+    ///
+    /// @param config executor configuration
+    /// @param stateManager the execution state manager; must not be null
+    /// @param journalStore journal store, or null if managed by stateManager
+    /// @param checkpointStore checkpoint store, or null if managed by stateManager
+    public DefaultExecutor(ExecutorConfig config, ExecutionStateManager stateManager,
+                           JournalStore journalStore, CheckpointStore checkpointStore) {
+        this.config = Objects.requireNonNull(config);
+        this.stateManager = Objects.requireNonNull(stateManager, "stateManager must not be null");
+        this.journalStore = journalStore;
+        this.checkpointStore = checkpointStore;
+        this.reconstructor = new DefaultJournalStateReconstructor();
+        this.stepResolver = new DefaultInFlightStepResolver();
+    }
+
+    /// Returns the {@link ExecutionStateManager} used by this executor.
+    ///
+    /// @return the execution state manager; never null
+    public ExecutionStateManager stateManager() {
+        return stateManager;
     }
 
     @Override
@@ -487,11 +525,14 @@ public class DefaultExecutor implements Executor {
         return new Builder();
     }
 
-    /// Builder for {@link DefaultExecutor} with optional journal and checkpoint support.
+    /// Builder for {@link DefaultExecutor} with optional journal, checkpoint,
+    /// and result store support.
     public static class Builder {
         private ExecutorConfig config;
         private JournalStore journalStore;
         private CheckpointStore checkpointStore;
+        private ResultStore resultStore;
+        private ExecutionStateManager stateManager;
 
         /// Sets the executor configuration.
         public Builder config(ExecutorConfig config) {
@@ -520,12 +561,38 @@ public class DefaultExecutor implements Executor {
             return this;
         }
 
+        /// Sets the result store for trial result persistence.
+        ///
+        /// @param resultStore the result store, or null to disable
+        /// @return this builder
+        public Builder resultStore(ResultStore resultStore) {
+            this.resultStore = resultStore;
+            return this;
+        }
+
+        /// Sets the execution state manager.
+        ///
+        /// When provided, this manager is used for all state management
+        /// operations. If not provided, a {@link DefaultExecutionStateManager}
+        /// is constructed from the journal and checkpoint stores (if both
+        /// are present), or a no-op manager is used.
+        ///
+        /// @param stateManager the execution state manager
+        /// @return this builder
+        public Builder stateManager(ExecutionStateManager stateManager) {
+            this.stateManager = stateManager;
+            return this;
+        }
+
         /// Builds the executor.
         public DefaultExecutor build() {
             if (config == null) {
                 config = new DefaultExecutorConfig();
             }
-            return new DefaultExecutor(config, journalStore, checkpointStore);
+            if (stateManager != null) {
+                return new DefaultExecutor(config, stateManager, journalStore, checkpointStore);
+            }
+            return new DefaultExecutor(config, journalStore, checkpointStore, resultStore);
         }
     }
 
