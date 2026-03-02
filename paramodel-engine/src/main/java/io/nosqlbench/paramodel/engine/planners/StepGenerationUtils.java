@@ -155,6 +155,11 @@ public final class StepGenerationUtils {
     /// excluded because they have no relationship to the rest of the plan and
     /// should not participate in trial scope.
     ///
+    /// If the candidate pool is empty after floating-element exclusion (e.g. a
+    /// single element with no dependencies and no axes), all non-forced-off
+    /// elements are promoted into the candidate pool. A single element IS the
+    /// plan and must participate in trials.
+    ///
     /// In both cases, trial elements are the leaf nodes of the candidate pool:
     /// elements that no other candidate depends on.
     ///
@@ -205,6 +210,17 @@ public final class StepGenerationUtils {
                         && !hasIncoming.contains(e.name());
                 if (!floating) {
                     candidatePool.add(e.name());
+                }
+            }
+
+            // If no candidates remain (all elements are floating — e.g. single
+            // element with no dependencies and no axes), promote all non-forced-off
+            // elements. A single element IS the plan and must participate in trials.
+            if (candidatePool.isEmpty()) {
+                for (Element e : sortedElements) {
+                    if (!forcedOff.contains(e.name())) {
+                        candidatePool.add(e.name());
+                    }
                 }
             }
         }

@@ -27,10 +27,12 @@ import java.util.List;
 /// Rule 1: Element lifecycle expansion.
 ///
 /// Replaces each {@link ReductoNodeType#TRIAL_SEED} node with per-element
-/// activate/deactivate (or await) node pairs. For service trial elements:
-/// {@code activate → deactivate}. For command trial elements:
-/// {@code activate → await}. Non-trial elements get both nodes with no
-/// intra-trial edges (added by later rules).
+/// activate/deactivate (or await) node pairs. For command elements (any
+/// shutdown semantics of {@link Element.ShutdownSemantics#COMMAND}):
+/// {@code activate → await}. For service elements:
+/// {@code activate → deactivate}. The activate→terminate edge is only
+/// added for trial elements; non-trial elements get both nodes with no
+/// intra-trial edges (wired by later rules).
 ///
 public final class Rule1_LifecycleExpansion implements Rule {
 
@@ -56,14 +58,16 @@ public final class Rule1_LifecycleExpansion implements Rule {
                 activate.setTrialIndex(trialIdx);
                 graph.addNode(activate);
 
-                if (isTrialElem && isCommand) {
+                if (isCommand) {
                     ReductoNode await = new ReductoNode(
                         "await_" + eName + "_t" + trialIdx,
                         ReductoNodeType.AWAIT);
                     await.setElementName(eName);
                     await.setTrialIndex(trialIdx);
                     graph.addNode(await);
-                    graph.addEdge(activate, await);
+                    if (isTrialElem) {
+                        graph.addEdge(activate, await);
+                    }
                 } else {
                     ReductoNode deactivate = new ReductoNode(
                         "deactivate_" + eName + "_t" + trialIdx,

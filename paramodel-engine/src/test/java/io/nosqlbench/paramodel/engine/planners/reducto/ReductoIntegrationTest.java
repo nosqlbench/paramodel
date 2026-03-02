@@ -848,6 +848,121 @@ class ReductoIntegrationTest {
             .anyMatch(w -> w.message().contains("no elements"));
     }
 
+    @Test
+    @DisplayName("Single COMMAND element, no axes: linear graph with notify boundaries")
+    void singleCommandElementNoAxes() {
+        // A single COMMAND element with no axes and no dependencies should
+        // produce a linear execution graph:
+        // start → notify_trial_start → activate → await → notify_trial_end → end
+        Element cmd = MockElement.builder("demo-command-1")
+            .shutdownSemantics(Element.ShutdownSemantics.COMMAND)
+            .build();
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("single-command-no-axes")
+            .element(cmd)
+            .build();
+
+        Compiler.CompilationResult result = compileReducto(plan);
+        assertThat(result.isSuccess()).isTrue();
+
+        ExecutionPlan execPlan = result.executionPlan().get();
+
+        // Exactly 1 deploy (activate) and 1 await
+        long deploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("demo-command-1"))
+            .count();
+        assertThat(deploys).as("single element should have exactly 1 deploy").isEqualTo(1);
+
+        long awaits = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.AwaitElement ae && ae.elementId().equals("demo-command-1"))
+            .count();
+        assertThat(awaits).as("single COMMAND element should have exactly 1 await").isEqualTo(1);
+
+        // notify_trial_start and notify_trial_end should exist
+        AtomicStep notifyStart = execPlan.steps().stream()
+            .filter(s -> s.id().equals("notify_trial_start_0"))
+            .findFirst().orElseThrow(() -> new AssertionError("Missing notify_trial_start_0"));
+        AtomicStep notifyEnd = execPlan.steps().stream()
+            .filter(s -> s.id().equals("notify_trial_end_0"))
+            .findFirst().orElseThrow(() -> new AssertionError("Missing notify_trial_end_0"));
+
+        // notify steps should have non-empty elementNames
+        AtomicStep.NotifyTrialStart nts = (AtomicStep.NotifyTrialStart) notifyStart;
+        assertThat(nts.elementNames())
+            .as("notify_trial_start elementNames should contain the element")
+            .contains("demo-command-1");
+
+        // activate should depend on notify_trial_start
+        AtomicStep activate = execPlan.steps().stream()
+            .filter(s -> s.id().equals("activate_demo-command-1_t0"))
+            .findFirst().orElseThrow();
+        assertThat(activate.dependencies())
+            .as("activate should depend on notify_trial_start")
+            .contains("notify_trial_start_0");
+
+        // notify_trial_end should depend on the await step
+        assertThat(notifyEnd.dependencies())
+            .as("notify_trial_end should depend on await")
+            .contains("await_demo-command-1_t0");
+
+        assertThat(execPlan.executionGraph().isAcyclic()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Single SERVICE element, no axes: linear graph with notify boundaries")
+    void singleServiceElementNoAxes() {
+        // A single SERVICE element with no axes and no dependencies should
+        // produce a linear execution graph:
+        // start → notify_trial_start → activate → teardown → notify_trial_end → end
+        Element svc = MockElement.builder("demo-service-1")
+            .build();  // default is SERVICE semantics
+
+        TestPlan plan = MockTestPlan.builder()
+            .name("single-service-no-axes")
+            .element(svc)
+            .build();
+
+        Compiler.CompilationResult result = compileReducto(plan);
+        assertThat(result.isSuccess()).isTrue();
+
+        ExecutionPlan execPlan = result.executionPlan().get();
+
+        // Exactly 1 deploy and 1 teardown
+        long deploys = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.DeployElement de && de.elementId().equals("demo-service-1"))
+            .count();
+        assertThat(deploys).as("single element should have exactly 1 deploy").isEqualTo(1);
+
+        long teardowns = execPlan.steps().stream()
+            .filter(s -> s instanceof AtomicStep.TeardownElement te && te.elementId().equals("demo-service-1"))
+            .count();
+        assertThat(teardowns).as("single SERVICE element should have exactly 1 teardown").isEqualTo(1);
+
+        // notify_trial_start and notify_trial_end should exist
+        AtomicStep notifyStart = execPlan.steps().stream()
+            .filter(s -> s.id().equals("notify_trial_start_0"))
+            .findFirst().orElseThrow(() -> new AssertionError("Missing notify_trial_start_0"));
+        AtomicStep notifyEnd = execPlan.steps().stream()
+            .filter(s -> s.id().equals("notify_trial_end_0"))
+            .findFirst().orElseThrow(() -> new AssertionError("Missing notify_trial_end_0"));
+
+        // activate should depend on notify_trial_start
+        AtomicStep activate = execPlan.steps().stream()
+            .filter(s -> s.id().equals("activate_demo-service-1_t0"))
+            .findFirst().orElseThrow();
+        assertThat(activate.dependencies())
+            .as("activate should depend on notify_trial_start")
+            .contains("notify_trial_start_0");
+
+        // notify_trial_end should depend on the teardown step
+        assertThat(notifyEnd.dependencies())
+            .as("notify_trial_end should depend on teardown")
+            .contains("deactivate_demo-service-1_t0");
+
+        assertThat(execPlan.executionGraph().isAcyclic()).isTrue();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private Compiler.CompilationResult compileReducto(TestPlan plan) {
