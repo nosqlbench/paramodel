@@ -115,11 +115,17 @@ public final class SelectionParameter implements Parameter<List<String>> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of(
-            "name", name,
-            "type", "selection",
-            "maxSelections", String.valueOf(maxSelections));
+    public String type() {
+        return "selection";
+    }
+
+    ///
+    /// Returns the maximum number of selections allowed.
+    ///
+    /// @return maximum selection count, always >= 1
+    ///
+    public int maxSelections() {
+        return maxSelections;
     }
 
     @Override

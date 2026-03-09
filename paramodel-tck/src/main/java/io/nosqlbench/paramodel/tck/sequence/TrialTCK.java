@@ -5,13 +5,15 @@ import io.nosqlbench.paramodel.sequence.Trial;
 import io.nosqlbench.paramodel.tck.ImplementationProvider;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.*;
 
 /**
  * Technology Compatibility Kit tests for Trial contract.
  *
  * Validates that implementations correctly:
- * - Store parameter assignments
+ * - Store element-structured parameter assignments
  * - Provide unique identifiers
  * - Track metadata
  * - Validate constraints
@@ -44,14 +46,16 @@ public abstract class TrialTCK {
 
         Trial trial = getProvider().createTrialBuilder()
             .id("trial-1")
-            .assignment("operation", opValue)
-            .assignment("threads", threadValue)
+            .assignment("svc", "operation", opValue)
+            .assignment("svc", "threads", threadValue)
             .build();
 
-        assertThat(trial.assignments()).hasSize(2);
-        assertThat(trial.assignments()).containsKeys("operation", "threads");
-        assertThat(trial.assignments().get("operation").value()).isEqualTo("read");
-        assertThat(trial.assignments().get("threads").value()).isEqualTo(16);
+        assertThat(trial.assignments()).hasSize(1);
+        Map<String, Value<?>> svcParams = trial.assignments().get("svc");
+        assertThat(svcParams).hasSize(2);
+        assertThat(svcParams).containsKeys("operation", "threads");
+        assertThat(svcParams.get("operation").value()).isEqualTo("read");
+        assertThat(svcParams.get("threads").value()).isEqualTo(16);
     }
 
     @Test
@@ -68,12 +72,12 @@ public abstract class TrialTCK {
 
         Trial trial1 = getProvider().createTrialBuilder()
             .id("trial-1")
-            .assignment("param", value)
+            .assignment("svc", "param", value)
             .build();
 
         Trial trial2 = getProvider().createTrialBuilder()
             .id("trial-1")
-            .assignment("param", value)
+            .assignment("svc", "param", value)
             .build();
 
         // Same id should produce same id
@@ -86,7 +90,7 @@ public abstract class TrialTCK {
 
         Trial trial = getProvider().createTrialBuilder()
             .id("trial-1")
-            .assignment("threads", threads)
+            .assignment("svc", "threads", threads)
             .constraint(assignment -> {
                 Integer t = (Integer) assignment.get("threads").value();
                 return t > 0;
@@ -119,11 +123,26 @@ public abstract class TrialTCK {
 
         Trial trial = getProvider().createTrialBuilder()
             .id("trial-1")
-            .assignment("threads", threads)
+            .assignment("svc", "threads", threads)
             .constraint(a -> ((Integer) a.get("threads").value()) > 0)
             .constraint(a -> ((Integer) a.get("threads").value()) <= 64)
             .build();
 
         assertThat(trial.validate().isPassed()).isTrue();
+    }
+
+    @Test
+    public void testTrialAssignmentLookup() {
+        Value<String> opValue = getProvider().createValue("read", "operation");
+
+        Trial trial = getProvider().createTrialBuilder()
+            .id("trial-1")
+            .assignment("svc", "operation", opValue)
+            .build();
+
+        assertThat(trial.assignment("svc", "operation")).isPresent();
+        assertThat(trial.assignment("svc", "operation").get().value()).isEqualTo("read");
+        assertThat(trial.assignment("svc", "nonexistent")).isEmpty();
+        assertThat(trial.assignment("other", "operation")).isEmpty();
     }
 }

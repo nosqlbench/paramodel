@@ -203,16 +203,6 @@ public class TestPlanService {
             }
         }
 
-        // Node utilization: count how many deploys target each node role
-        Map<String, Integer> nodeRoleUsage = new LinkedHashMap<>();
-        for (Element element : plan.elements()) {
-            String nodeRole = element.tags().get("node_role");
-            if (nodeRole != null) {
-                int deploys = deploysPerElement.getOrDefault(element.name(), 0);
-                nodeRoleUsage.merge(nodeRole, deploys, Integer::sum);
-            }
-        }
-
         // Estimate SHARED savings: compare actual deploys vs worst-case deploys.
         // Worst case: every element deploys once per trial (no fingerprint reuse).
         int worstCaseDeploys = plan.elements().size() * Math.max(1, plan.size());
@@ -230,14 +220,13 @@ public class TestPlanService {
                 barrierSteps,
                 checkpointSteps,
                 deploysPerElement,
-                nodeRoleUsage,
                 sharedSavings
         );
     }
 
     /// Detailed preview of a plan execution.
     ///
-    /// Includes per-element deploy counts, node utilization, and optimization savings.
+    /// Includes per-element deploy counts and optimization savings.
     /// Step counts map to paramodel {@link AtomicStep} types:
     /// - `deploySteps`: {@link AtomicStep.DeployElement} (element deployment)
     /// - `teardownSteps`: {@link AtomicStep.TeardownElement} (element teardown)
@@ -256,7 +245,6 @@ public class TestPlanService {
     /// @param barrierSteps barrier synchronization steps
     /// @param checkpointSteps checkpoint persistence steps
     /// @param deploysPerElement deploys per element ID
-    /// @param nodeRoleUsage deploy counts per node role
     /// @param sharedSavings estimated deploys saved by SHARED reuse optimization
     public record PlanPreview(
             String name,
@@ -270,7 +258,6 @@ public class TestPlanService {
             int barrierSteps,
             int checkpointSteps,
             Map<String, Integer> deploysPerElement,
-            Map<String, Integer> nodeRoleUsage,
             int sharedSavings
     ) {
         @Override
@@ -291,12 +278,6 @@ public class TestPlanService {
                 sb.append("  Deploys per element:%n".formatted());
                 deploysPerElement.forEach((id, count) ->
                         sb.append(String.format("    %s: %d%n", id, count)));
-            }
-
-            if (!nodeRoleUsage.isEmpty()) {
-                sb.append("  Node role utilization:%n".formatted());
-                nodeRoleUsage.forEach((role, count) ->
-                        sb.append(String.format("    %s: %d deploys%n", role, count)));
             }
 
             if (sharedSavings > 0) {

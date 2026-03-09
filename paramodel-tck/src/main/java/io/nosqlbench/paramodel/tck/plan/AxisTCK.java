@@ -16,7 +16,8 @@ import static org.assertj.core.api.Assertions.*;
 /// - Compute cardinality as values().size()
 /// - Identify boundary values (first and last)
 /// - Support containment and index lookup
-/// - Provide optional description and tags
+/// - Provide optional description
+/// - Provide a non-null attachedParameter
 ///
 /// @see Axis
 /// @since 0.1.0
@@ -36,13 +37,13 @@ public abstract class AxisTCK {
     }
 
     @Test
-    public void testAxisHasTags() {
+    public void testAxisHasAttachedParameter() {
         Axis<String> axis = getProvider().createTypedAxis("model",
             List.of("gpt-4", "claude-3"));
 
-        assertThat(axis.tags()).isNotNull();
-        assertThat(axis.tags()).containsKey("name");
-        assertThat(axis.tags().get("name")).isEqualTo("model");
+        assertThat(axis.attachedParameter()).isNotNull();
+        assertThat(axis.targetElement()).isNotNull();
+        assertThat(axis.underlyingParameter()).isNotNull();
     }
 
     @Test

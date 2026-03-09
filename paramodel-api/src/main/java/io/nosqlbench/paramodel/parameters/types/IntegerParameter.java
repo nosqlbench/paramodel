@@ -8,6 +8,7 @@ import io.nosqlbench.paramodel.parameters.ValidationResult;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
+
 ///
 /// A built-in parameter for integer values, supporting both range and discrete domains.
 ///
@@ -86,8 +87,8 @@ public final class IntegerParameter implements Parameter<Integer> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of("name", name, "type", "integer");
+    public String type() {
+        return "integer";
     }
 
     @Override

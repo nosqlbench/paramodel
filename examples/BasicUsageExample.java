@@ -64,8 +64,8 @@ public class BasicUsageExample {
                 MockValue<Integer> threadVal = MockValue.of(t, "threads");
 
                 MockTrial trial = MockTrial.builder()
-                    .assignment("operation", opVal)
-                    .assignment("threads", threadVal)
+                    .assignment("svc", "operation", opVal)
+                    .assignment("svc", "threads", threadVal)
                     .build();
 
                 System.out.println("  Trial " + trial.id() + ": " +

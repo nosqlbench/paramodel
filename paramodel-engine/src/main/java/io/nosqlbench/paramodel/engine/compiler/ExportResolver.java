@@ -206,7 +206,7 @@ public class ExportResolver {
 
             // Check that the referenced element is a COMMAND type
             Element referenced = referencedOpt.get();
-            String elementType = referenced.tags().getOrDefault("type", "unknown");
+            String elementType = referenced.label("type") != null ? referenced.label("type") : "unknown";
             if (!"command".equals(elementType)) {
                 issues.put(location, String.format(
                         "output_of reference '${output_of:%s}': element '%s' is type %s, " +

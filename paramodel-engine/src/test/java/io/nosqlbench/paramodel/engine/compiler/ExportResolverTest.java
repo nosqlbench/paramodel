@@ -89,7 +89,7 @@ class ExportResolverTest {
     @Test
     void testOutputOfReferencesUnknownElement() {
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "benchmark:latest")
 
                 .configuration("input", "${output_of:nonexistent}")
@@ -109,11 +109,11 @@ class ExportResolverTest {
     @Test
     void testOutputOfReferencesNonCommandElement() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service")
+                .label("type", "service")
                 .tag("image", "server:latest")
                 .build();
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "benchmark:latest")
 
                 .dependency(server)
@@ -136,12 +136,12 @@ class ExportResolverTest {
     void testOutputOfReferencesNotUpstream() {
         // Two independent commands — querier references indexer but doesn't depend on it
         DefaultElement indexer = DefaultElement.builder("indexer")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "indexer:latest")
 
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "querier:latest")
 
                 .configuration("input", "${output_of:indexer}")
@@ -163,18 +163,18 @@ class ExportResolverTest {
     void testOutputOfReferencesTransitiveUpstream() {
         // A → B → C, where C references A's output (transitive upstream)
         DefaultElement indexer = DefaultElement.builder("indexer")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "indexer:latest")
 
                 .build();
         DefaultElement processor = DefaultElement.builder("processor")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "processor:latest")
 
                 .dependency(indexer)
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "querier:latest")
 
                 .dependency(processor)
@@ -196,7 +196,7 @@ class ExportResolverTest {
     @Test
     void testNoOutputOfReferences() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service")
+                .label("type", "service")
                 .tag("image", "server:latest")
                 .configuration("port", "8080")
                 .build();
@@ -230,12 +230,12 @@ class ExportResolverTest {
     /// where querier uses ${output_of:indexer}
     private DefaultTestPlan buildMultiPhasePlan() {
         DefaultElement indexer = DefaultElement.builder("indexer")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "indexer:latest")
 
                 .build();
         DefaultElement querier = DefaultElement.builder("querier")
-                .tag("type", "command")
+                .label("type", "command")
                 .tag("image", "querier:latest")
 
                 .dependency(indexer)

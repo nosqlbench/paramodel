@@ -15,6 +15,7 @@
  */
 package io.nosqlbench.paramodel.parameters;
 
+import io.nosqlbench.paramodel.attributes.Labeled;
 import io.nosqlbench.paramodel.elements.Element;
 
 import java.util.List;
@@ -41,7 +42,7 @@ import java.util.Optional;
 ///
 /// ## Identity
 ///
-/// Each node is identified by {@link Tagged#name()}, which for element
+/// Each node is identified by {@link Labeled#name()}, which for element
 /// nodes delegates to {@code element.name()} and for the root node
 /// returns {@code "root"}.
 ///
@@ -49,7 +50,7 @@ import java.util.Optional;
 /// @see ParameterBinding
 /// @since 0.1.0
 ///
-public interface BindingNode extends Tagged {
+public interface BindingNode extends Labeled {
 
     /// Returns the element backing this node, or empty for the virtual root.
     Optional<Element> element();
@@ -69,7 +70,7 @@ public interface BindingNode extends Tagged {
     /// Empty for the virtual root.
     List<BindingNode> parents();
 
-    /// Returns the child nodes (dependent nodes), keyed by {@link Tagged#name()}.
+    /// Returns the child nodes (dependent nodes), keyed by {@link Labeled#name()}.
     Map<String, BindingNode> children();
 
     /// Returns the depth of this node in the tree. The root is depth 0,

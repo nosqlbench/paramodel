@@ -80,8 +80,13 @@ public class DefaultElementBindingTree implements ElementBindingTree {
     }
 
     @Override
-    public Map<String, String> tags() {
+    public Map<String, String> labels() {
         return Map.of("name", name, "type", "binding-tree");
+    }
+
+    @Override
+    public Map<String, String> attributes() {
+        return labels();
     }
 
     @Override
@@ -151,7 +156,7 @@ public class DefaultElementBindingTree implements ElementBindingTree {
         /// Adds local inputs for a specific element, keyed by element name.
         /// These override cascaded values for the named element.
         ///
-        /// @param elementName the element's {@link Tagged#name()}
+        /// @param elementName the element's name
         /// @param inputs the local input map for this element
         /// @return this builder
         public Builder elementInputs(String elementName, Map<String, Object> inputs) {

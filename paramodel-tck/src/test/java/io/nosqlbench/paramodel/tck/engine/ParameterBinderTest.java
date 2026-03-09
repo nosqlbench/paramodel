@@ -213,8 +213,8 @@ class ParameterBinderTest {
             }
 
             @Override
-            public Map<String, String> tags() {
-                return Map.of("name", "batch_size", "type", "integer");
+            public String type() {
+                return "integer";
             }
 
             @Override

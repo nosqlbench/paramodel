@@ -84,7 +84,7 @@ public class SimpleStepGenerationStrategy implements StepGenerationStrategy {
 
                 Map<String, Object> config = new HashMap<>(element.configuration());
                 for (var param : element.parameters()) {
-                    trial.assignment(param.name()).ifPresent(value ->
+                    trial.assignment(element.name(), param.name()).ifPresent(value ->
                         config.put(param.name(), value.value())
                     );
                 }

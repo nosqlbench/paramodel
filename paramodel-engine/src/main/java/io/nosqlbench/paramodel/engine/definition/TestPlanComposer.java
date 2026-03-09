@@ -27,7 +27,9 @@ import io.nosqlbench.paramodel.engine.definition.TestPlanDefinition.ElementDefin
 import io.nosqlbench.paramodel.engine.plan.DefaultAxis;
 import io.nosqlbench.paramodel.engine.plan.DefaultElement;
 import io.nosqlbench.paramodel.engine.plan.DefaultTestPlan;
+import io.nosqlbench.paramodel.engine.plan.PlanAxis;
 import io.nosqlbench.paramodel.plan.Axis;
+import io.nosqlbench.paramodel.plan.DefaultAttachedParameter;
 import io.nosqlbench.paramodel.plan.ExecutionPlan;
 import io.nosqlbench.paramodel.plan.TestPlan;
 import org.slf4j.Logger;
@@ -74,7 +76,7 @@ public class TestPlanComposer {
     ///
     /// Scope derivation and trial generation are now handled by the paramodel
     /// compiler pipeline (NormalizationStage and TrialEnumerationStage respectively).
-    /// All type-specific metadata flows generically through element tags.
+    /// All type-specific metadata flows generically through element traits.
     ///
     /// @param definition the parsed test plan definition
     /// @return the composed plan with trials and execution plan
@@ -116,14 +118,14 @@ public class TestPlanComposer {
         // Convert elements (two-pass for dependency resolution)
         Map<String, DefaultElement> elementMap = convertElements(definition.elements());
 
-        // Convert axes
-        List<Axis<?>> axes = convertAxes(definition.axes());
+        // Convert axes (needs element map for AttachedParameter resolution)
+        List<Axis<?>> axes = convertAxes(definition.axes(), elementMap);
 
         // Build the test plan
         DefaultTestPlan.Builder planBuilder = DefaultTestPlan.builder()
                 .name(definition.name())
                 .description(definition.description())
-                .metadata(new PlanMetadata(planId, definition.description()));
+                .metadata(new PlanLabels(planId, definition.description()));
 
         elementMap.values().forEach(planBuilder::element);
         axes.forEach(planBuilder::axis);
@@ -181,8 +183,8 @@ public class TestPlanComposer {
 
     /// Populates a {@link DefaultElement.Builder} from an {@link ElementDefinition}.
     ///
-    /// All metadata flows through tags. The element type identifier and all
-    /// type-specific properties from the definition are stored as tags so
+    /// All metadata flows through traits. The element type identifier and all
+    /// type-specific properties from the definition are stored as traits so
     /// the engine remains agnostic to concrete element types.
     ///
     /// The element's {@code type} field also drives shutdown semantics:
@@ -190,10 +192,24 @@ public class TestPlanComposer {
     /// {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#COMMAND COMMAND}
     /// semantics. All other types default to
     /// {@link io.nosqlbench.paramodel.elements.Element.ShutdownSemantics#SERVICE SERVICE}.
+    /// Keys that are routed to the label tier (immutable structural properties).
+    private static final java.util.Set<String> LABEL_KEYS = java.util.Set.of("type", "name");
+
+    /// Key prefixes/keys that are routed to the trait tier (type-relational).
+    ///
+    /// Currently empty — no element properties are classified as traits by the
+    /// paramodel engine. The tier exists as an adopter extension point.
+    private static final java.util.Set<String> TRAIT_KEYS = java.util.Set.of();
+
+    /// Returns true if the key should be routed to the trait tier.
+    private static boolean isTraitKey(String key) {
+        return TRAIT_KEYS.contains(key);
+    }
+
     @SuppressWarnings("unchecked")
     private DefaultElement.Builder populateElementBuilder(ElementDefinition def) {
         var builder = DefaultElement.builder(def.id())
-                .tag("type", def.type());
+                .label("type", def.type());
 
         // Map element type to shutdown semantics.
         // "command" type elements are self-terminating — the scheduler awaits
@@ -219,7 +235,17 @@ public class TestPlanComposer {
             }
         }
 
-        // All type-specific properties flow through as tags generically
+        // max_concurrency: read from properties, set as typed field
+        if (def.properties() != null) {
+            Object maxConc = def.properties().get("max_concurrency");
+            if (maxConc instanceof Number n) {
+                builder.maxConcurrency(n.intValue());
+            } else if (maxConc instanceof String s && !s.isBlank()) {
+                builder.maxConcurrency(Integer.parseInt(s));
+            }
+        }
+
+        // Route properties to the correct tier
         if (def.properties() != null) {
             for (var entry : def.properties().entrySet()) {
                 Object value = entry.getValue();
@@ -227,12 +253,12 @@ public class TestPlanComposer {
                     // Nested maps get flattened with dot-separated keys
                     for (var nested : ((Map<String, Object>) mapValue).entrySet()) {
                         if (nested.getValue() != null) {
-                            builder.tag(entry.getKey() + "." + nested.getKey(),
-                                    nested.getValue().toString());
+                            String flatKey = entry.getKey() + "." + nested.getKey();
+                            routeProperty(builder, flatKey, nested.getValue().toString());
                         }
                     }
                 } else if (value != null) {
-                    builder.tag(entry.getKey(), value.toString());
+                    routeProperty(builder, entry.getKey(), value.toString());
                 }
             }
         }
@@ -248,29 +274,70 @@ public class TestPlanComposer {
         }
 
         // Relationship types are now carried on the Dependency edge directly,
-        // no longer stored as tags.
+        // no longer stored as traits.
 
         return builder;
     }
 
-    /// Converts axis definitions to {@link DefaultAxis} instances.
-    private List<Axis<?>> convertAxes(List<AxisDefinition> definitions) {
+    /// Keys handled directly as typed fields rather than routed to attribute tiers.
+    private static final java.util.Set<String> TYPED_FIELD_KEYS = java.util.Set.of(
+            "max_concurrency", "trialElement");
+
+    /// Routes a property key-value pair to the correct tier on the builder.
+    private static void routeProperty(DefaultElement.Builder builder, String key, String value) {
+        if (TYPED_FIELD_KEYS.contains(key)) {
+            // Handled separately as typed fields — skip tier routing
+        } else if (LABEL_KEYS.contains(key)) {
+            builder.label(key, value);
+        } else if (isTraitKey(key)) {
+            builder.trait(key, value);
+        } else {
+            builder.tag(key, value);
+        }
+    }
+
+    /// Converts axis definitions to {@link PlanAxis} instances wrapping {@link DefaultAxis}.
+    ///
+    /// Each axis is built as a pure {@link DefaultAxis} with an
+    /// {@link io.nosqlbench.paramodel.plan.AttachedParameter} binding,
+    /// then wrapped in a {@link PlanAxis} carrying typed planning metadata.
+    ///
+    /// @param definitions the axis definitions from the parsed plan
+    /// @param elementMap  resolved elements (needed for AttachedParameter)
+    /// @return list of plan axes
+    @SuppressWarnings("unchecked")
+    private List<Axis<?>> convertAxes(List<AxisDefinition> definitions,
+                                      Map<String, DefaultElement> elementMap) {
         List<Axis<?>> axes = new ArrayList<>();
 
         for (AxisDefinition def : definitions) {
-            var builder = DefaultAxis.<Object>builder(def.parameter())
+            DefaultElement element = elementMap.get(def.element());
+            if (element == null) {
+                logger.warn("Axis '{}' references unknown element '{}', skipping", def.parameter(), def.element());
+                continue;
+            }
+
+            // Create a parameter stub for the axis — composer-built elements
+            // don't register Parameter<?> objects, so the axis parameter is
+            // known only by name at this point.
+            var param = new io.nosqlbench.paramodel.engine.plan.AxisParameter<>(def.parameter());
+
+            var attached = new DefaultAttachedParameter<>(param, element);
+            var coreAxis = DefaultAxis.<Object>builder(def.parameter())
                     .values(def.values() != null ? def.values() : List.of())
-                    .targetElement(def.element())
+                    .attachedParameter(attached)
+                    .build();
+
+            var planAxis = PlanAxis.<Object>builder(coreAxis)
                     .sweepMode(def.mode() != null ? def.mode().toUpperCase() : "SERIAL")
                     .nesting(def.nesting() != null ? def.nesting() : axes.size())
                     .section(def.section())
                     .repetitions(def.repetitions() != null ? def.repetitions() : 1);
             if (def.sampling() != null) {
-                builder.sampling(def.sampling().toSamplingStrategy());
+                planAxis.sampling(def.sampling().toSamplingStrategy());
             }
-            DefaultAxis<Object> axis = builder.build();
 
-            axes.add(axis);
+            axes.add(planAxis.build());
         }
 
         return axes;
@@ -318,15 +385,22 @@ public class TestPlanComposer {
     /// other fields.
     private DefaultElement rebuildWithConfiguration(DefaultElement original, Map<String, Object> configuration) {
         var builder = DefaultElement.builder(original.name());
-        for (var tag : original.tags().entrySet()) {
-            if (!"name".equals(tag.getKey())) {
-                builder.tag(tag.getKey(), tag.getValue());
+        for (var entry : original.labels().entrySet()) {
+            if (!"name".equals(entry.getKey())) {
+                builder.label(entry.getKey(), entry.getValue());
             }
+        }
+        for (var entry : original.traits().entrySet()) {
+            builder.trait(entry.getKey(), entry.getValue());
+        }
+        for (var entry : original.tags().entrySet()) {
+            builder.tag(entry.getKey(), entry.getValue());
         }
         builder.configuration(configuration);
         builder.exports(original.exports());
         builder.shutdownSemantics(original.shutdownSemantics());
         original.trialElement().ifPresent(builder::trialElement);
+        original.maxConcurrency().ifPresent(builder::maxConcurrency);
         for (var p : original.parameters()) {
             builder.parameter(p);
         }
@@ -344,16 +418,16 @@ public class TestPlanComposer {
         return sanitized + "-" + CompactId.next();
     }
 
-    /// TestPlan metadata carrying plan context.
+    /// TestPlan labels carrying plan context.
     ///
-    /// Stores the generated planId in the tags map so downstream code
+    /// Stores the generated planId in the labels map so downstream code
     /// (web services, execution tracking) can retrieve it.
-    private static class PlanMetadata implements TestPlan.TestPlanMetadata {
+    private static class PlanLabels implements TestPlan.TestPlanMetadata {
         private final String planId;
         private final String description;
         private final Instant createdAt = Instant.now();
 
-        PlanMetadata(String planId, String description) {
+        PlanLabels(String planId, String description) {
             this.planId = planId;
             this.description = description;
         }

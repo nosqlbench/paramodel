@@ -33,7 +33,7 @@ counts.
 
 An element models any deployable resource needed by trials. The Paramodel
 API treats the kind of resource (service, environment, cache, tool, etc.)
-as an opaque tag supplied via `tags()`.
+as an opaque label supplied via `labels()` (typically the `"type"` key).
 
 Typical examples:
 - A database instance (PostgreSQL, Cassandra)
@@ -53,11 +53,14 @@ Typical examples:
 | Method               | Returns                       | Purpose                                       |
 |----------------------|-------------------------------|-----------------------------------------------|
 | `name()`             | `String`                      | Unique identifier within the study            |
-| `tags()`             | `Map<String, String>`         | Classification metadata (includes `"name"`)   |
+| `labels()`           | `Map<String, String>`         | Immutable structural metadata (includes `"name"`, `"type"`) |
+| `traits()`           | `Map<String, String>`         | Type-relational metadata (adopter extension point) |
+| `tags()`             | `Map<String, String>`         | User-mutable categorization (adopter extension point) |
 | `parameters()`       | `List<Parameter<?>>`          | Input dimensions of this element              |
 | `resultParameters()` | `List<Parameter<?>>`          | Output dimensions published after deployment   |
 | `dependencies()`     | `List<Dependency>`            | Directed dependency edges (target + type)     |
 | `healthCheck()`      | `Optional<HealthCheckSpec>`   | Readiness verification strategy               |
+| `maxConcurrency()`   | `OptionalInt`                 | Parallel deployment limit (empty = unlimited) |
 | `shutdownSemantics()`| `SERVICE` or `COMMAND`        | Explicit stop vs. natural completion          |
 
 ## RelationshipType

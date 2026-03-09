@@ -451,20 +451,20 @@ class ValidationStageTest {
     @Test
     void testUnstableReuseWarningWhenUpstreamBindingsVary() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service").tag("image", "server:latest").build();
+                .label("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command").tag("image", "client:latest")
+                .label("type", "command").tag("image", "client:latest")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .trial(new DefaultTrial("trial-0", Map.of(
-                        "server.threads", val("threads", 1)
-                ), List.of(), null))
-                .trial(new DefaultTrial("trial-1", Map.of(
-                        "server.threads", val("threads", 2)
-                ), List.of(), null))
+                .trial(new DefaultTrial("trial-0",
+                        nestedAssignments("server", "threads", val("threads", 1)),
+                        List.of(), null))
+                .trial(new DefaultTrial("trial-1",
+                        nestedAssignments("server", "threads", val("threads", 2)),
+                        List.of(), null))
                 .build();
 
         DefaultValidationResult report = validator.validateComposed(plan);
@@ -477,22 +477,22 @@ class ValidationStageTest {
     @Test
     void testNoUnstableReuseWarningWhenUpstreamBindingsFixed() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service").tag("image", "server:latest").build();
+                .label("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command").tag("image", "client:latest")
+                .label("type", "command").tag("image", "client:latest")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .trial(new DefaultTrial("trial-0", Map.of(
-                        "server.threads", val("threads", 4),
-                        "client.dataset", val("dataset", "sift")
-                ), List.of(), null))
-                .trial(new DefaultTrial("trial-1", Map.of(
-                        "server.threads", val("threads", 4),
-                        "client.dataset", val("dataset", "deep")
-                ), List.of(), null))
+                .trial(new DefaultTrial("trial-0",
+                        nestedAssignments("server", "threads", val("threads", 4),
+                                          "client", "dataset", val("dataset", "sift")),
+                        List.of(), null))
+                .trial(new DefaultTrial("trial-1",
+                        nestedAssignments("server", "threads", val("threads", 4),
+                                          "client", "dataset", val("dataset", "deep")),
+                        List.of(), null))
                 .build();
 
         DefaultValidationResult report = validator.validateComposed(plan);
@@ -503,20 +503,20 @@ class ValidationStageTest {
     @Test
     void testNoUnstableReuseWarningForExclusiveRelationship() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service").tag("image", "server:latest").build();
+                .label("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command").tag("image", "client:latest")
+                .label("type", "command").tag("image", "client:latest")
                 .dependency(server, RelationshipType.EXCLUSIVE).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .trial(new DefaultTrial("trial-0", Map.of(
-                        "server.threads", val("threads", 1)
-                ), List.of(), null))
-                .trial(new DefaultTrial("trial-1", Map.of(
-                        "server.threads", val("threads", 2)
-                ), List.of(), null))
+                .trial(new DefaultTrial("trial-0",
+                        nestedAssignments("server", "threads", val("threads", 1)),
+                        List.of(), null))
+                .trial(new DefaultTrial("trial-1",
+                        nestedAssignments("server", "threads", val("threads", 2)),
+                        List.of(), null))
                 .build();
 
         DefaultValidationResult report = validator.validateComposed(plan);
@@ -527,17 +527,17 @@ class ValidationStageTest {
     @Test
     void testNoUnstableReuseWarningSingleTrial() {
         DefaultElement server = DefaultElement.builder("server")
-                .tag("type", "service").tag("image", "server:latest").build();
+                .label("type", "service").tag("image", "server:latest").build();
         DefaultElement client = DefaultElement.builder("client")
-                .tag("type", "command").tag("image", "client:latest")
+                .label("type", "command").tag("image", "client:latest")
                 .dependency(server).build();
 
         DefaultTestPlan plan = DefaultTestPlan.builder()
                 .name("Test Study")
                 .element(server).element(client)
-                .trial(new DefaultTrial("trial-0", Map.of(
-                        "server.threads", val("threads", 1)
-                ), List.of(), null))
+                .trial(new DefaultTrial("trial-0",
+                        nestedAssignments("server", "threads", val("threads", 1)),
+                        List.of(), null))
                 .build();
 
         DefaultValidationResult report = validator.validateComposed(plan);
@@ -705,5 +705,21 @@ class ValidationStageTest {
     /// Creates a {@link Value} for use in test trial assignments.
     private static Value<?> val(String paramName, Object value) {
         return new DefaultValue<>(value, paramName, Instant.now(), Optional.empty());
+    }
+
+    /// Creates a nested assignment map for a single element with one parameter.
+    private static Map<String, Map<String, Value<?>>> nestedAssignments(
+            String elementName, String paramName, Value<?> value) {
+        return Map.of(elementName, Map.of(paramName, value));
+    }
+
+    /// Creates a nested assignment map for a single element with multiple parameters.
+    private static Map<String, Map<String, Value<?>>> nestedAssignments(
+            String elem1, String param1, Value<?> val1,
+            String elem2, String param2, Value<?> val2) {
+        Map<String, Map<String, Value<?>>> result = new java.util.LinkedHashMap<>();
+        result.computeIfAbsent(elem1, k -> new java.util.LinkedHashMap<>()).put(param1, val1);
+        result.computeIfAbsent(elem2, k -> new java.util.LinkedHashMap<>()).put(param2, val2);
+        return result;
     }
 }

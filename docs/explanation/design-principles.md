@@ -38,9 +38,9 @@ The choice of interfaces over abstract classes is intentional:
   this entirely; the contract surface is exactly the public method
   signatures.
 - **Multiple inheritance of type.** A class can implement any number of
-  interfaces. `Parameter<T>` extends `Tagged`; `Element` extends `Tagged`.
-  This would require awkward class hierarchies if either were an abstract
-  class.
+  interfaces. `Parameter<T>` extends `Tagged`; `Element` extends `Labeled`,
+  `Traits`, and `Tagged`. This would require awkward class hierarchies if
+  either were an abstract class.
 - **Default methods for derived behavior.** Java interfaces support default
   methods (`Constraint.and()`, `Constraint.or()`, `Constraint.negate()`,
   `TestPlan.axis(String)`, `TestPlan.element(String)`), which provide

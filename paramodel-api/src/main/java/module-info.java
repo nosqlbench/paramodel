@@ -23,6 +23,7 @@
 ///
 module io.nosqlbench.paramodel {
     // Export all API packages
+    exports io.nosqlbench.paramodel.attributes;
     exports io.nosqlbench.paramodel.parameters;
     exports io.nosqlbench.paramodel.parameters.types;
     exports io.nosqlbench.paramodel.elements;

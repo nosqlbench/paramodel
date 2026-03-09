@@ -8,6 +8,7 @@ import io.nosqlbench.paramodel.parameters.ValidationResult;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
+
 ///
 /// A built-in parameter for boolean values with exactly two values: {@code true} and {@code false}.
 ///
@@ -55,8 +56,8 @@ public final class BooleanParameter implements Parameter<Boolean> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of("name", name, "type", "boolean");
+    public String type() {
+        return "boolean";
     }
 
     @Override

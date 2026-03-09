@@ -19,7 +19,7 @@ import static org.assertj.core.api.Assertions.*;
  * Validates that implementations correctly:
  * - Generate values from their domain
  * - Respect domain constraints
- * - Provide tags
+ * - Provide traits
  * - Handle validation
  */
 public abstract class ParameterTCK {
@@ -88,12 +88,13 @@ public abstract class ParameterTCK {
     }
 
     @Test
-    public void testParameterHasTags() {
+    public void testParameterHasNameAndType() {
         Domain<Integer> domain = getProvider().createDiscreteDomain(List.of(1, 2, 3));
         Parameter<Integer> param = getProvider().createParameter("test", domain);
 
-        assertThat(param.tags()).isNotNull();
-        assertThat(param.tags().get("name")).isEqualTo("test");
+        assertThat(param.name()).isNotNull();
+        assertThat(param.name()).isEqualTo("test");
+        assertThat(param.type()).isNotNull();
     }
 
     @Test

@@ -97,19 +97,9 @@ public final class GraphLinearizer {
                     // Overlay trial-specific parameter assignments
                     if (node.trialIndex() >= 0 && node.trialIndex() < trials.size()) {
                         Trial trial = trials.get(node.trialIndex());
-                        String prefix = node.elementName() + ".";
-                        for (var entry : trial.assignments().entrySet()) {
-                            String key = entry.getKey();
-                            if (key.startsWith(prefix)) {
-                                config.put(key.substring(prefix.length()), entry.getValue().value());
-                            } else if (elem != null) {
-                                // Try bare parameter name match
-                                for (var param : elem.parameters()) {
-                                    if (param.name().equals(key)) {
-                                        config.put(key, entry.getValue().value());
-                                    }
-                                }
-                            }
+                        for (var entry : trial.assignments()
+                                .getOrDefault(node.elementName(), Map.of()).entrySet()) {
+                            config.put(entry.getKey(), entry.getValue().value());
                         }
                     }
 

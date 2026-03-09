@@ -78,7 +78,7 @@ public class InstantiationStage implements CompilationStage {
     }
 
     private boolean matches(Axis<?> axis, Parameter<?> param, Element element) {
-        if (axis.underlyingParameter().isPresent() && axis.underlyingParameter().get().equals(param)) {
+        if (axis.underlyingParameter().equals(param)) {
             return true;
         }
         if (axis.name().equals(element.name() + "." + param.name())) {

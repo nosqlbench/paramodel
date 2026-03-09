@@ -16,7 +16,6 @@
 package io.nosqlbench.paramodel.engine.planners.reducto.rules;
 
 import io.nosqlbench.paramodel.elements.Element;
-import io.nosqlbench.paramodel.engine.plan.DefaultElement;
 import io.nosqlbench.paramodel.engine.planners.reducto.ReductoGraph;
 import io.nosqlbench.paramodel.engine.planners.reducto.ReductoNode;
 import io.nosqlbench.paramodel.engine.planners.reducto.ReductoNodeType;
@@ -47,11 +46,6 @@ public final class Rule6_ConcurrencyAnnotation implements Rule {
     }
 
     private int getMaxConcurrency(Element element) {
-        if (element instanceof DefaultElement de) {
-            return de.maxConcurrency().orElse(0);
-        }
-        String val = element.tags().get("max_concurrency");
-        if (val == null || val.isBlank()) return 0;
-        return Integer.parseInt(val);
+        return element.maxConcurrency().orElse(0);
     }
 }

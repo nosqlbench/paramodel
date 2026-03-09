@@ -73,15 +73,20 @@ public final class MixedRadixEnumerator {
         List<String> paramNames = new ArrayList<>();
         List<String> elemNames = new ArrayList<>();
 
+        Set<String> knownElements = new LinkedHashSet<>();
+        for (Element elem : sortedElements) {
+            knownElements.add(elem.name());
+        }
         Map<String, Map<String, Axis<?>>> axisByElementAndParam = new LinkedHashMap<>();
         for (Axis<?> axis : plan.axes()) {
-            String elementName = axis.targetElement().orElse(null);
+            String elementName = axis.targetElement();
             String paramName = axis.name();
-            if (elementName != null) {
+            if (knownElements.contains(elementName)) {
                 axisByElementAndParam
                     .computeIfAbsent(elementName, k -> new LinkedHashMap<>())
                     .put(paramName, axis);
             } else {
+                // Target element not in plan — match by parameter name
                 for (Element elem : sortedElements) {
                     for (var param : elem.parameters()) {
                         if (param.name().equals(paramName)) {

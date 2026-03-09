@@ -47,10 +47,10 @@ class BuiltInParameterTypesTest {
     }
 
     @Test
-    void integerRangeHasCorrectTags() {
+    void integerRangeHasCorrectNameAndType() {
         var p = IntegerParameter.range("threads", 1, 64);
-        assertThat(p.tags()).containsEntry("name", "threads");
-        assertThat(p.tags()).containsEntry("type", "integer");
+        assertThat(p.name()).isEqualTo("threads");
+        assertThat(p.type()).isEqualTo("integer");
     }
 
     @Test
@@ -236,7 +236,7 @@ class BuiltInParameterTypesTest {
     void doubleRangeBasics() {
         var p = DoubleParameter.range("temp", 0.0, 1.0);
         assertThat(p.name()).isEqualTo("temp");
-        assertThat(p.tags()).containsEntry("type", "double");
+        assertThat(p.type()).isEqualTo("double");
     }
 
     @Test
@@ -333,7 +333,7 @@ class BuiltInParameterTypesTest {
     void booleanBasics() {
         var p = BooleanParameter.of("enable_cache");
         assertThat(p.name()).isEqualTo("enable_cache");
-        assertThat(p.tags()).containsEntry("type", "boolean");
+        assertThat(p.type()).isEqualTo("boolean");
     }
 
     @Test
@@ -418,8 +418,8 @@ class BuiltInParameterTypesTest {
     void selectionBasics() {
         var p = SelectionParameter.of("region", Set.of("us-east-1", "us-west-2", "eu-west-1"));
         assertThat(p.name()).isEqualTo("region");
-        assertThat(p.tags()).containsEntry("type", "selection");
-        assertThat(p.tags()).containsEntry("maxSelections", "1");
+        assertThat(p.type()).isEqualTo("selection");
+        assertThat(p.maxSelections()).isEqualTo(1);
     }
 
     @Test
@@ -472,7 +472,7 @@ class BuiltInParameterTypesTest {
     void selectionMaxSelections() {
         var p = SelectionParameter.of("tags", Set.of("fast", "accurate", "cheap"))
             .maxSelections(2);
-        assertThat(p.tags()).containsEntry("maxSelections", "2");
+        assertThat(p.maxSelections()).isEqualTo(2);
         assertThat(p.validate(List.of("fast", "accurate")).isPassed()).isTrue();
         assertThat(p.validate(List.of("fast", "accurate", "cheap")).isFailed()).isTrue();
     }
@@ -707,8 +707,7 @@ class BuiltInParameterTypesTest {
     void stringParameterBasics() {
         var p = StringParameter.of("host");
         assertThat(p.name()).isEqualTo("host");
-        assertThat(p.tags()).containsEntry("name", "host");
-        assertThat(p.tags()).containsEntry("type", "string");
+        assertThat(p.type()).isEqualTo("string");
     }
 
     @Test

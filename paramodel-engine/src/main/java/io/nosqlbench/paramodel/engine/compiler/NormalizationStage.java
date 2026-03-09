@@ -4,6 +4,7 @@ import io.nosqlbench.paramodel.compilation.CompilationContext;
 import io.nosqlbench.paramodel.compilation.CompilationStage;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
+import io.nosqlbench.paramodel.engine.plan.PlanAxis;
 import io.nosqlbench.paramodel.parameters.SamplingStrategy;
 import io.nosqlbench.paramodel.plan.Axis;
 import io.nosqlbench.paramodel.plan.TestPlan;
@@ -26,11 +27,11 @@ import java.util.Set;
 ///
 /// Inference rules:
 ///
-/// 1. If any axis targets this element → bound to those axes
-/// 2. If this element depends on a bound element → propagate axes
+/// 1. If any axis targets this element -> bound to those axes
+/// 2. If this element depends on a bound element -> propagate axes
 /// 3. DEDICATED reverse: if a dependent uses DEDICATED relationship,
 ///    the target inherits the dependent's axes (matching instancing)
-/// 4. Otherwise → run-scoped (depth 0)
+/// 4. Otherwise -> run-scoped (depth 0)
 ///
 public class NormalizationStage implements CompilationStage {
     public NormalizationStage() {}
@@ -47,7 +48,7 @@ public class NormalizationStage implements CompilationStage {
         // Store normalized plan as artifact
         context.put("normalized_plan", plan);
 
-        // Extract axis-level tags (repetitions, nesting, sampling) into SamplingConfig
+        // Extract axis-level planning fields into SamplingConfig
         // so TrialEnumerationStage can use them
         buildSamplingConfig(plan, context);
 
@@ -55,11 +56,11 @@ public class NormalizationStage implements CompilationStage {
         deriveAxisBindings(plan, context);
     }
 
-    /// Reads axis tags and builds a {@link SamplingConfig} for the
+    /// Reads axis planning metadata and builds a {@link SamplingConfig} for the
     /// {@link TrialEnumerationStage}.
     ///
-    /// Tags read: {@code "repetitions"}, {@code "nesting"}, {@code "sampling_type"},
-    /// {@code "sampling_count"}, {@code "sampling_seed"}.
+    /// When axes are {@link PlanAxis} instances, typed fields are read directly.
+    /// Otherwise falls back to defaults.
     private void buildSamplingConfig(TestPlan plan, CompilationContext context) {
         // Don't overwrite if already set (e.g. by adopter code or tests)
         if (context.get("samplingConfig").isPresent()) {
@@ -72,45 +73,16 @@ public class NormalizationStage implements CompilationStage {
 
         for (Axis<?> axis : plan.axes()) {
             String name = axis.name();
-            Map<String, String> tags = axis.tags();
 
-            String repsStr = tags.get("repetitions");
-            if (repsStr != null) {
-                try {
-                    int reps = Integer.parseInt(repsStr);
-                    if (reps > 1) {
-                        repetitions.put(name, reps);
-                    }
-                } catch (NumberFormatException ignored) {}
-            }
-
-            String nestStr = tags.get("nesting");
-            if (nestStr != null) {
-                try {
-                    nesting.put(name, Integer.parseInt(nestStr));
-                } catch (NumberFormatException ignored) {}
-            }
-
-            String samplingType = tags.get("sampling_type");
-            if (samplingType != null) {
-                int count = 0;
-                String countStr = tags.get("sampling_count");
-                if (countStr != null) {
-                    try { count = Integer.parseInt(countStr); } catch (NumberFormatException ignored) {}
+            if (axis instanceof PlanAxis<?> pa) {
+                if (pa.repetitions() > 1) {
+                    repetitions.put(name, pa.repetitions());
                 }
-                SamplingStrategy strategy = switch (samplingType) {
-                    case "linspace" -> SamplingStrategy.linspace(count);
-                    case "random" -> {
-                        long seed = 0;
-                        String seedStr = tags.get("sampling_seed");
-                        if (seedStr != null) {
-                            try { seed = Long.parseLong(seedStr); } catch (NumberFormatException ignored) {}
-                        }
-                        yield SamplingStrategy.random(count, seed);
-                    }
-                    default -> SamplingStrategy.grid();
-                };
-                strategies.put(name, strategy);
+                nesting.put(name, pa.nesting());
+                SamplingStrategy s = pa.sampling();
+                if (!(s instanceof SamplingStrategy.Grid)) {
+                    strategies.put(name, s);
+                }
             }
         }
 
@@ -131,24 +103,40 @@ public class NormalizationStage implements CompilationStage {
     /// 3. **Store bindings** — store all computed bindings in context for
     ///    downstream stages.
     private void deriveAxisBindings(TestPlan plan, CompilationContext context) {
+        // Collect plan element names for target validation
+        Set<String> planElementNames = new HashSet<>();
+        for (Element e : plan.elements()) {
+            planElementNames.add(e.name());
+        }
+
         // First pass: compute direct axis bindings
         Map<String, Set<String>> directAxes = new HashMap<>();
         for (Axis<?> axis : plan.axes()) {
-            axis.targetElement().ifPresent(target ->
-                directAxes.computeIfAbsent(target, k -> new HashSet<>()).add(axis.name()));
-        }
-
-        // Also check parameter name matching for axis binding
-        for (Element element : plan.elements()) {
-            for (Axis<?> axis : plan.axes()) {
-                if (axis.targetElement().isEmpty()) {
-                    // Check if axis name matches a parameter
+            String target = axis.targetElement();
+            if (planElementNames.contains(target)) {
+                directAxes.computeIfAbsent(target, k -> new HashSet<>()).add(axis.name());
+            } else {
+                // Target element not in plan — fall back to parameter name matching
+                for (Element element : plan.elements()) {
                     for (var param : element.parameters()) {
                         if (axis.name().equals(param.name()) ||
                             axis.name().equals(element.name() + "." + param.name())) {
                             directAxes.computeIfAbsent(element.name(), k -> new HashSet<>())
                                 .add(axis.name());
                         }
+                    }
+                }
+            }
+        }
+
+        // Also check parameter name matching for axis binding (supplementary)
+        for (Element element : plan.elements()) {
+            for (Axis<?> axis : plan.axes()) {
+                for (var param : element.parameters()) {
+                    if (axis.name().equals(param.name()) ||
+                        axis.name().equals(element.name() + "." + param.name())) {
+                        directAxes.computeIfAbsent(element.name(), k -> new HashSet<>())
+                            .add(axis.name());
                     }
                 }
             }

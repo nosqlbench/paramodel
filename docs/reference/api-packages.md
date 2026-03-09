@@ -128,7 +128,7 @@ for common value types.
 
 | Type | Responsibility |
 |------|---------------|
-| `Element` | A deployable resource with lifecycle (deploy, ready, teardown). Extends `Tagged`. |
+| `Element` | A deployable resource with lifecycle (deploy, ready, teardown). Extends `Labeled`, `Traits`, `Tagged`. Traits and tags are adopter extension points — the engine does not consume specific keys from these tiers. |
 | `RelationshipType` | Enum defining how a dependent element relates to its dependency: `SHARED`, `EXCLUSIVE`, `DEDICATED`, `LINEAR`, `LIFELINE`. |
 | `Element.Dependency` | Record representing a directed dependency edge with target element and relationship type. |
 

@@ -131,11 +131,16 @@ public class DefaultBindingNode implements BindingNode {
     }
 
     @Override
-    public Map<String, String> tags() {
+    public Map<String, String> labels() {
         if (element != null) {
-            return element.tags();
+            return element.labels();
         }
         return Map.of("name", "root", "type", "binding-root");
+    }
+
+    @Override
+    public Map<String, String> attributes() {
+        return labels();
     }
 
     @Override

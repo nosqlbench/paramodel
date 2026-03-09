@@ -740,13 +740,9 @@ public class ValidationStage implements CompilationStage {
 
     /// Extracts assignment values for a specific element from a trial.
     private Map<String, Object> extractElementAssignments(Trial trial, String elementId) {
-        String prefix = elementId + ".";
         Map<String, Object> result = new LinkedHashMap<>();
-        for (var entry : trial.assignments().entrySet()) {
-            if (entry.getKey().startsWith(prefix)) {
-                result.put(entry.getKey().substring(prefix.length()),
-                        entry.getValue().value());
-            }
+        for (var entry : trial.assignments().getOrDefault(elementId, Map.of()).entrySet()) {
+            result.put(entry.getKey(), entry.getValue().value());
         }
         return result;
     }

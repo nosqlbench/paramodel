@@ -154,10 +154,10 @@ import java.util.List;
 ///
 /// // First trial is a corner
 /// Trial first = trials.get(0);
-/// Map<String, Value<?>> assignments = first.assignments();
-/// int xVal = (Integer) assignments.get("x").value();
-/// int yVal = (Integer) assignments.get("y").value();
-/// int zVal = (Integer) assignments.get("z").value();
+/// Map<String, Map<String, Value<?>>> assignments = first.assignments();
+/// int xVal = (Integer) assignments.get("elem").get("x").value();
+/// int yVal = (Integer) assignments.get("elem").get("y").value();
+/// int zVal = (Integer) assignments.get("elem").get("z").value();
 /// assert (xVal == 0 || xVal == 10) &&
 ///        (yVal == 0 || yVal == 10) &&
 ///        (zVal == 0 || zVal == 10);

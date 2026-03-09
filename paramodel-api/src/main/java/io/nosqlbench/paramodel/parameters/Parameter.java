@@ -3,7 +3,6 @@ package io.nosqlbench.paramodel.parameters;
 import io.nosqlbench.paramodel.plan.Axis;
 import io.nosqlbench.paramodel.plan.TrialOrdering;
 
-import java.util.Map;
 import java.util.Optional;
 
 ///
@@ -24,8 +23,7 @@ import java.util.Optional;
 /// Definition Phase:
 ///   Parameter<T> created
 ///   ├── Domain<T> specified
-///   ├── Constraints added
-///   └── Tags attached
+///   └── Constraints added
 ///
 /// Usage Phase:
 ///   ├── generate() → produces Value<T>
@@ -123,7 +121,7 @@ import java.util.Optional;
 /// @see Axis
 /// @since 0.1.0
 ///
-public interface Parameter<T> extends Tagged {
+public interface Parameter<T> {
 
     ///
     /// Returns the unique name of this parameter within its scope.
@@ -331,6 +329,19 @@ public interface Parameter<T> extends Tagged {
     ///
     default Optional<T> defaultValue() {
         return Optional.empty();
+    }
+
+    ///
+    /// Returns the type identifier for this parameter.
+    ///
+    /// The type string describes the kind of parameter (e.g. {@code "integer"},
+    /// {@code "double"}, {@code "boolean"}, {@code "string"}, {@code "selection"}).
+    /// Custom implementations may return their own type identifiers.
+    ///
+    /// @return the parameter type identifier, never null
+    ///
+    default String type() {
+        return "unknown";
     }
 
 }

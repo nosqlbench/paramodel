@@ -9,7 +9,7 @@
 ///
 /// Element **types** are not predetermined by the paramodel API — the concrete type
 /// taxonomy (e.g. service, environment, cache, dataset) is defined by the adopting
-/// system and conveyed through {@link Element#tags() tags}. What makes an element
+/// system and conveyed through {@link Element#labels() labels}. What makes an element
 /// usable is its set of {@link io.nosqlbench.paramodel.parameters.Parameter parameters},
 /// which define the element's configurable dimensions.
 ///

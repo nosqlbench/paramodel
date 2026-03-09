@@ -40,7 +40,7 @@ class VirtualElementsTest {
             Element dataset = VirtualElements.dataset();
 
             assertThat(dataset.name()).isEqualTo("dataset");
-            assertThat(dataset.tags()).containsEntry("type", "dataset");
+            assertThat(dataset.labels()).containsEntry("type", "dataset");
             assertThat(dataset.parameters()).hasSize(3);
             assertThat(dataset.dependencies()).isEmpty();
             assertThat(dataset.healthCheck()).isEmpty();
@@ -52,7 +52,7 @@ class VirtualElementsTest {
             Element daemon = VirtualElements.daemon();
 
             assertThat(daemon.name()).isEqualTo("daemon");
-            assertThat(daemon.tags()).containsEntry("type", "daemon");
+            assertThat(daemon.labels()).containsEntry("type", "daemon");
             assertThat(daemon.parameters()).hasSize(4);
             assertThat(daemon.dependencies()).hasSize(1);
             assertThat(daemon.dependencies().get(0).target().name()).isEqualTo("dataset");
@@ -65,7 +65,7 @@ class VirtualElementsTest {
             Element node = VirtualElements.node();
 
             assertThat(node.name()).isEqualTo("node");
-            assertThat(node.tags()).containsEntry("type", "node");
+            assertThat(node.labels()).containsEntry("type", "node");
             assertThat(node.parameters()).hasSize(4);
             assertThat(node.dependencies()).hasSize(1);
             assertThat(node.dependencies().get(0).target().name()).isEqualTo("daemon");

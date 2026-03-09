@@ -23,9 +23,9 @@ import java.util.Optional;
 /// ├── id: String
 /// │   └── Unique identifier for this trial
 /// │
-/// ├── assignments: Map<String, Value<?>>
-/// │   └── parameterName → Value<T>
-/// │   └── Complete assignment for all parameters
+/// ├── assignments: Map<String, Map<String, Value<?>>>
+/// │   └── elementName → parameterName → Value<T>
+/// │   └── Two-level map: element → param → value
 /// │
 /// ├── constraints: List<Constraint<?>>
 /// │   └── Cross-parameter constraints this trial must satisfy
@@ -44,8 +44,9 @@ import java.util.Optional;
 ///   t = (v1, v2, ..., vn) where vi ∈ Pi
 ///
 /// Example:
-///   Parameters: age ∈ [0, 120], platform ∈ {linux, windows, macos}
-///   Trial: {age → 42, platform → "linux"}
+///   Elements: {server, client}
+///   Parameters: server.threads ∈ [1, 64], client.mode ∈ {sync, async}
+///   Trial: {"server" → {"threads" → 42}, "client" → {"mode" → "async"}}
 /// ```
 ///
 /// ## Trial Lifecycle
@@ -97,8 +98,7 @@ import java.util.Optional;
 ///   Constraint: startDate < endDate
 ///
 ///   Trial {
-///     startDate → 2026-01-01,
-///     endDate → 2026-12-31,
+///     "timer" → {startDate → 2026-01-01, endDate → 2026-12-31},
 ///     constraints: [startDate < endDate]
 ///   }
 /// ```
@@ -109,54 +109,30 @@ import java.util.Optional;
 ///
 /// ```
 /// Parameters: {p1, p2, p3}
-/// Trial assignments: {p1 → v1, p2 → v2, p3 → v3}
+/// Trial assignments: {"elem" → {p1 → v1, p2 → v2, p3 → v3}}
 ///
 /// Partial assignments are NOT allowed:
-///   Trial {p1 → v1} ✗ Missing p2, p3
+///   Trial {"elem" → {p1 → v1}} ✗ Missing p2, p3
 /// ```
 ///
 /// ## Example: Simple Trial
 ///
 /// ```java
-/// // Define parameters
-/// Parameter<Integer> age = DiscreteParameter.range("age", 0, 120);
-/// Parameter<String> platform = DiscreteParameter.of("platform", "linux", "windows");
-///
-/// // Generate values
-/// Value<Integer> ageValue = new Value<>(42, "age", Instant.now(), Optional.empty());
-/// Value<String> platformValue = new Value<>("linux", "platform", Instant.now(), Optional.empty());
-///
-/// // Create trial
+/// // Create trial with element-structured assignments
 /// Trial trial = Trial.builder()
 ///     .id("trial-001")
-///     .assign("age", ageValue)
-///     .assign("platform", platformValue)
+///     .assignment("server", "threads", threadValue)
+///     .assignment("server", "heap", heapValue)
+///     .assignment("client", "mode", modeValue)
 ///     .build();
 ///
 /// // Validate
 /// ValidationResult result = trial.validate();
 /// assert result.isPassed();
 ///
-/// // Execute
-/// TrialResult outcome = executor.execute(trial);
-/// ```
-///
-/// ## Example: Trial with Cross-Parameter Constraint
-///
-/// ```java
-/// Trial trial = Trial.builder()
-///     .id("trial-002")
-///     .assign("minValue", new Value<>(10, "minValue", ...))
-///     .assign("maxValue", new Value<>(100, "maxValue", ...))
-///     .constraint((Map<String, Value<?>> assignments) -> {
-///         int min = (Integer) assignments.get("minValue").value();
-///         int max = (Integer) assignments.get("maxValue").value();
-///         return min < max;
-///     })
-///     .build();
-///
-/// ValidationResult result = trial.validate();
-/// // Checks that minValue < maxValue
+/// // Access assignments by element
+/// Map<String, Value<?>> serverParams = trial.assignments().get("server");
+/// Value<?> threads = trial.assignment("server", "threads").orElseThrow();
 /// ```
 ///
 /// ## Relationship to Simplica
@@ -208,20 +184,24 @@ public interface Trial {
     String id();
 
     ///
-    /// Returns the parameter assignments for this trial.
+    /// Returns the parameter assignments for this trial, structured by element.
     ///
     /// ## Assignment Map
     ///
     /// ```
-    /// Map<String, Value<?>>
+    /// Map<String, Map<String, Value<?>>>
     ///   ↓
-    /// parameterName → Value<T>
+    /// elementName → parameterName → Value<T>
     ///
     /// Example:
     ///   {
-    ///     "age" → Value<Integer>(42),
-    ///     "platform" → Value<String>("linux"),
-    ///     "enabled" → Value<Boolean>(true)
+    ///     "server" → {
+    ///       "threads" → Value<Integer>(42),
+    ///       "heap" → Value<Integer>(512)
+    ///     },
+    ///     "client" → {
+    ///       "mode" → Value<String>("async")
+    ///     }
     ///   }
     /// ```
     ///
@@ -229,44 +209,47 @@ public interface Trial {
     ///
     /// For a trial to be valid:
     /// ```
-    /// ∀ parameter p ∈ parameters:
-    ///   ∃ assignment a ∈ trial.assignments(): a.parameterName = p.name
+    /// ∀ element e, parameter p ∈ e.parameters:
+    ///   ∃ assignment a ∈ trial.assignments().get(e.name()): a.key = p.name
     /// ```
     ///
     /// ## Contract
     ///
     /// - MUST return non-null, unmodifiable map
-    /// - MUST NOT be empty (at least one assignment)
-    /// - Keys MUST match parameter names
+    /// - Outer keys are element names
+    /// - Inner keys are parameter names within that element
     /// - Values MUST be non-null
     ///
-    /// @return immutable assignment map, never null or empty
+    /// @return immutable nested assignment map, never null
     ///
-    Map<String, Value<?>> assignments();
+    Map<String, Map<String, Value<?>>> assignments();
 
     ///
-    /// Returns the value assigned to a specific parameter.
+    /// Returns the value assigned to a specific parameter on a specific element.
     ///
     /// ## Convenience Accessor
     ///
     /// This is equivalent to:
     /// ```java
-    /// Optional.ofNullable(trial.assignments().get(parameterName))
+    /// Optional.ofNullable(trial.assignments()
+    ///     .getOrDefault(elementName, Map.of())
+    ///     .get(parameterName))
     /// ```
     ///
     /// ## Type Safety
     ///
     /// The returned value is untyped {@code Value<?>}. Callers must cast:
     /// ```java
-    /// Optional<Value<?>> opt = trial.assignment("age");
-    /// Value<Integer> age = (Value<Integer>) opt.orElseThrow();
-    /// Integer ageValue = age.value();
+    /// Optional<Value<?>> opt = trial.assignment("server", "threads");
+    /// Value<Integer> threads = (Value<Integer>) opt.orElseThrow();
+    /// Integer threadCount = threads.value();
     /// ```
     ///
-    /// @param parameterName the parameter to look up
+    /// @param elementName the element to look up
+    /// @param parameterName the parameter to look up within that element
     /// @return assigned value if present
     ///
-    Optional<Value<?>> assignment(String parameterName);
+    Optional<Value<?>> assignment(String elementName, String parameterName);
 
     ///
     /// Returns cross-parameter constraints that this trial must satisfy.

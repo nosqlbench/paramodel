@@ -4,6 +4,7 @@
  */
 package io.nosqlbench.paramodel.engine.plan;
 
+import io.nosqlbench.paramodel.attributes.AttributeSupport;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.Parameter;
@@ -17,11 +18,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 
-/// A production implementation of {@link Element} with builder, tag-based metadata,
-/// fixed configuration bindings, and export definitions.
+/// A production implementation of {@link Element} with builder, three-tier
+/// attribute metadata, fixed configuration bindings, and export definitions.
 ///
 /// Follows the same pattern as {@link DefaultAxis} — immutable fields set via a
-/// builder, with adopter-specific metadata conveyed through {@link #tags()}.
+/// builder, with adopter-specific metadata conveyed through the three-tier
+/// attribute system ({@link #labels()}, {@link #traits()}, {@link #tags()}).
 ///
 /// ## Mutable Fields
 ///
@@ -35,8 +37,8 @@ import java.util.OptionalInt;
 ///
 /// ```java
 /// DefaultElement db = DefaultElement.builder("postgres")
-///     .tag("type", "service")
-///     .tag("image", "postgres:16")
+///     .label("type", "service")
+///     .maxConcurrency(4)
 ///     .configuration(Map.of("port", 5432, "max_connections", 100))
 ///     .exports(Map.of("jdbc_url", "${self.host}:${self.port}/mydb"))
 ///     .build();
@@ -44,7 +46,10 @@ import java.util.OptionalInt;
 public class DefaultElement implements Element {
 
     private final String name;
+    private final Map<String, String> labels;
+    private final Map<String, String> traits;
     private final Map<String, String> tags;
+    private final Map<String, String> attributes;
     private final List<Parameter<?>> parameters;
     private final List<Parameter<?>> resultParameters;
     private final List<Dependency> dependencies;
@@ -53,13 +58,20 @@ public class DefaultElement implements Element {
     private final HealthCheckSpec healthCheck;
     private final ShutdownSemantics shutdownSemantics;
     private final Boolean trialElement;
+    private final Integer maxConcurrencyValue;
     private volatile LiveStatusSummary statusSummary;
 
     private DefaultElement(Builder builder) {
         this.name = Objects.requireNonNull(builder.name, "name must not be null");
-        Map<String, String> tagsCopy = new LinkedHashMap<>(builder.tags);
-        tagsCopy.put("name", this.name);
-        this.tags = Collections.unmodifiableMap(tagsCopy);
+
+        var labelsCopy = new LinkedHashMap<>(builder.labels);
+        labelsCopy.put("name", this.name);
+        this.labels = Collections.unmodifiableMap(labelsCopy);
+        this.traits = Collections.unmodifiableMap(new LinkedHashMap<>(builder.traits));
+        this.tags = Collections.unmodifiableMap(new LinkedHashMap<>(builder.tags));
+        AttributeSupport.validateNamespace(this.labels, this.traits, this.tags);
+        this.attributes = AttributeSupport.combine(this.labels, this.traits, this.tags);
+
         this.parameters = List.copyOf(builder.parameters);
         this.resultParameters = List.copyOf(builder.resultParameters);
         this.dependencies = List.copyOf(builder.dependencies);
@@ -69,6 +81,7 @@ public class DefaultElement implements Element {
         this.shutdownSemantics = builder.shutdownSemantics != null
                 ? builder.shutdownSemantics : ShutdownSemantics.SERVICE;
         this.trialElement = builder.trialElement;
+        this.maxConcurrencyValue = builder.maxConcurrency;
         this.statusSummary = builder.statusSummary != null
                 ? builder.statusSummary
                 : LiveStatusSummary.inactive();
@@ -80,8 +93,23 @@ public class DefaultElement implements Element {
     }
 
     @Override
+    public Map<String, String> labels() {
+        return labels;
+    }
+
+    @Override
+    public Map<String, String> traits() {
+        return traits;
+    }
+
+    @Override
     public Map<String, String> tags() {
         return tags;
+    }
+
+    @Override
+    public Map<String, String> attributes() {
+        return attributes;
     }
 
     @Override
@@ -132,14 +160,11 @@ public class DefaultElement implements Element {
     /// Returns the max concurrency limit for parallel deployments, or empty
     /// if unlimited.
     ///
-    /// The value is read from the {@code max_concurrency} tag, which is set
-    /// by the composition pipeline from the element definition's properties map.
-    ///
     /// @return the max concurrency limit, or empty if unlimited
+    @Override
     public OptionalInt maxConcurrency() {
-        String val = tags.get("max_concurrency");
-        if (val == null || val.isBlank()) return OptionalInt.empty();
-        return OptionalInt.of(Integer.parseInt(val));
+        if (maxConcurrencyValue == null) return OptionalInt.empty();
+        return OptionalInt.of(maxConcurrencyValue);
     }
 
     /// Sets the live status summary. Called at runtime by the execution engine
@@ -160,11 +185,14 @@ public class DefaultElement implements Element {
 
     /// Builder for creating {@link DefaultElement} instances with fluent API.
     ///
-    /// All adopter-specific metadata flows through {@link #tag(String, String)}.
-    /// For example, hyperplane calls {@code .tag("type", "service")} and
-    /// {@code .tag("image", "postgres:16")} rather than using dedicated methods.
+    /// Metadata is classified into three tiers:
+    /// - {@link #label(String, String)} for immutable structural properties
+    /// - {@link #trait(String, String)} for type-relational capabilities
+    /// - {@link #tag(String, String)} for user-mutable categorization
     public static class Builder {
         private final String name;
+        private final Map<String, String> labels = new LinkedHashMap<>();
+        private final Map<String, String> traits = new LinkedHashMap<>();
         private final Map<String, String> tags = new LinkedHashMap<>();
         private final List<Parameter<?>> parameters = new ArrayList<>();
         private final List<Parameter<?>> resultParameters = new ArrayList<>();
@@ -174,13 +202,34 @@ public class DefaultElement implements Element {
         private HealthCheckSpec healthCheck;
         private ShutdownSemantics shutdownSemantics;
         private Boolean trialElement;
+        private Integer maxConcurrency;
         private LiveStatusSummary statusSummary;
 
         private Builder(String name) {
             this.name = name;
         }
 
-        /// Sets an arbitrary tag on this element.
+        /// Sets an immutable label on this element.
+        ///
+        /// @param key label key
+        /// @param value label value
+        /// @return this builder
+        public Builder label(String key, String value) {
+            this.labels.put(key, value);
+            return this;
+        }
+
+        /// Sets a type-relational trait on this element.
+        ///
+        /// @param key trait key
+        /// @param value trait value
+        /// @return this builder
+        public Builder trait(String key, String value) {
+            this.traits.put(key, value);
+            return this;
+        }
+
+        /// Sets a user-mutable tag on this element.
         ///
         /// @param key tag key
         /// @param value tag value
@@ -291,6 +340,15 @@ public class DefaultElement implements Element {
             return this;
         }
 
+        /// Sets the maximum concurrency limit for parallel deployments.
+        ///
+        /// @param maxConcurrency the concurrency limit
+        /// @return this builder
+        public Builder maxConcurrency(int maxConcurrency) {
+            this.maxConcurrency = maxConcurrency;
+            return this;
+        }
+
         /// Sets the initial live status summary.
         ///
         /// @param statusSummary the status summary
@@ -312,7 +370,7 @@ public class DefaultElement implements Element {
     public String toString() {
         return "DefaultElement{" +
                 "name='" + name + '\'' +
-                ", type=" + tags.getOrDefault("type", "unknown") +
+                ", type=" + labels.getOrDefault("type", "unknown") +
                 '}';
     }
 }

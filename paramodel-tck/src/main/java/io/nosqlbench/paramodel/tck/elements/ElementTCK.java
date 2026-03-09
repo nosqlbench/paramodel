@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.*;
 ///
 /// Validates that implementations correctly:
 /// - Provide non-null, non-empty names
-/// - Return tags containing at minimum a "name" entry
+/// - Return traits containing at minimum a "name" entry
 /// - Return non-null parameter, dependency, health check, and scope values
 /// - Support element construction with dependencies and health checks
 /// - Implement {@link TrialLifecycleParticipant} with safe default behavior
@@ -43,12 +43,12 @@ public abstract class ElementTCK {
     }
 
     @Test
-    public void testElementHasTags() {
+    public void testElementHasLabels() {
         Element element = getProvider().createElement("cache");
 
-        assertThat(element.tags()).isNotNull();
-        assertThat(element.tags()).containsKey("name");
-        assertThat(element.tags().get("name")).isEqualTo("cache");
+        assertThat(element.labels()).isNotNull();
+        assertThat(element.labels()).containsKey("name");
+        assertThat(element.labels().get("name")).isEqualTo("cache");
     }
 
     @Test
@@ -85,8 +85,8 @@ public abstract class ElementTCK {
         Element element = getProvider().createTypedElement("postgres", "service");
 
         assertThat(element.name()).isEqualTo("postgres");
-        assertThat(element.tags()).containsKey("type");
-        assertThat(element.tags().get("type")).isEqualTo("service");
+        assertThat(element.labels()).containsKey("type");
+        assertThat(element.label("type")).isEqualTo("service");
     }
 
     @Test

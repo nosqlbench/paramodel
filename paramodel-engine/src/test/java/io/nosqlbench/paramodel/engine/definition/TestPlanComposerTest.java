@@ -184,8 +184,9 @@ class TestPlanComposerTest {
 
         // Each trial should have server assignments with both parameters
         plan.trials().forEach(trial -> {
-            assertThat(trial.assignments()).containsKey("server.threads");
-            assertThat(trial.assignments()).containsKey("server.memory");
+            assertThat(trial.assignments()).containsKey("server");
+            assertThat(trial.assignments().get("server")).containsKey("threads");
+            assertThat(trial.assignments().get("server")).containsKey("memory");
         });
 
         // Client is COMMAND type — execution plan should have 6 AwaitElement steps
@@ -390,58 +391,6 @@ class TestPlanComposerTest {
         assertThat(deploysFor(execPlan, "server")).isEqualTo(4);
     }
 
-    /// Test: Output config is on the element model (element-level concern, not step-level)
-    @Test
-    void testOutputConfigOnElementModel() throws IOException {
-        String yaml = """
-            name: Output Config Test
-            elements:
-              - id: server
-                type: SERVICE
-                image: jvector:latest
-              - id: client
-                type: COMMAND
-                image: benchmark:latest
-                depends_on: server
-                output:
-                  volume: /output
-                  format: json
-            """;
-
-        TestPlanDefinition def = parser.parseString(yaml);
-        DefaultTestPlan plan = composer.compose(def);
-
-        // Output config should be on the element model via tags
-        Element client = plan.element("client").orElseThrow();
-        assertThat(client.tags().get("output.volume")).isEqualTo("/output");
-        assertThat(client.tags().get("output.format")).isEqualTo("json");
-    }
-
-    /// Test: Node role is on the element model
-    @Test
-    void testNodeRoleOnElementModel() throws IOException {
-        String yaml = """
-            name: Node Role Test
-            elements:
-              - id: server
-                type: SERVICE
-                image: jvector:latest
-                node_role: worker
-              - id: client
-                type: COMMAND
-                image: benchmark:latest
-                depends_on: server
-                node_role: client-node
-            """;
-
-        TestPlanDefinition def = parser.parseString(yaml);
-        DefaultTestPlan plan = composer.compose(def);
-
-        // Node roles are element model concerns, conveyed via tags
-        assertThat(plan.element("server").orElseThrow().tags().get("node_role")).isEqualTo("worker");
-        assertThat(plan.element("client").orElseThrow().tags().get("node_role")).isEqualTo("client-node");
-    }
-
     /// Test: Multi-phase study with ${output_of:element} references
     @Test
     void testMultiPhaseOutputOfReference() throws IOException {
@@ -567,12 +516,10 @@ class TestPlanComposerTest {
               - id: server
                 type: SERVICE
                 image: jvector:latest
-                node_role: worker
               - id: client
                 type: COMMAND
                 image: benchmark:latest
                 depends_on: server
-                node_role: client-node
             axes:
               - parameter: dataset
                 element: client
@@ -603,15 +550,10 @@ class TestPlanComposerTest {
         assertThat(preview.deploysPerElement()).containsEntry("server", 1);
         assertThat(preview.deploysPerElement()).containsEntry("client", 3);
 
-        // Node role utilization
-        assertThat(preview.nodeRoleUsage()).containsEntry("worker", 1);
-        assertThat(preview.nodeRoleUsage()).containsEntry("client-node", 3);
-
         // toString should be readable
         String previewStr = preview.toString();
         assertThat(previewStr).contains("Cost Estimation Test");
         assertThat(previewStr).contains("Deploys per element");
-        assertThat(previewStr).contains("Node role utilization");
     }
 
     /// Test: SHARED savings are computed when scope reuse reduces deploys

@@ -1,14 +1,18 @@
 package io.nosqlbench.paramodel.elements;
 
+import io.nosqlbench.paramodel.attributes.AttributeSupport;
+import io.nosqlbench.paramodel.attributes.Labeled;
+import io.nosqlbench.paramodel.attributes.Tagged;
+import io.nosqlbench.paramodel.attributes.Traits;
 import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ParameterView;
-import io.nosqlbench.paramodel.parameters.Tagged;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalInt;
 
 ///
 /// A resource that participates in study execution, defined by its parameters.
@@ -23,7 +27,7 @@ import java.util.Optional;
 /// Element **types** are not predetermined by the paramodel API. The concrete
 /// type taxonomy (e.g. service, environment, cache, dataset, tool) is defined
 /// by the adopting system. The paramodel API treats element type as an opaque
-/// tag supplied via {@link #tags()}.
+/// trait supplied via {@link #traits()}.
 ///
 /// ## Element Maturity Levels
 ///
@@ -221,7 +225,7 @@ import java.util.Optional;
 /// @see io.nosqlbench.paramodel.plan.TestPlan
 /// @since 0.1.0
 ///
-public interface Element extends Tagged, TrialLifecycleParticipant, OperationalStateObservable {
+public interface Element extends Labeled, Traits, Tagged, TrialLifecycleParticipant, OperationalStateObservable {
 
     ///
     /// Returns the unique name of this element within the study.
@@ -237,16 +241,63 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     String name();
 
     ///
-    /// Returns an unmodifiable map of tags describing this element.
+    /// Returns an unmodifiable map of labels describing this element's
+    /// immutable structural properties.
     ///
-    /// The map MUST contain at minimum a {@code "name"} entry whose value
-    /// equals {@link #name()}. It SHOULD contain a {@code "type"} entry
-    /// whose value is defined by the adopting system's type taxonomy
-    /// (e.g. {@code "service"}, {@code "environment"}, {@code "cache"}).
+    /// The default implementation returns a map with a single {@code "name"}
+    /// entry derived from {@link #name()}. Implementations SHOULD override
+    /// this to include a {@code "type"} key whose value is defined by the
+    /// adopting system's type taxonomy (e.g. {@code "service"},
+    /// {@code "environment"}, {@code "cache"}).
+    ///
+    /// @return unmodifiable label map, never null
+    ///
+    default Map<String, String> labels() {
+        return Map.of("name", name());
+    }
+
+    ///
+    /// Returns an unmodifiable map of traits for this element.
+    ///
+    /// Traits describe type-relational capabilities with plug-and-socket
+    /// semantics. The paramodel engine does not consume any trait keys on
+    /// elements — this tier exists as an adopter extension point.
+    ///
+    /// The default implementation returns an empty map.
+    ///
+    /// @return unmodifiable trait map, never null
+    ///
+    default Map<String, String> traits() {
+        return Map.of();
+    }
+
+    ///
+    /// Returns an unmodifiable map of tags for this element.
+    ///
+    /// Tags are user-mutable categorization properties and
+    /// adopter-specific metadata. The paramodel engine does not consume
+    /// any tag keys on elements — this tier exists as an adopter
+    /// extension point.
+    ///
+    /// The default implementation returns an empty map.
     ///
     /// @return unmodifiable tag map, never null
     ///
-    Map<String, String> tags();
+    default Map<String, String> tags() {
+        return Map.of();
+    }
+
+    ///
+    /// Returns a combined view of all attributes across labels, traits, and tags.
+    ///
+    /// The default implementation merges all three tiers via
+    /// {@link AttributeSupport#combine}.
+    ///
+    /// @return unmodifiable combined attribute map, never null
+    ///
+    default Map<String, String> attributes() {
+        return AttributeSupport.combine(labels(), traits(), tags());
+    }
 
     ///
     /// Returns the parameter models that define this element's configurable dimensions.
@@ -528,6 +579,17 @@ public interface Element extends Tagged, TrialLifecycleParticipant, OperationalS
     /// @return explicit override, or empty for auto-detection
     default Optional<Boolean> trialElement() {
         return Optional.empty();
+    }
+
+    /// Returns the maximum concurrency limit for parallel deployments of
+    /// this element, or empty if unlimited.
+    ///
+    /// When present, the execution engine limits the number of concurrent
+    /// active instances of this element to the specified value.
+    ///
+    /// @return the max concurrency limit, or empty if unlimited
+    default OptionalInt maxConcurrency() {
+        return OptionalInt.empty();
     }
 
     ///

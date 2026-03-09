@@ -8,6 +8,7 @@ import io.nosqlbench.paramodel.parameters.ValidationResult;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
+
 ///
 /// A built-in parameter for double-precision floating-point values backed by a range domain.
 ///
@@ -65,8 +66,8 @@ public final class DoubleParameter implements Parameter<Double> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of("name", name, "type", "double");
+    public String type() {
+        return "double";
     }
 
     @Override

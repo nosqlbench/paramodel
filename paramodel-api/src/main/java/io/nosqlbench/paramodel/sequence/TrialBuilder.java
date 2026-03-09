@@ -13,11 +13,12 @@ import java.util.Map;
 /// ```java
 /// Trial trial = trialBuilder
 ///     .id("trial-001")
-///     .assignment("age", ageValue)
-///     .assignment("platform", platformValue)
+///     .assignment("server", "threads", threadValue)
+///     .assignment("server", "heap", heapValue)
+///     .assignment("client", "mode", modeValue)
 ///     .constraint(assignments -> {
-///         int age = (Integer) assignments.get("age").value();
-///         return age >= 18;
+///         int threads = (Integer) assignments.get("threads").value();
+///         return threads >= 1;
 ///     })
 ///     .build();
 /// ```
@@ -36,16 +37,20 @@ public interface TrialBuilder {
     TrialBuilder id(String id);
 
     ///
-    /// Adds a parameter assignment to the trial.
+    /// Adds a parameter assignment to the trial, scoped to an element.
     ///
-    /// @param parameterName parameter name
+    /// @param elementName the element this parameter belongs to
+    /// @param parameterName parameter name within the element
     /// @param value assigned value
     /// @return this builder for chaining
     ///
-    TrialBuilder assignment(String parameterName, Value<?> value);
+    TrialBuilder assignment(String elementName, String parameterName, Value<?> value);
 
     ///
     /// Adds a cross-parameter constraint to the trial.
+    ///
+    /// Constraints receive a flat map of parameter names to values
+    /// (without element prefixes) for validation.
     ///
     /// @param constraint constraint to apply
     /// @return this builder for chaining

@@ -58,8 +58,8 @@ class DummyElementTest {
             Element template = DummyElement.template();
 
             assertThat(template.name()).isEqualTo("dummy");
-            assertThat(template.tags()).containsEntry("name", "dummy");
-            assertThat(template.tags()).containsEntry("type", "dummy");
+            assertThat(template.labels()).containsEntry("name", "dummy");
+            assertThat(template.labels()).containsEntry("type", "dummy");
             assertThat(template.parameters()).hasSize(6);
         }
 
@@ -246,8 +246,8 @@ class DummyElementTest {
             DummyElement custom = DummyElement.builder("custom-dummy").build();
 
             assertThat(custom.name()).isEqualTo("custom-dummy");
-            assertThat(custom.tags()).containsEntry("name", "custom-dummy");
-            assertThat(custom.tags()).containsEntry("type", "dummy");
+            assertThat(custom.labels()).containsEntry("name", "custom-dummy");
+            assertThat(custom.labels()).containsEntry("type", "dummy");
         }
 
         @Test
@@ -317,7 +317,7 @@ class DummyElementTest {
 
             assertThat(elements).hasSize(1);
             assertThat(elements.get(0).name()).isEqualTo("dummy");
-            assertThat(elements.get(0).tags()).containsEntry("type", "dummy");
+            assertThat(elements.get(0).labels()).containsEntry("type", "dummy");
         }
 
         @Test

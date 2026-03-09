@@ -99,11 +99,12 @@ class TrialEnumerationStageTest {
         ctx2.put("samplingConfig", config);
         new TrialEnumerationStage().execute(ctx2);
 
+        // MockAxis targets "mock" element by default
         List<Object> values1 = ctx1.trials().get().stream()
-            .map(t -> t.assignment("letter").get().value())
+            .map(t -> t.assignment("mock", "letter").get().value())
             .collect(Collectors.toList());
         List<Object> values2 = ctx2.trials().get().stream()
-            .map(t -> t.assignment("letter").get().value())
+            .map(t -> t.assignment("mock", "letter").get().value())
             .collect(Collectors.toList());
 
         assertThat(values1).isEqualTo(values2);
@@ -135,7 +136,7 @@ class TrialEnumerationStageTest {
         assertThat(trials).hasSize(3);
 
         List<Object> values = trials.stream()
-            .map(t -> t.assignment("count").get().value())
+            .map(t -> t.assignment("mock", "count").get().value())
             .collect(Collectors.toList());
         // Should be 0, 50, 100 (evenly spaced across min=0 to max=100)
         assertThat(values).containsExactly(0, 50, 100);
@@ -166,7 +167,7 @@ class TrialEnumerationStageTest {
         assertThat(trials).hasSize(3);
 
         List<Object> values = trials.stream()
-            .map(t -> t.assignment("rate").get().value())
+            .map(t -> t.assignment("mock", "rate").get().value())
             .collect(Collectors.toList());
         // 1.0, 3.0, 5.0
         assertThat(values).containsExactly(1.0, 3.0, 5.0);
@@ -201,7 +202,7 @@ class TrialEnumerationStageTest {
 
         // With size outermost: (1,R), (1,G), (2,R), (2,G)
         List<Object> sizes = trials.stream()
-            .map(t -> t.assignment("size").get().value())
+            .map(t -> t.assignment("mock", "size").get().value())
             .collect(Collectors.toList());
         assertThat(sizes).containsExactly(1, 1, 2, 2);
     }

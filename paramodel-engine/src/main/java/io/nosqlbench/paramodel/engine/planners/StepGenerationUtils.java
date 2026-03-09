@@ -108,14 +108,13 @@ public final class StepGenerationUtils {
             Map<String, List<Element>> dedicatedDependents) {
         TreeMap<String, String> sortedFingerprints = new TreeMap<>();
         for (var param : element.parameters()) {
-            trial.assignment(param.name()).ifPresent(value ->
+            trial.assignment(element.name(), param.name()).ifPresent(value ->
                 sortedFingerprints.put(param.name(), value.fingerprint())
             );
         }
         for (var axis : plan.axes()) {
-            if (axis.targetElement().map(t -> t.equals(element.name())).orElse(false)) {
-                String qualifiedKey = element.name() + "." + axis.name();
-                trial.assignment(qualifiedKey).ifPresent(value ->
+            if (axis.targetElement().equals(element.name())) {
+                trial.assignment(element.name(), axis.name()).ifPresent(value ->
                     sortedFingerprints.put(axis.name(), value.fingerprint()));
             }
         }
@@ -126,14 +125,13 @@ public final class StepGenerationUtils {
         List<Element> dedicatedRevDeps = dedicatedDependents.getOrDefault(element.name(), List.of());
         for (Element dependent : dedicatedRevDeps) {
             for (var param : dependent.parameters()) {
-                trial.assignment(param.name()).ifPresent(value ->
+                trial.assignment(dependent.name(), param.name()).ifPresent(value ->
                     sortedFingerprints.put("__dedicated:" + dependent.name() + ":" + param.name(),
                         value.fingerprint()));
             }
             for (var axis : plan.axes()) {
-                if (axis.targetElement().map(t -> t.equals(dependent.name())).orElse(false)) {
-                    String qualifiedKey = dependent.name() + "." + axis.name();
-                    trial.assignment(qualifiedKey).ifPresent(value ->
+                if (axis.targetElement().equals(dependent.name())) {
+                    trial.assignment(dependent.name(), axis.name()).ifPresent(value ->
                         sortedFingerprints.put("__dedicated:" + dependent.name() + ":" + axis.name(),
                             value.fingerprint()));
                 }
@@ -315,14 +313,9 @@ public final class StepGenerationUtils {
             List<? extends io.nosqlbench.paramodel.plan.Axis<?>> axes) {
         List<String> path = new ArrayList<>();
         for (var axis : axes) {
-            String qualifiedKey = axis.targetElement()
-                .map(elem -> elem + "." + axis.name())
-                .orElse(axis.name());
-            String value = trial.assignment(qualifiedKey)
+            String value = trial.assignment(axis.targetElement(), axis.name())
                 .map(v -> String.valueOf(v.value()))
-                .orElseGet(() -> trial.assignment(axis.name())
-                    .map(v -> String.valueOf(v.value()))
-                    .orElse("?"));
+                .orElse("?");
             path.add(value);
         }
         return path;

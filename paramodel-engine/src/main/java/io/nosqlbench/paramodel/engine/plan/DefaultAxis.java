@@ -4,24 +4,18 @@
  */
 package io.nosqlbench.paramodel.engine.plan;
 
-import io.nosqlbench.paramodel.parameters.Parameter;
-import io.nosqlbench.paramodel.parameters.SamplingStrategy;
+import io.nosqlbench.paramodel.plan.AttachedParameter;
 import io.nosqlbench.paramodel.plan.Axis;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
-/// A production implementation of {@link Axis} with a builder that provides
-/// typed convenience methods for common tags such as target element,
-/// sweep mode, nesting level, and section labels.
+/// A production implementation of {@link Axis} as a pure model type.
 ///
-/// Tags carry hyperplane-specific metadata without polluting the core
-/// paramodel interface. The builder ensures tag keys are consistent
-/// across all callers.
+/// Captures the axis name, ordered values, an {@link AttachedParameter}
+/// binding, and an optional description. Planning metadata (nesting,
+/// repetitions, sweep mode, etc.) is handled by {@link PlanAxis}, not here.
 ///
 /// @param <T> the type of values along this axis
 public class DefaultAxis<T> implements Axis<T> {
@@ -29,8 +23,7 @@ public class DefaultAxis<T> implements Axis<T> {
     private final String name;
     private final List<T> values;
     private final String description;
-    private final Parameter<T> underlyingParameter;
-    private final Map<String, String> tags;
+    private final AttachedParameter<T> attachedParameter;
 
     private DefaultAxis(Builder<T> builder) {
         this.name = Objects.requireNonNull(builder.name, "name must not be null");
@@ -39,8 +32,8 @@ public class DefaultAxis<T> implements Axis<T> {
             throw new IllegalArgumentException("values must not be empty");
         }
         this.description = builder.description;
-        this.underlyingParameter = builder.underlyingParameter;
-        this.tags = Collections.unmodifiableMap(new LinkedHashMap<>(builder.tags));
+        this.attachedParameter = Objects.requireNonNull(builder.attachedParameter,
+                "attachedParameter must not be null");
     }
 
     @Override
@@ -49,13 +42,13 @@ public class DefaultAxis<T> implements Axis<T> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return tags;
+    public List<T> values() {
+        return values;
     }
 
     @Override
-    public List<T> values() {
-        return values;
+    public AttachedParameter<T> attachedParameter() {
+        return attachedParameter;
     }
 
     @Override
@@ -71,21 +64,16 @@ public class DefaultAxis<T> implements Axis<T> {
         return Optional.ofNullable(description);
     }
 
-    @Override
-    public Optional<Parameter<T>> underlyingParameter() {
-        return Optional.ofNullable(underlyingParameter);
-    }
-
-    /// Creates a simple axis with name, target element, and values.
+    /// Creates a simple axis with name, attached parameter, and values.
     ///
-    /// @param name the axis name (parameter name being varied)
-    /// @param targetElement the element this axis targets
-    /// @param values the values to sweep
-    /// @param <T> the value type
+    /// @param name              the axis name
+    /// @param attachedParameter the attached parameter binding
+    /// @param values            the values to sweep
+    /// @param <T>               the value type
     /// @return a new axis instance
-    public static <T> DefaultAxis<T> of(String name, String targetElement, List<T> values) {
+    public static <T> DefaultAxis<T> of(String name, AttachedParameter<T> attachedParameter, List<T> values) {
         return DefaultAxis.<T>builder(name)
-                .targetElement(targetElement)
+                .attachedParameter(attachedParameter)
                 .values(values)
                 .build();
     }
@@ -93,7 +81,7 @@ public class DefaultAxis<T> implements Axis<T> {
     /// Creates a builder for constructing DefaultAxis instances.
     ///
     /// @param name the axis name
-    /// @param <T> the value type
+    /// @param <T>  the value type
     /// @return a new builder
     public static <T> Builder<T> builder(String name) {
         return new Builder<>(name);
@@ -106,12 +94,10 @@ public class DefaultAxis<T> implements Axis<T> {
         private final String name;
         private List<T> values = List.of();
         private String description;
-        private Parameter<T> underlyingParameter;
-        private final Map<String, String> tags = new LinkedHashMap<>();
+        private AttachedParameter<T> attachedParameter;
 
         private Builder(String name) {
             this.name = name;
-            this.tags.put("name", name);
         }
 
         /// Sets the values for this axis.
@@ -133,75 +119,9 @@ public class DefaultAxis<T> implements Axis<T> {
             return this;
         }
 
-        /// Sets the underlying paramodel parameter.
-        public Builder<T> underlyingParameter(Parameter<T> parameter) {
-            this.underlyingParameter = parameter;
-            return this;
-        }
-
-        /// Sets the target element for this axis.
-        /// Stored as tag {@code "targetElement"}.
-        public Builder<T> targetElement(String targetElement) {
-            if (targetElement != null) {
-                this.tags.put("targetElement", targetElement);
-            }
-            return this;
-        }
-
-        /// Sets the nesting level for axis ordering.
-        /// Stored as tag {@code "nesting"}.
-        public Builder<T> nesting(int nesting) {
-            this.tags.put("nesting", String.valueOf(nesting));
-            return this;
-        }
-
-        /// Sets the sweep mode (e.g. SERIAL, CONCURRENT).
-        /// Stored as tag {@code "sweepMode"}.
-        public Builder<T> sweepMode(String sweepMode) {
-            if (sweepMode != null) {
-                this.tags.put("sweepMode", sweepMode);
-            }
-            return this;
-        }
-
-        /// Sets the section label for result grouping.
-        /// Stored as tag {@code "section"}.
-        public Builder<T> section(String section) {
-            if (section != null) {
-                this.tags.put("section", section);
-            }
-            return this;
-        }
-
-        /// Sets the repetition count.
-        /// Stored as tag {@code "repetitions"}.
-        public Builder<T> repetitions(int repetitions) {
-            this.tags.put("repetitions", String.valueOf(repetitions));
-            return this;
-        }
-
-        /// Sets the sampling strategy for this axis.
-        /// Encoded as tags: {@code sampling_type}, {@code sampling_count},
-        /// {@code sampling_seed}.
-        public Builder<T> sampling(SamplingStrategy strategy) {
-            switch (strategy) {
-                case SamplingStrategy.Grid _ -> tags.put("sampling_type", "grid");
-                case SamplingStrategy.Linspace l -> {
-                    tags.put("sampling_type", "linspace");
-                    tags.put("sampling_count", String.valueOf(l.count()));
-                }
-                case SamplingStrategy.Random r -> {
-                    tags.put("sampling_type", "random");
-                    tags.put("sampling_count", String.valueOf(r.count()));
-                    tags.put("sampling_seed", String.valueOf(r.seed()));
-                }
-            }
-            return this;
-        }
-
-        /// Sets an arbitrary tag.
-        public Builder<T> tag(String key, String value) {
-            this.tags.put(key, value);
+        /// Sets the attached parameter binding.
+        public Builder<T> attachedParameter(AttachedParameter<T> attachedParameter) {
+            this.attachedParameter = attachedParameter;
             return this;
         }
 
@@ -216,7 +136,7 @@ public class DefaultAxis<T> implements Axis<T> {
         return "DefaultAxis{" +
                 "name='" + name + '\'' +
                 ", values=" + values.size() +
-                ", targetElement=" + targetElement().orElse("none") +
+                ", targetElement=" + targetElement() +
                 '}';
     }
 }

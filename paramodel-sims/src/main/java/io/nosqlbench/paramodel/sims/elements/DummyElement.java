@@ -101,7 +101,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 ///
 public class DummyElement implements Element {
 
-    /// Type tag value for all dummy elements.
+    /// Type trait value for all dummy elements.
     public static final String TYPE = "dummy";
 
     /// Default element name for the canonical template.
@@ -173,8 +173,23 @@ public class DummyElement implements Element {
     }
 
     @Override
-    public Map<String, String> tags() {
+    public Map<String, String> labels() {
         return Map.of("name", name, "type", TYPE);
+    }
+
+    @Override
+    public Map<String, String> traits() {
+        return Map.of();
+    }
+
+    @Override
+    public Map<String, String> tags() {
+        return Map.of();
+    }
+
+    @Override
+    public Map<String, String> attributes() {
+        return labels();
     }
 
     @Override

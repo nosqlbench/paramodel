@@ -1,5 +1,6 @@
 package io.nosqlbench.paramodel.mock.plan;
 
+import io.nosqlbench.paramodel.attributes.AttributeSupport;
 import io.nosqlbench.paramodel.elements.Element;
 import io.nosqlbench.paramodel.elements.RelationshipType;
 import io.nosqlbench.paramodel.parameters.DynamicParameterResolver;
@@ -7,14 +8,15 @@ import io.nosqlbench.paramodel.parameters.Parameter;
 import io.nosqlbench.paramodel.parameters.ParameterView;
 
 import java.util.*;
+import java.util.OptionalInt;
 
 ///
 /// Simple element implementation for testing.
 ///
 /// Creates element models with optional parameters, dependencies,
-/// and health checks. The element type is conveyed
-/// through tags rather than a fixed enum, matching the paramodel API
-/// contract that types are system-defined.
+/// and health checks. The element type is conveyed through labels
+/// rather than a fixed enum, matching the paramodel API contract
+/// that types are system-defined.
 ///
 /// ## Usage
 ///
@@ -22,14 +24,14 @@ import java.util.*;
 /// // Simple element with no parameters
 /// Element elem = MockElement.of("database");
 ///
-/// // Element with a type tag
+/// // Element with a type label
 /// Element svc = MockElement.ofType("api-server", "service");
 ///
-/// // Element with parameters
+/// // Element with parameters and three-tier attributes
 /// Element db = MockElement.builder("postgres")
 ///     .type("service")
+///     .maxConcurrency(4)
 ///     .parameter(IntegerParameter.range("port", 1024, 65535))
-///     .parameter(IntegerParameter.range("max_connections", 1, 500))
 ///     .build();
 /// ```
 ///
@@ -44,7 +46,9 @@ public class MockElement implements Element {
     private final LiveStatusSummary statusSummary;
     private final DynamicParameterResolver dynamicResolver;
     private final List<Parameter<?>> requiredParameters;
+    private final Map<String, String> extraTraits;
     private final Map<String, String> extraTags;
+    private final Integer maxConcurrencyValue;
 
     private MockElement(String name, String type, List<Parameter<?>> parameters,
                         List<Parameter<?>> resultParameters,
@@ -53,7 +57,9 @@ public class MockElement implements Element {
                         LiveStatusSummary statusSummary,
                         DynamicParameterResolver dynamicResolver,
                         List<Parameter<?>> requiredParameters,
-                        Map<String, String> extraTags) {
+                        Map<String, String> extraTraits,
+                        Map<String, String> extraTags,
+                        Integer maxConcurrencyValue) {
         this.name = Objects.requireNonNull(name);
         this.type = type;
         this.parameters = parameters != null ? List.copyOf(parameters) : List.of();
@@ -64,7 +70,9 @@ public class MockElement implements Element {
         this.statusSummary = statusSummary != null ? statusSummary : LiveStatusSummary.inactive();
         this.dynamicResolver = dynamicResolver;
         this.requiredParameters = requiredParameters != null ? List.copyOf(requiredParameters) : List.of();
+        this.extraTraits = extraTraits != null ? Map.copyOf(extraTraits) : Map.of();
         this.extraTags = extraTags != null ? Map.copyOf(extraTags) : Map.of();
+        this.maxConcurrencyValue = maxConcurrencyValue;
     }
 
     @Override
@@ -73,14 +81,28 @@ public class MockElement implements Element {
     }
 
     @Override
-    public Map<String, String> tags() {
-        Map<String, String> tags = new LinkedHashMap<>();
-        tags.put("name", name);
+    public Map<String, String> labels() {
+        Map<String, String> map = new LinkedHashMap<>();
+        map.put("name", name);
         if (type != null) {
-            tags.put("type", type);
+            map.put("type", type);
         }
-        tags.putAll(extraTags);
-        return Collections.unmodifiableMap(tags);
+        return Collections.unmodifiableMap(map);
+    }
+
+    @Override
+    public Map<String, String> traits() {
+        return extraTraits;
+    }
+
+    @Override
+    public Map<String, String> tags() {
+        return extraTags;
+    }
+
+    @Override
+    public Map<String, String> attributes() {
+        return AttributeSupport.combine(labels(), traits(), tags());
     }
 
     @Override
@@ -121,25 +143,31 @@ public class MockElement implements Element {
         return statusSummary;
     }
 
+    @Override
+    public OptionalInt maxConcurrency() {
+        if (maxConcurrencyValue == null) return OptionalInt.empty();
+        return OptionalInt.of(maxConcurrencyValue);
+    }
+
     ///
-    /// Creates an element with just a name (no type tag, no parameters).
+    /// Creates an element with just a name (no type label, no parameters).
     ///
     /// @param name element name
     /// @return a simple mock element
     ///
     public static MockElement of(String name) {
-        return new MockElement(name, null, List.of(), List.of(), List.of(), null, null, null, null, null, null);
+        return new MockElement(name, null, List.of(), List.of(), List.of(), null, null, null, null, null, null, null, null);
     }
 
     ///
-    /// Creates an element with a name and type tag.
+    /// Creates an element with a name and type label.
     ///
     /// @param name element name
-    /// @param type type tag value (e.g. "service", "cache", "environment")
+    /// @param type type label value (e.g. "service", "cache", "environment")
     /// @return a typed mock element
     ///
     public static MockElement ofType(String name, String type) {
-        return new MockElement(name, type, List.of(), List.of(), List.of(), null, null, null, null, null, null);
+        return new MockElement(name, type, List.of(), List.of(), List.of(), null, null, null, null, null, null, null, null);
     }
 
     ///
@@ -166,16 +194,18 @@ public class MockElement implements Element {
         private LiveStatusSummary statusSummary;
         private DynamicParameterResolver dynamicResolver;
         private final List<Parameter<?>> requiredParameters = new ArrayList<>();
+        private final Map<String, String> extraTraits = new LinkedHashMap<>();
         private final Map<String, String> extraTags = new LinkedHashMap<>();
+        private Integer maxConcurrency;
 
         public Builder(String name) {
             this.name = name;
         }
 
         ///
-        /// Sets the type tag for this element.
+        /// Sets the type label for this element.
         ///
-        /// @param type type tag value
+        /// @param type type label value
         /// @return this builder
         ///
         public Builder type(String type) {
@@ -275,10 +305,6 @@ public class MockElement implements Element {
         ///
         /// Sets the dynamic parameter resolver for this element.
         ///
-        /// When set, the element's {@link Element#parameterView()} returns a dynamic
-        /// view that uses this resolver. Required parameters should be added via
-        /// {@link #requiredParameter(Parameter)}.
-        ///
         /// @param resolver the dynamic parameter resolver
         /// @return this builder
         ///
@@ -290,10 +316,6 @@ public class MockElement implements Element {
         ///
         /// Adds a required parameter for dynamic resolution.
         ///
-        /// Required parameters must have defined values before dynamic parameters
-        /// can be resolved. These are also added to the element's {@link Element#parameters()}
-        /// list.
-        ///
         /// @param parameter the required parameter to add
         /// @return this builder
         ///
@@ -304,7 +326,19 @@ public class MockElement implements Element {
         }
 
         ///
-        /// Adds a custom tag to this element.
+        /// Adds a type-relational trait to this element.
+        ///
+        /// @param key the trait key
+        /// @param value the trait value
+        /// @return this builder
+        ///
+        public Builder trait(String key, String value) {
+            this.extraTraits.put(key, value);
+            return this;
+        }
+
+        ///
+        /// Adds a user-mutable tag to this element.
         ///
         /// @param key the tag key
         /// @param value the tag value
@@ -312,6 +346,17 @@ public class MockElement implements Element {
         ///
         public Builder tag(String key, String value) {
             this.extraTags.put(key, value);
+            return this;
+        }
+
+        ///
+        /// Sets the maximum concurrency limit for parallel deployments.
+        ///
+        /// @param maxConcurrency the concurrency limit
+        /// @return this builder
+        ///
+        public Builder maxConcurrency(int maxConcurrency) {
+            this.maxConcurrency = maxConcurrency;
             return this;
         }
 
@@ -324,7 +369,8 @@ public class MockElement implements Element {
             return new MockElement(
                 name, type, parameters, resultParameters, dependencies,
                 healthCheck, shutdownSemantics, statusSummary,
-                dynamicResolver, requiredParameters, extraTags);
+                dynamicResolver, requiredParameters, extraTraits, extraTags,
+                maxConcurrency);
         }
     }
 }

@@ -2,7 +2,6 @@ package io.nosqlbench.paramodel.mock.parameters;
 
 import io.nosqlbench.paramodel.parameters.*;
 
-import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 
@@ -65,8 +64,8 @@ public class MockParameter<T> implements Parameter<T> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of("name", name);
+    public String type() {
+        return "mock";
     }
 
     public static <T> MockParameter<T> of(String name, Domain<T> domain) {

@@ -9,22 +9,30 @@ import io.nosqlbench.paramodel.sequence.Trial;
 import java.util.*;
 
 /**
- * Simple trial implementation.
+ * Simple trial implementation with element-structured assignments.
  */
 public class MockTrial implements Trial {
     private final String id;
-    private final Map<String, Value<?>> assignments;
+    private final Map<String, Map<String, Value<?>>> assignments;
     private final List<Constraint<Map<String, Value<?>>>> constraints;
 
-    public MockTrial(String id, Map<String, Value<?>> assignments) {
+    public MockTrial(String id, Map<String, Map<String, Value<?>>> assignments) {
         this(id, assignments, List.of());
     }
 
-    public MockTrial(String id, Map<String, Value<?>> assignments,
+    public MockTrial(String id, Map<String, Map<String, Value<?>>> assignments,
                      List<Constraint<Map<String, Value<?>>>> constraints) {
         this.id = Objects.requireNonNull(id);
-        this.assignments = new HashMap<>(assignments);
+        this.assignments = deepCopy(assignments);
         this.constraints = new ArrayList<>(constraints);
+    }
+
+    private static Map<String, Map<String, Value<?>>> deepCopy(Map<String, Map<String, Value<?>>> source) {
+        Map<String, Map<String, Value<?>>> outer = new LinkedHashMap<>();
+        for (var entry : source.entrySet()) {
+            outer.put(entry.getKey(), new LinkedHashMap<>(entry.getValue()));
+        }
+        return outer;
     }
 
     @Override
@@ -33,13 +41,18 @@ public class MockTrial implements Trial {
     }
 
     @Override
-    public Map<String, Value<?>> assignments() {
-        return Collections.unmodifiableMap(assignments);
+    public Map<String, Map<String, Value<?>>> assignments() {
+        Map<String, Map<String, Value<?>>> result = new LinkedHashMap<>();
+        for (var entry : assignments.entrySet()) {
+            result.put(entry.getKey(), Collections.unmodifiableMap(entry.getValue()));
+        }
+        return Collections.unmodifiableMap(result);
     }
 
     @Override
-    public Optional<Value<?>> assignment(String parameterName) {
-        return Optional.ofNullable(assignments.get(parameterName));
+    public Optional<Value<?>> assignment(String elementName, String parameterName) {
+        return Optional.ofNullable(
+            assignments.getOrDefault(elementName, Map.of()).get(parameterName));
     }
 
     @Override
@@ -49,8 +62,13 @@ public class MockTrial implements Trial {
 
     @Override
     public ValidationResult validate() {
+        // Flatten assignments for constraint evaluation (constraints use bare param names)
+        Map<String, Value<?>> flat = new LinkedHashMap<>();
+        for (var elementEntry : assignments.entrySet()) {
+            flat.putAll(elementEntry.getValue());
+        }
         for (Constraint<Map<String, Value<?>>> constraint : constraints) {
-            if (!constraint.test(assignments)) {
+            if (!constraint.test(flat)) {
                 return MockValidationResult.failed("Constraint validation failed");
             }
         }
@@ -70,7 +88,7 @@ public class MockTrial implements Trial {
         public Builder() {}
 
         private String id;
-        private final Map<String, Value<?>> assignments = new HashMap<>();
+        private final Map<String, Map<String, Value<?>>> assignments = new LinkedHashMap<>();
         private final List<Constraint<Map<String, Value<?>>>> constraints = new ArrayList<>();
 
         public Builder id(String id) {
@@ -78,8 +96,15 @@ public class MockTrial implements Trial {
             return this;
         }
 
-        public Builder assignment(String name, Value<?> value) {
-            this.assignments.put(name, value);
+        /// Adds a parameter assignment scoped to an element.
+        ///
+        /// @param elementName   the element this parameter belongs to
+        /// @param parameterName parameter name within the element
+        /// @param value         assigned value
+        /// @return this builder for chaining
+        public Builder assignment(String elementName, String parameterName, Value<?> value) {
+            this.assignments.computeIfAbsent(elementName, k -> new LinkedHashMap<>())
+                .put(parameterName, value);
             return this;
         }
 

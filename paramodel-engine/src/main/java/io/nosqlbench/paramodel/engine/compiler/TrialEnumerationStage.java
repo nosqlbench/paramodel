@@ -28,10 +28,10 @@ import java.util.*;
 /// - **Element-aware partitioning**: Axes targeting specific elements are grouped
 ///   per-element, with cross-element Cartesian composition
 ///
-/// When axes declare a {@code targetElement} tag, the stage partitions them by
+/// When axes declare a target element (via {@link Axis#targetElement()}), the stage partitions them by
 /// element, expands each element's axes independently, merges with the element's
 /// {@link Element#configuration()} as base, and then composes cross-element
-/// trials. Assignment keys use {@code "elementId.parameterName"} format.
+/// trials. Assignments are structured as element name → parameter name → value.
 ///
 /// Reads optional {@link SamplingConfig} from context. If absent, defaults to
 /// Grid sampling for all axes in their natural order with no repetitions.
@@ -75,14 +75,20 @@ public class TrialEnumerationStage implements CompilationStage {
             .map(SamplingConfig.class::cast)
             .orElse(SamplingConfig.defaults());
 
-        // Partition axes by target element
+        // Partition axes by target element (only if element exists in plan)
+        Set<String> planElementNames = new HashSet<>();
+        for (Element e : plan.elements()) {
+            planElementNames.add(e.name());
+        }
         Map<String, List<Axis<?>>> axesByElement = new LinkedHashMap<>();
         List<Axis<?>> globalAxes = new ArrayList<>();
         for (Axis<?> axis : axes) {
-            axis.targetElement().ifPresentOrElse(
-                target -> axesByElement.computeIfAbsent(target, k -> new ArrayList<>()).add(axis),
-                () -> globalAxes.add(axis)
-            );
+            String target = axis.targetElement();
+            if (planElementNames.contains(target)) {
+                axesByElement.computeIfAbsent(target, k -> new ArrayList<>()).add(axis);
+            } else {
+                globalAxes.add(axis);
+            }
         }
 
         // If all axes are global (no targetElement), use existing global expansion
@@ -121,28 +127,17 @@ public class TrialEnumerationStage implements CompilationStage {
             String elementId = entry.getKey();
             List<Axis<?>> elementAxes = entry.getValue();
 
-            // Get base configuration from element
-            Map<String, Object> baseConfig = plan.element(elementId)
-                .map(Element::configuration)
-                .orElse(Map.of());
-
             // Sort element axes by nesting
             List<Axis<?>> sortedElementAxes = new ArrayList<>(elementAxes);
             sortedElementAxes.sort(Comparator.comparingInt(
                 a -> config.nesting().getOrDefault(a.name(), elementAxes.indexOf(a))));
 
-            // Expand axes for this element
+            // Expand axes for this element — only axis-varied parameters.
+            // Static element defaults are available via Element.configuration()
+            // and should not be duplicated into trial assignments.
             List<Map<String, Object>> combinations = expandAxes(sortedElementAxes, config);
 
-            // Merge base config into each combination (axis values override config)
-            List<Map<String, Object>> merged = new ArrayList<>(combinations.size());
-            for (Map<String, Object> combo : combinations) {
-                Map<String, Object> m = new LinkedHashMap<>(baseConfig);
-                m.putAll(combo);
-                merged.add(m);
-            }
-
-            elementBindingSets.put(elementId, merged);
+            elementBindingSets.put(elementId, combinations);
         }
 
         // Also expand global axes (not targeting any specific element)
@@ -160,12 +155,12 @@ public class TrialEnumerationStage implements CompilationStage {
         int maxRepetitions = computeMaxRepetitions(axesByElement, globalAxes, config);
 
         // Cross-element Cartesian product
-        List<Map<String, Value<?>>> composedTrials = composeTrials(elementBindingSets, globalCombinations);
+        List<Map<String, Map<String, Value<?>>>> composedTrials = composeTrials(elementBindingSets, globalCombinations);
 
         // Apply repetitions
         if (maxRepetitions > 1) {
-            List<Map<String, Value<?>>> repeated = new ArrayList<>(composedTrials.size() * maxRepetitions);
-            for (Map<String, Value<?>> trial : composedTrials) {
+            List<Map<String, Map<String, Value<?>>>> repeated = new ArrayList<>(composedTrials.size() * maxRepetitions);
+            for (Map<String, Map<String, Value<?>>> trial : composedTrials) {
                 for (int r = 0; r < maxRepetitions; r++) {
                     repeated.add(trial);
                 }
@@ -176,7 +171,7 @@ public class TrialEnumerationStage implements CompilationStage {
         // Wrap as Trial objects
         List<Trial> result = new ArrayList<>(composedTrials.size());
         int index = 0;
-        for (Map<String, Value<?>> assignments : composedTrials) {
+        for (Map<String, Map<String, Value<?>>> assignments : composedTrials) {
             String genMethod = maxRepetitions > 1
                 ? "element_aware_rep" + (index % maxRepetitions)
                 : "element_aware";
@@ -193,18 +188,22 @@ public class TrialEnumerationStage implements CompilationStage {
     }
 
     /// Composes cross-element binding sets into a single set of trial assignments.
-    /// Assignment keys are qualified as "elementId.parameterName".
-    private List<Map<String, Value<?>>> composeTrials(
+    /// Assignments are structured as element name → parameter name → value.
+    private List<Map<String, Map<String, Value<?>>>> composeTrials(
             Map<String, List<Map<String, Object>>> elementBindingSets,
             List<Map<String, Object>> globalCombinations) {
 
-        // Start with global combinations
-        List<Map<String, Value<?>>> result = new ArrayList<>();
+        // Start with global combinations (stored under empty-string element key)
+        List<Map<String, Map<String, Value<?>>>> result = new ArrayList<>();
         for (Map<String, Object> global : globalCombinations) {
-            Map<String, Value<?>> base = new LinkedHashMap<>();
-            for (var e : global.entrySet()) {
-                base.put(e.getKey(), new DefaultValue<>(
-                    e.getValue(), e.getKey(), Instant.now(), Optional.of("Global axis")));
+            Map<String, Map<String, Value<?>>> base = new LinkedHashMap<>();
+            if (!global.isEmpty()) {
+                Map<String, Value<?>> globalParams = new LinkedHashMap<>();
+                for (var e : global.entrySet()) {
+                    globalParams.put(e.getKey(), new DefaultValue<>(
+                        e.getValue(), e.getKey(), Instant.now(), Optional.of("Global axis")));
+                }
+                base.put("", globalParams);
             }
             result.add(base);
         }
@@ -217,16 +216,17 @@ public class TrialEnumerationStage implements CompilationStage {
             String elementId = entry.getKey();
             List<Map<String, Object>> bindings = entry.getValue();
 
-            List<Map<String, Value<?>>> expanded = new ArrayList<>();
-            for (Map<String, Value<?>> existing : result) {
+            List<Map<String, Map<String, Value<?>>>> expanded = new ArrayList<>();
+            for (Map<String, Map<String, Value<?>>> existing : result) {
                 for (Map<String, Object> binding : bindings) {
-                    Map<String, Value<?>> combined = new LinkedHashMap<>(existing);
+                    Map<String, Map<String, Value<?>>> combined = new LinkedHashMap<>(existing);
+                    Map<String, Value<?>> elementParams = new LinkedHashMap<>();
                     for (var be : binding.entrySet()) {
-                        String qualifiedKey = elementId + "." + be.getKey();
-                        combined.put(qualifiedKey, new DefaultValue<>(
-                            be.getValue(), qualifiedKey, Instant.now(),
+                        elementParams.put(be.getKey(), new DefaultValue<>(
+                            be.getValue(), be.getKey(), Instant.now(),
                             Optional.of("Element " + elementId)));
                     }
+                    combined.put(elementId, elementParams);
                     expanded.add(combined);
                 }
             }
@@ -243,7 +243,7 @@ public class TrialEnumerationStage implements CompilationStage {
 
         for (Axis<?> axis : axes) {
             List<?> effectiveValues = getEffectiveValues(axis, config);
-            String paramName = axis.underlyingParameter().map(p -> p.name()).orElse(axis.name());
+            String paramName = axis.underlyingParameter().name();
             combinations = CartesianExpander.expandAxis(combinations, paramName, effectiveValues);
         }
 
@@ -268,8 +268,18 @@ public class TrialEnumerationStage implements CompilationStage {
     }
 
     /// Generates trials using the original global expansion (no element targeting).
+    ///
+    /// Since these axes are not associated with specific plan elements, each
+    /// axis's {@link Axis#targetElement()} is used as the element key in the
+    /// nested assignment map.
     private List<Trial> generateGlobalTrials(List<Axis<?>> sortedAxes, SamplingConfig config) {
         List<Map<String, Object>> combinations = expandAxes(sortedAxes, config);
+
+        // Build a lookup from parameter name to target element
+        Map<String, String> paramToElement = new LinkedHashMap<>();
+        for (Axis<?> axis : sortedAxes) {
+            paramToElement.put(axis.underlyingParameter().name(), axis.targetElement());
+        }
 
         // Apply repetitions
         int maxRepetitions = 1;
@@ -289,16 +299,18 @@ public class TrialEnumerationStage implements CompilationStage {
                 repetitionIndex = ((Number) rawAssignments.get(CartesianExpander.REPETITION_KEY)).intValue();
             }
 
-            // Wrap raw values in DefaultValue, excluding the repetition marker
-            Map<String, Value<?>> assignments = new HashMap<>();
+            // Wrap raw values in DefaultValue, grouping by target element
+            Map<String, Map<String, Value<?>>> assignments = new LinkedHashMap<>();
             for (Map.Entry<String, Object> entry : rawAssignments.entrySet()) {
                 if (!CartesianExpander.REPETITION_KEY.equals(entry.getKey())) {
-                    assignments.put(entry.getKey(), new DefaultValue<>(
-                        entry.getValue(),
-                        entry.getKey(),
-                        Instant.now(),
-                        Optional.of("Axis enumeration")
-                    ));
+                    String elementName = paramToElement.getOrDefault(entry.getKey(), "");
+                    assignments.computeIfAbsent(elementName, k -> new LinkedHashMap<>())
+                        .put(entry.getKey(), new DefaultValue<>(
+                            entry.getValue(),
+                            entry.getKey(),
+                            Instant.now(),
+                            Optional.of("Axis enumeration")
+                        ));
                 }
             }
 

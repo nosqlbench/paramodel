@@ -75,8 +75,8 @@ public final class StringParameter implements Parameter<String> {
     }
 
     @Override
-    public Map<String, String> tags() {
-        return Map.of("name", name, "type", "string");
+    public String type() {
+        return "string";
     }
 
     @Override

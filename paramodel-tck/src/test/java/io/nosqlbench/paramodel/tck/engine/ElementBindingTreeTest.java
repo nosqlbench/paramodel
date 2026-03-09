@@ -310,10 +310,10 @@ class ElementBindingTreeTest {
         assertThat(node.cascadedInputs()).containsEntry("k", "v");
     }
 
-    // ── Node identified by Tagged name ──────────────────────────────
+    // ── Node identified by Labels name ──────────────────────────────
 
     @Test
-    void nodeIdentifiedByTaggedName() {
+    void nodeIdentifiedByLabelsName() {
         Element db = MockElement.ofType("database", "service");
 
         ElementBindingTree tree = DefaultElementBindingTree.builder("identity")
@@ -371,10 +371,10 @@ class ElementBindingTreeTest {
         assertThat(bindings.get("b").toValueMap()).containsEntry("y", 20);
     }
 
-    // ── Tagged interface contract ───────────────────────────────────
+    // ── Labels interface contract ──────────────────────────────────
 
     @Test
-    void taggedInterfaceContract() {
+    void labelsInterfaceContract() {
         Element elem = MockElement.ofType("myelem", "service");
 
         ElementBindingTree tree = DefaultElementBindingTree.builder("tag-test")
@@ -384,15 +384,15 @@ class ElementBindingTreeTest {
 
         // Tree itself
         assertThat(tree.name()).isEqualTo("tag-test");
-        assertThat(tree.tags()).containsEntry("name", "tag-test");
-        assertThat(tree.tags()).containsEntry("type", "binding-tree");
+        assertThat(tree.labels()).containsEntry("name", "tag-test");
+        assertThat(tree.labels()).containsEntry("type", "binding-tree");
 
-        // Element node delegates to element tags
+        // Element node delegates to element labels
         BindingNode node = tree.node("myelem").orElseThrow();
-        assertThat(node.tags().get("name")).isEqualTo(node.name());
+        assertThat(node.labels().get("name")).isEqualTo(node.name());
 
-        // Root node tags
-        assertThat(tree.root().tags().get("name")).isEqualTo("root");
-        assertThat(tree.root().tags()).containsEntry("type", "binding-root");
+        // Root node labels
+        assertThat(tree.root().labels().get("name")).isEqualTo("root");
+        assertThat(tree.root().labels()).containsEntry("type", "binding-root");
     }
 }

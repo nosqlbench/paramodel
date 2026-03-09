@@ -409,8 +409,8 @@ public class MockImplementationProvider implements ImplementationProvider {
         }
 
         @Override
-        public TrialBuilder assignment(String name, Value<?> value) {
-            delegate.assignment(name, value);
+        public TrialBuilder assignment(String elementName, String parameterName, Value<?> value) {
+            delegate.assignment(elementName, parameterName, value);
             return this;
         }
 

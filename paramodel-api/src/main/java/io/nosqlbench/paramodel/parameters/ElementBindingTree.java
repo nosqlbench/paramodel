@@ -15,6 +15,8 @@
  */
 package io.nosqlbench.paramodel.parameters;
 
+import io.nosqlbench.paramodel.attributes.Labeled;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -37,19 +39,19 @@ import java.util.Optional;
 ///
 /// ## Identity
 ///
-/// The tree itself extends {@link Tagged} with its name (e.g. a test plan name)
-/// and a {@code "type"} tag of {@code "binding-tree"}.
+/// The tree itself extends {@link Labeled} with its name (e.g. a test plan name)
+/// and a {@code "type"} label of {@code "binding-tree"}.
 ///
 /// @see BindingNode
 /// @see ParameterBinder
 /// @since 0.1.0
 ///
-public interface ElementBindingTree extends Tagged {
+public interface ElementBindingTree extends Labeled {
 
     /// Returns the virtual root node that carries global inputs.
     BindingNode root();
 
-    /// Looks up a binding node by its element name ({@link Tagged#name()}).
+    /// Looks up a binding node by its element name ({@link Labeled#name()}).
     /// Returns empty if no element with the given name exists in the tree.
     Optional<BindingNode> node(String elementName);
 
